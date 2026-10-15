@@ -61,6 +61,7 @@ import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
+import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.PanelMessage
 import kotlinx.coroutines.delay
@@ -80,7 +81,7 @@ fun rememberVisibleNotifications(settings: LauncherSettings): List<CarNotificati
  * in place to read it all, with dismiss / mute chat / mute app. The quiet-mode bell is in the header.
  */
 @Composable
-fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifier) {
+fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifier, primary: Boolean = false) {
     val colors = LocalCarColors.current
     val connected by CarNotifications.connected.collectAsStateWithLifecycle()
     val list = rememberVisibleNotifications(settings)
@@ -103,7 +104,9 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
                     list.isEmpty() -> PanelMessage(stringResource(R.string.notif_empty))
                     compact -> CompactList(list) { openKey = it.key }
                     else -> LazyColumn(state = rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(list, key = { it.key }) { n -> NotificationRow(n) { openKey = n.key } }
+                        items(list, key = { it.key }) { n ->
+                            NotificationRow(n, Modifier.contentFocus(enabled = primary && n === list.first())) { openKey = n.key }
+                        }
                     }
                 }
             }
@@ -161,13 +164,13 @@ private fun CompactList(list: List<CarNotification>, onOpen: (CarNotification) -
 }
 
 @Composable
-private fun NotificationRow(n: CarNotification, onClick: () -> Unit) {
+private fun NotificationRow(n: CarNotification, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(20.dp)
     val last = n.last
     val preview = listOfNotNull(last?.sender?.takeIf { n.isGroup }, last?.text).joinToString(": ")
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .carClickable(shape, stringResource(R.string.notif_open, n.title), onClick = onClick)
             .background(colors.surface2, shape)

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -111,6 +115,9 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     }
     val railFocus = remember { FocusRequester() }
     val callFocus = remember { FocusRequester() }
+    val contentFocus = remember { FocusRequester() }
+    var railHasFocus by remember { mutableStateOf(false) }
+    var railVertical by remember { mutableStateOf(true) }
     var hasFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     // Read by the bridge below long after composition: always the latest value
@@ -146,6 +153,23 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 .onFocusChanged { hasFocus = it.hasFocus }
                 .onPreviewKeyEvent { event ->
                     val down = event.type == KeyEventType.KeyDown
+                    // Knob nudges: from the app bar straight to the screen's main control, and back
+                    val toScreen = if (railVertical) Key.DirectionRight else Key.DirectionUp
+                    val toBar = if (railVertical) Key.DirectionLeft else Key.DirectionDown
+                    if (shownCall == null && hasFocus && (event.key == toScreen || event.key == toBar)) {
+                        if (event.key == toScreen && railHasFocus) {
+                            if (down && !contentFocus.requestFocus()) focusManager.moveFocus(if (railVertical) FocusDirection.Right else FocusDirection.Up)
+                            return@onPreviewKeyEvent true
+                        }
+                        if (event.key == toBar && !railHasFocus) {
+                            if (down) {
+                                // Moves within the screen first; leaving it always lands on the current section
+                                val moved = focusManager.moveFocus(if (railVertical) FocusDirection.Left else FocusDirection.Down)
+                                if (!moved || railHasFocus) railFocus.requestFocus()
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
                     when (event.key) {
                         Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
                             if (down) NowPlaying.playPause()
@@ -174,20 +198,28 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 BarPosition.BOTTOM -> false
                 BarPosition.AUTO -> maxWidth / maxHeight >= 1.3f
             }
-            val main = @Composable { mod: Modifier -> MainArea(section, settings, mod) }
+            SideEffect { railVertical = left }
+            val main = @Composable { mod: Modifier ->
+                CompositionLocalProvider(LocalContentFocus provides contentFocus) { MainArea(section, settings, mod) }
+            }
+            val rail = @Composable { vertical: Boolean ->
+                Box(Modifier.onFocusChanged { railHasFocus = it.hasFocus }) {
+                    AppRail(settings, section, vertical = vertical, firstFocus = railFocus)
+                }
+            }
             val current = shownCall
             if (current != null) {
                 // The call takes the whole screen, so the knob only moves between its buttons
                 CallScreen(current, callFocus, Modifier.fillMaxSize())
             } else if (left) {
                 Row(Modifier.fillMaxSize()) {
-                    AppRail(settings, section, vertical = true, firstFocus = railFocus)
+                    rail(true)
                     main(Modifier.weight(1f))
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
                     main(Modifier.weight(1f))
-                    AppRail(settings, section, vertical = false, firstFocus = railFocus)
+                    rail(false)
                 }
             }
             // No banner over a call, nor on the notifications screen itself
@@ -204,6 +236,14 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
 private fun MainArea(section: Section, settings: LauncherSettings, modifier: Modifier) {
     Column(
         modifier
+            // Nudges never slip out of the screen sideways into the app bar: only the nudge toward the bar
+            // leaves it (handled above, landing on the current section). Turning the knob is not affected.
+            .focusProperties {
+                onExit = {
+                    if (requestedFocusDirection in Nudges) cancelFocusChange()
+                }
+            }
+            .focusGroup()
             .fillMaxSize()
             .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -223,9 +263,11 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
                 Section.PHONE -> PhoneScreen(settings, Modifier.fillMaxSize())
-                Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize())
+                Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize(), primary = true)
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
             }
         }
     }
 }
+
+private val Nudges = setOf(FocusDirection.Up, FocusDirection.Down, FocusDirection.Left, FocusDirection.Right)

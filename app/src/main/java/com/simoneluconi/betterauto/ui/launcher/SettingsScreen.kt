@@ -56,9 +56,9 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {
         CarLabel(stringResource(R.string.settings_title), 36.sp, colors.text, weight = FontWeight.ExtraBold)
-        for (item in SettingsCatalog.all) {
+        for ((index, item) in SettingsCatalog.all.withIndex()) {
             when (item) {
-                is ChoiceSetting<*> -> ChoiceRow(item, settings)
+                is ChoiceSetting<*> -> ChoiceRow(item, settings, primary = index == 0)
                 is ActionSetting -> Setting(item.title, listOf(Unit), null, { stringResource(item.label) }) {
                     item.run(settings, SettingsSurface.CAR)
                 }
@@ -70,9 +70,9 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun <T> ChoiceRow(item: ChoiceSetting<T>, settings: LauncherSettings) {
+private fun <T> ChoiceRow(item: ChoiceSetting<T>, settings: LauncherSettings, primary: Boolean = false) {
     val selected by item.state(settings).collectAsStateWithLifecycle()
-    Setting(item.title, item.options, item.options.firstOrNull { it.value == selected }, { stringResource(it.label) }) {
+    Setting(item.title, item.options, item.options.firstOrNull { it.value == selected }, { stringResource(it.label) }, primary) {
         item.select(settings, it.value, SettingsSurface.CAR)
     }
 }
@@ -151,6 +151,7 @@ private fun <T> Setting(
     options: List<T>,
     selected: T?,
     label: @Composable (T) -> String,
+    primary: Boolean = false,
     onSelect: (T) -> Unit,
 ) {
     val colors = LocalCarColors.current
@@ -164,6 +165,7 @@ private fun <T> Setting(
                 val isSelected = option == selected
                 Box(
                     Modifier
+                        .contentFocus(enabled = primary && isSelected)
                         .carClickable(shape, stringResource(R.string.settings_option, title, label(option))) { onSelect(option) }
                         .background(if (isSelected) colors.focus.copy(alpha = 0.22f) else colors.surface2, shape)
                         .height(64.dp)

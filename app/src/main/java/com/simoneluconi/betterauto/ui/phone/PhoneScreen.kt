@@ -76,6 +76,7 @@ import com.simoneluconi.betterauto.ui.rememberAlphabetJump
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
+import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.ListRow
 import com.simoneluconi.betterauto.ui.widgets.PanelMessage
@@ -115,6 +116,7 @@ fun PhoneScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                 Row(
                     Modifier
                         .weight(1f)
+                        .contentFocus(enabled = tab == value)
                         .carClickable(shape, text) {
                             picking = null
                             settings.setPhoneTab(value.name)

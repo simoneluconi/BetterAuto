@@ -31,6 +31,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.composed
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -51,8 +58,37 @@ import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
+import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import kotlinx.coroutines.delay
+
+/**
+ * Knob nudges in the player: from the transport (previous, play, next) toward the secondary controls
+ * (favorite, shuffle, repeat...) and back to play/pause, whichever side the secondary row is on.
+ */
+private class PlayerLinks {
+    val play = FocusRequester()
+    val secondary = FocusRequester()
+    var secondaryAbove by mutableStateOf(true)
+}
+
+private val LocalPlayerLinks = staticCompositionLocalOf<PlayerLinks?> { null }
+
+/** On the transport buttons. */
+private fun Modifier.transportLinks(): Modifier = composed {
+    val links = LocalPlayerLinks.current ?: return@composed Modifier
+    focusProperties {
+        if (links.secondaryAbove) up = links.secondary else down = links.secondary
+    }
+}
+
+/** On every secondary control. */
+private fun Modifier.secondaryLinks(): Modifier = composed {
+    val links = LocalPlayerLinks.current ?: return@composed Modifier
+    focusProperties {
+        if (links.secondaryAbove) down = links.play else up = links.play
+    }
+}
 
 /** Below this width/height ratio the player stacks its parts instead of putting the text beside the cover. */
 private const val NARROW_RATIO = 1.45f
@@ -70,7 +106,9 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
     val track by NowPlaying.track.collectAsStateWithLifecycle()
     val hasAccess by NowPlaying.hasAccess.collectAsStateWithLifecycle()
     val colors = LocalCarColors.current
+    val links = remember { PlayerLinks() }
 
+    CompositionLocalProvider(LocalPlayerLinks provides links) {
     BoxWithConstraints(
         modifier
             .clip(RoundedCornerShape(32.dp))
@@ -78,12 +116,16 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
             .padding(28.dp)
     ) {
         val current = track
+        val ratio = maxWidth / maxHeight
+        // Only the narrow layout has its secondary controls under the transport
+        links.secondaryAbove = !(ratio >= TALL_RATIO && ratio < NARROW_RATIO)
         when {
             current == null -> EmptyPlayer(hasAccess)
-            maxWidth / maxHeight < TALL_RATIO -> TallPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
-            maxWidth / maxHeight < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
+            ratio < TALL_RATIO -> TallPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
+            ratio < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
             else -> WidePlayer(current, maxWidth, maxHeight, extended, onShowPanel)
         }
+    }
     }
 }
 
@@ -118,9 +160,11 @@ private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean,
         Transport(track, playSize = (height * 0.19f).coerceIn(96.dp, 124.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.weight(1f)) { track.upNext?.let { UpNext(it) } }
-            if (extended) CustomActions(track)
-            ShuffleRepeat(track)
-            onShowPanel?.let { ShowPanelButton(it) }
+            Row(Modifier.focusRequester(LocalPlayerLinks.current?.secondary ?: remember { FocusRequester() }), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (extended) CustomActions(track)
+                ShuffleRepeat(track)
+                onShowPanel?.let { ShowPanelButton(it) }
+            }
         }
     }
 }
@@ -200,9 +244,11 @@ private fun SourceRow(track: Track, extended: Boolean, onShowPanel: (() -> Unit)
             CarLabel(track.appLabel, 18.sp, colors.text, weight = FontWeight.Bold)
         }
         Spacer(Modifier.weight(1f))
-        if (extended) CustomActions(track)
-        ShuffleRepeat(track)
-        onShowPanel?.let { ShowPanelButton(it) }
+        Row(Modifier.focusRequester(LocalPlayerLinks.current?.secondary ?: remember { FocusRequester() }), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (extended) CustomActions(track)
+            ShuffleRepeat(track)
+            onShowPanel?.let { ShowPanelButton(it) }
+        }
     }
 }
 
@@ -231,6 +277,7 @@ private fun CustomActions(track: Track) {
         if ("shuffle" in name || "repeat" in name) continue
         Box(
             Modifier
+                .secondaryLinks()
                 .carClickable(CircleShape, action.name) { NowPlaying.sendCustomAction(action.action) }
                 .background(colors.text.copy(alpha = 0.08f), CircleShape)
                 .size(52.dp),
@@ -267,6 +314,7 @@ private fun ToggleButton(icon: ImageVector, label: String, active: Boolean, onCl
     val colors = LocalCarColors.current
     Box(
         Modifier
+            .secondaryLinks()
             .carClickable(CircleShape, label, onClick = onClick)
             .background(if (active) colors.album.copy(alpha = 0.3f) else colors.text.copy(alpha = 0.08f), CircleShape)
             .size(52.dp),
@@ -350,7 +398,7 @@ private fun Transport(track: Track, playSize: Dp) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.carClickable(CircleShape, stringResource(R.string.music_previous)) { NowPlaying.previous() }.size(skipSize),
+            Modifier.transportLinks().carClickable(CircleShape, stringResource(R.string.music_previous)) { NowPlaying.previous() }.size(skipSize),
             contentAlignment = Alignment.Center,
         ) {
             CarIcon(CarIcons.Previous, colors.text, Modifier.size(skipSize * 0.5f))
@@ -364,6 +412,9 @@ private fun Transport(track: Track, playSize: Dp) {
         val playShape = RoundedCornerShape(corner)
         Box(
             Modifier
+                .contentFocus()
+                .focusRequester(LocalPlayerLinks.current?.play ?: remember { FocusRequester() })
+                .transportLinks()
                 .carClickable(playShape, stringResource(if (track.playing) R.string.music_pause else R.string.music_play)) {
                     NowPlaying.playPause()
                 }
@@ -376,7 +427,7 @@ private fun Transport(track: Track, playSize: Dp) {
             }
         }
         Box(
-            Modifier.carClickable(CircleShape, stringResource(R.string.music_next)) { NowPlaying.next() }.size(skipSize),
+            Modifier.transportLinks().carClickable(CircleShape, stringResource(R.string.music_next)) { NowPlaying.next() }.size(skipSize),
             contentAlignment = Alignment.Center,
         ) {
             CarIcon(CarIcons.Next, colors.text, Modifier.size(skipSize * 0.5f))
