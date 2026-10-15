@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.settings.BarPosition
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -52,23 +54,37 @@ import com.simoneluconi.betterauto.ui.widgets.PlaceholderWidget
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
 import kotlin.math.min
 
-/** Design reference size: every dp/sp in the launcher is a pixel on a 1280x720 screen, scaled to the real one. */
-private const val DESIGN_WIDTH = 1280f
-private const val DESIGN_HEIGHT = 720f
+/**
+ * Design reference size: every dp/sp in the launcher is a pixel on a 1280x720 screen (720x1280 when
+ * portrait), scaled to the real one. Text and buttons keep the same physical size whatever the orientation.
+ */
+private const val DESIGN_LONG = 1280f
+private const val DESIGN_SHORT = 720f
 
-/** The whole car screen. Works on the projected display and in the on-phone preview. */
+/**
+ * The whole car screen. Works on the projected display and in the on-phone preview.
+ * [insets] (pixels) are edges that may be hidden: the background reaches them, the controls don't.
+ */
 @Composable
-fun LauncherRoot(modifier: Modifier = Modifier, focus: LauncherFocus? = null) {
+fun LauncherRoot(modifier: Modifier = Modifier, focus: LauncherFocus? = null, insets: Edges = Edges.None) {
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val scale = min(constraints.maxWidth / DESIGN_WIDTH, constraints.maxHeight / DESIGN_HEIGHT)
+        val w = (constraints.maxWidth - insets.left - insets.right).coerceAtLeast(1)
+        val h = (constraints.maxHeight - insets.top - insets.bottom).coerceAtLeast(1)
+        val scale = if (w >= h) min(w / DESIGN_LONG, h / DESIGN_SHORT) else min(w / DESIGN_SHORT, h / DESIGN_LONG)
+        val padding = PaddingValues(
+            start = (insets.left / scale).dp,
+            top = (insets.top / scale).dp,
+            end = (insets.right / scale).dp,
+            bottom = (insets.bottom / scale).dp,
+        )
         CompositionLocalProvider(LocalDensity provides Density(scale, fontScale = 1f)) {
-            LauncherContent(focus)
+            LauncherContent(focus, padding)
         }
     }
 }
 
 @Composable
-private fun LauncherContent(focus: LauncherFocus?) {
+private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val context = LocalContext.current
     val settings = remember { LauncherSettings.get(context) }
     val themeMode by settings.themeMode.collectAsStateWithLifecycle()
@@ -130,7 +146,8 @@ private fun LauncherContent(focus: LauncherFocus?) {
                     if (event.key != Key.Back && event.key != Key.Escape) return@onKeyEvent false
                     if (event.type == KeyEventType.KeyUp && section != Section.HOME) settings.setSection(Section.HOME)
                     section != Section.HOME
-                },
+                }
+                .padding(insets),
         ) {
             val left = when (barSetting) {
                 BarPosition.LEFT -> true

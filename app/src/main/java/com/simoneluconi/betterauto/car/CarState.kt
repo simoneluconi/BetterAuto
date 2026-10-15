@@ -15,11 +15,35 @@ object CarState {
     /** Short description of the link, e.g. "USB · TLSv1.2". Null when disconnected. */
     val link = MutableStateFlow<String?>(null)
 
+    /** Visible area of the video frame negotiated with the head unit. Null before the video starts. */
+    val viewport = MutableStateFlow<Viewport?>(null)
+
+    /** Development: pretend the car screen has this shape ("9:16", "1280x480"), inside the real frame. */
+    val simulatedScreen = MutableStateFlow<String?>(null)
+
+    /** The area the launcher uses in a [frameWidth] x [frameHeight] frame. */
+    fun viewportFor(frameWidth: Int, frameHeight: Int, real: Viewport?, simulated: String?): Viewport {
+        simulated?.let { parseScreen(frameWidth, frameHeight, it) }?.let { return it }
+        return real?.takeIf { it.frameWidth == frameWidth && it.frameHeight == frameHeight }
+            ?: Viewport.full(frameWidth, frameHeight)
+    }
+
+    fun viewportFor(frameWidth: Int, frameHeight: Int) =
+        viewportFor(frameWidth, frameHeight, viewport.value, simulatedScreen.value)
+
+    private fun parseScreen(frameWidth: Int, frameHeight: Int, spec: String): Viewport? {
+        val parts = spec.split(':', 'x').mapNotNull { it.trim().toFloatOrNull() }
+        if (parts.size != 2 || parts[0] <= 0f || parts[1] <= 0f) return null
+        return if (':' in spec) Viewport.aspect(frameWidth, frameHeight, parts[0] / parts[1])
+        else Viewport.centered(frameWidth, frameHeight, parts[0].toInt(), parts[1].toInt())
+    }
+
     fun reset() {
         nightMode.value = null
         video.value = VideoStats()
         audio.value = null
         link.value = null
+        viewport.value = null
     }
 }
 

@@ -57,9 +57,13 @@ import kotlinx.coroutines.delay
 /** Below this width/height ratio the player stacks its parts instead of putting the text beside the cover. */
 private const val NARROW_RATIO = 1.45f
 
+/** Below this width/height ratio (portrait screens) the cover gets the whole width on top. */
+private const val TALL_RATIO = 0.9f
+
 /**
  * Now playing card. Wide: big cover on the left, everything else in a column beside it.
  * Narrow: cover and title on top, progress and transport below, secondary actions at the bottom.
+ * Tall: a big cover on top and everything else below it, for portrait screens.
  */
 @Composable
 fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShowPanel: (() -> Unit)? = null) {
@@ -76,6 +80,7 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
         val current = track
         when {
             current == null -> EmptyPlayer(hasAccess)
+            maxWidth / maxHeight < TALL_RATIO -> TallPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
             maxWidth / maxHeight < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
             else -> WidePlayer(current, maxWidth, maxHeight, extended, onShowPanel)
         }
@@ -121,6 +126,18 @@ private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean,
 }
 
 @Composable
+private fun TallPlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+        SourceRow(track, extended, onShowPanel)
+        Cover(track, size = minOf(width, height * 0.5f), badge = false, modifier = Modifier.align(Alignment.CenterHorizontally))
+        TitleBlock(track, titleSize = 42.sp, maxLines = 2)
+        Progress(track)
+        Transport(track, playSize = (height * 0.13f).coerceIn(104.dp, 150.dp))
+        track.upNext?.let { UpNext(it) }
+    }
+}
+
+@Composable
 private fun EmptyPlayer(hasAccess: Boolean) {
     val colors = LocalCarColors.current
     Column(
@@ -140,10 +157,10 @@ private fun EmptyPlayer(hasAccess: Boolean) {
 }
 
 @Composable
-private fun Cover(track: Track, size: Dp, badge: Boolean) {
+private fun Cover(track: Track, size: Dp, badge: Boolean, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(24.dp)
-    Box(Modifier.size(size)) {
+    Box(modifier.size(size)) {
         val art = track.art
         if (art != null) {
             Image(art, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(shape))

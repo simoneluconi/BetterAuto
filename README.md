@@ -18,7 +18,7 @@ doesn't know the difference: it thinks it is talking to Android Auto.
   remembered exactly as you left them.
 - 🌗 **Day and night themes** that follow the car's lights, with a smooth fade instead of a flash.
 - 🎛️ **Works without a touchscreen**: rotary knob, joystick and steering wheel buttons.
-- 📐 **Fits any screen**, from small 800×480 units to wide 1920×720 displays.
+- 📐 **Fits any screen**, from small 800×480 units to wide dashboards and portrait displays.
 - 🌍 English and Italian, following your phone's language.
 
 Coming next: maps with turn-by-turn directions (also on the instrument cluster), notifications,
@@ -99,7 +99,7 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [x] Car audio over USB (playback capture, uncompressed PCM)
 - [ ] **Shizuku support** for car audio: audio moved like the official app, no prompt, no
       screen-sharing indicator, no muting; playback capture stays as the fallback
-- [ ] Full music screen: library, queue, up next
+- [x] Full music screen: library, queue, up next
 - [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
       instrument cluster
 - [ ] Notifications and messages widgets

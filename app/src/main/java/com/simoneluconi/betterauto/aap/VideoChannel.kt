@@ -7,6 +7,8 @@ import aap_protobuf.service.media.shared.message.StartOuterClass.Start
 import aap_protobuf.service.media.sink.MediaMessageIdOuterClass.MediaMessageId
 import aap_protobuf.service.media.sink.message.VideoCodecResolutionTypeOuterClass.VideoCodecResolutionType
 import aap_protobuf.service.media.sink.message.VideoConfigurationOuterClass.VideoConfiguration
+import com.simoneluconi.betterauto.car.Edges
+import com.simoneluconi.betterauto.car.Viewport
 import aap_protobuf.service.media.sink.message.VideoFrameRateTypeOuterClass.VideoFrameRateType
 import aap_protobuf.service.media.source.message.AckOuterClass.Ack
 import aap_protobuf.service.media.video.message.VideoFocusModeOuterClass.VideoFocusMode
@@ -113,6 +115,7 @@ class VideoChannel(
             onCodecConfig = { send(MediaMessageId.MEDIA_MESSAGE_CODEC_CONFIG_VALUE, it) },
             onFrame = ::sendFrame,
         )
+        CarState.viewport.value = cfg.viewport()
         val density = if (cfg.density > 0) cfg.density else 160
         projection.start(newEncoder.inputSurface, width, height, density)
     }
@@ -167,8 +170,27 @@ fun VideoConfiguration.size(): Pair<Int, Int> = when (codecResolution) {
     else -> 800 to 480
 }
 
+/** The part of the frame the head unit shows: per-side margins (newer units) or centered width/height margins. */
+fun VideoConfiguration.viewport(): Viewport {
+    val (w, h) = size()
+    val ui = if (hasUiConfig()) uiConfig else null
+    val area = if (ui != null && ui.hasMargins()) {
+        val m = ui.margins
+        Viewport(w, h, m.left, m.top, w - m.left - m.right, h - m.top - m.bottom)
+    } else {
+        Viewport.centered(w, h, w - widthMargin, h - heightMargin)
+    }
+    if (area.width <= 0 || area.height <= 0 || area.left < 0 || area.top < 0) return Viewport.full(w, h)
+    val insets = ui?.takeIf { it.hasContentInsets() }?.contentInsets
+        ?: ui?.takeIf { it.hasStableContentInsets() }?.stableContentInsets
+    return if (insets == null) area else area.copy(insets = Edges(insets.left, insets.top, insets.right, insets.bottom))
+}
+
 fun VideoConfiguration.describe(): String {
     val (w, h) = size()
     val fps = if (frameRate == VideoFrameRateType.VIDEO_FPS_60) 60 else 30
-    return "${w}x$h $fps fps, density $density, margins ${widthMargin}x$heightMargin"
+    val ui = if (hasUiConfig()) ", ui margins ${uiConfig.margins.describe()} insets ${uiConfig.contentInsets.describe()}" else ""
+    return "${w}x$h $fps fps, density $density, margins ${widthMargin}x$heightMargin$ui"
 }
+
+private fun aap_protobuf.service.media.shared.message.InsetsOuterClass.Insets.describe() = "$left/$top/$right/$bottom"

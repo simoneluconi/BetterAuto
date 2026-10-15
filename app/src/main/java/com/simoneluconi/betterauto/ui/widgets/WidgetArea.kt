@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,31 +23,60 @@ import com.simoneluconi.betterauto.settings.WidgetType
 
 private val Gap = 20.dp
 
-/** Home screen: one big widget, two side by side, or one big plus two stacked (AA-style). */
+/**
+ * Home screen: one big widget, two side by side, or one big plus two stacked (AA-style).
+ * On portrait screens the same layouts turn a quarter: the big widget on top, the others below it.
+ */
 @Composable
 fun WidgetArea(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val layout by settings.layout.collectAsStateWithLifecycle()
     val widgets by settings.widgets.collectAsStateWithLifecycle()
 
-    AnimatedContent(
-        targetState = layout to widgets,
-        transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
-        modifier = modifier,
-        label = "homeLayout",
-    ) { (currentLayout, order) ->
-        val slots = order.take(currentLayout.slots)
-        when (currentLayout) {
-            HomeLayout.SINGLE -> Widget(slots[0], Modifier.fillMaxSize())
-            HomeLayout.SPLIT -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
-                Widget(slots[0], Modifier.weight(3f).fillMaxHeight())
-                Widget(slots[1], Modifier.weight(2f).fillMaxHeight())
+    BoxWithConstraints(modifier) {
+        val portrait = maxWidth < maxHeight
+        AnimatedContent(
+            targetState = layout to widgets,
+            transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
+            modifier = Modifier.fillMaxSize(),
+            label = "homeLayout",
+        ) { (currentLayout, order) ->
+            val slots = order.take(currentLayout.slots)
+            if (portrait) PortraitLayout(currentLayout, slots) else LandscapeLayout(currentLayout, slots)
+        }
+    }
+}
+
+@Composable
+private fun PortraitLayout(layout: HomeLayout, slots: List<WidgetType>) {
+    when (layout) {
+        HomeLayout.SINGLE -> Widget(slots[0], Modifier.fillMaxSize())
+        HomeLayout.SPLIT -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Gap)) {
+            Widget(slots[0], Modifier.weight(3f).fillMaxWidth())
+            Widget(slots[1], Modifier.weight(2f).fillMaxWidth())
+        }
+        HomeLayout.TRIO -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Gap)) {
+            Widget(slots[0], Modifier.weight(3f).fillMaxWidth())
+            Row(Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
+                Widget(slots[1], Modifier.weight(1f).fillMaxHeight())
+                Widget(slots[2], Modifier.weight(1f).fillMaxHeight())
             }
-            HomeLayout.TRIO -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
-                Widget(slots[0], Modifier.weight(3f).fillMaxHeight())
-                Column(Modifier.weight(2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Gap)) {
-                    Widget(slots[1], Modifier.weight(3f).fillMaxWidth())
-                    Widget(slots[2], Modifier.weight(2f).fillMaxWidth())
-                }
+        }
+    }
+}
+
+@Composable
+private fun LandscapeLayout(layout: HomeLayout, slots: List<WidgetType>) {
+    when (layout) {
+        HomeLayout.SINGLE -> Widget(slots[0], Modifier.fillMaxSize())
+        HomeLayout.SPLIT -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
+            Widget(slots[0], Modifier.weight(3f).fillMaxHeight())
+            Widget(slots[1], Modifier.weight(2f).fillMaxHeight())
+        }
+        HomeLayout.TRIO -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
+            Widget(slots[0], Modifier.weight(3f).fillMaxHeight())
+            Column(Modifier.weight(2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Gap)) {
+                Widget(slots[1], Modifier.weight(3f).fillMaxWidth())
+                Widget(slots[2], Modifier.weight(2f).fillMaxWidth())
             }
         }
     }

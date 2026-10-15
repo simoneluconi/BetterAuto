@@ -93,6 +93,17 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --ei key 4   # back
   ```
 
+- Try other car screens on the bench: the launcher is drawn only in a centered area of the frame,
+  the same way head units apply their margins (`off` goes back to the real screen):
+
+  ```sh
+  adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --es screen 9:16      # portrait
+  adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --es screen 1920x720  # wide dashboard
+  ```
+
+  Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
+  `--ez night true` (the car's night sensor).
+
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 
 ## TLS certificate

@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.NowPlaying
 
 /**
@@ -56,8 +57,7 @@ class Projection(private val context: Context) {
     /** Converts a head unit touch report into a MotionEvent for the launcher UI. */
     fun dispatchTouch(touch: TouchEvent, touchWidth: Int, touchHeight: Int) = main.post {
         val target = presentation ?: return@post
-        val scaleX = if (touchWidth > 0) width.toFloat() / touchWidth else 1f
-        val scaleY = if (touchHeight > 0) height.toFloat() / touchHeight else 1f
+        val viewport = CarState.viewportFor(width, height)
         val pointerIndex = touch.actionIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
         val action = when (touch.action) {
             PointerAction.ACTION_DOWN -> MotionEvent.ACTION_DOWN
@@ -77,9 +77,10 @@ class Projection(private val context: Context) {
             }
         }
         val coords = Array(pointers.size) { i ->
+            val (frameX, frameY) = viewport.touchToFrame(pointers[i].x.toFloat(), pointers[i].y.toFloat(), touchWidth, touchHeight)
             MotionEvent.PointerCoords().apply {
-                x = pointers[i].x * scaleX
-                y = pointers[i].y * scaleY
+                x = frameX
+                y = frameY
                 pressure = 1f
                 size = 1f
             }

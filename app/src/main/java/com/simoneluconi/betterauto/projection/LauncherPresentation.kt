@@ -16,7 +16,6 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.simoneluconi.betterauto.ui.launcher.LauncherFocus
-import com.simoneluconi.betterauto.ui.launcher.LauncherRoot
 
 /** The launcher UI on the car's virtual display. A Presentation is a Dialog, so it gets its own lifecycle for Compose. */
 class LauncherPresentation(context: Context, display: Display) :
@@ -44,7 +43,7 @@ class LauncherPresentation(context: Context, display: Display) :
         composeView = ComposeView(context).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            setContent { LauncherRoot(focus = focus) }
+            setContent { ProjectedLauncher(focus) }
         }
         setContentView(composeView)
         composeView.requestFocus()
@@ -85,7 +84,7 @@ class LauncherPresentation(context: Context, display: Display) :
     private var swallowUp: Int? = null
 
     private companion object {
-        val NavigationKeys = setOf(
+        private val NavigationKeys = setOf(
             KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
