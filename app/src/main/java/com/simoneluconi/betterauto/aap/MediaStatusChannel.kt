@@ -63,11 +63,13 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
         val fullKey = "$key|${cover?.size()}"
         if (fullKey == sentMetadata) return
         sentMetadata = fullKey
+        // What the player does not know is left out, so the car shows its own placeholder rather than a blank
         val metadata = MediaPlaybackMetadata.newBuilder()
-            .setSong(track.title)
-            .setArtist(track.artist)
-            .setAlbum(track.album)
-            .setDurationSeconds((track.durationMs / 1000).toInt())
+        track.title.takeIf { it.isNotBlank() }?.let { metadata.setSong(it) }
+        track.artist.takeIf { it.isNotBlank() }?.let { metadata.setArtist(it) }
+        track.album.takeIf { it.isNotBlank() }?.let { metadata.setAlbum(it) }
+        // Live streams have no duration: a zero would read as an empty track
+        if (track.durationMs > 0) metadata.setDurationSeconds((track.durationMs / 1000).toInt())
         track.playlist?.let { metadata.setPlaylist(it) }
         cover?.let { metadata.setAlbumArt(it) }
         send(MediaPlaybackStatusMessageId.MEDIA_PLAYBACK_METADATA_VALUE, metadata.build())
