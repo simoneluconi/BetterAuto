@@ -1,6 +1,10 @@
 package com.simoneluconi.betterauto.ui.widgets
 
 import android.os.SystemClock
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -37,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.media.Track
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -88,7 +95,7 @@ private fun WidePlayer(track: Track, width: Dp, height: Dp) {
             TitleBlock(track, titleSize = 44.sp, maxLines = 2)
             Progress(track)
             Transport(track, playSize = (height * 0.25f).coerceIn(104.dp, 160.dp))
-            track.upNext?.let { CarLabel("Up next · $it", 19.sp, colors.text2) }
+            track.upNext?.let { CarLabel(stringResource(R.string.music_up_next, it), 19.sp, colors.text2) }
         }
     }
 }
@@ -99,12 +106,15 @@ private fun NarrowPlayer(track: Track, width: Dp, height: Dp) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Cover(track, size = minOf(height * 0.34f, width * 0.34f), badge = true)
-            TitleBlock(track, titleSize = 40.sp, maxLines = 3, modifier = Modifier.weight(1f))
+            TitleBlock(track, titleSize = 40.sp, maxLines = 2, modifier = Modifier.weight(1f))
         }
         Progress(track)
         Transport(track, playSize = (height * 0.19f).coerceIn(96.dp, 124.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CarLabel(track.upNext?.let { "Up next · $it" } ?: "", 19.sp, colors.text2, Modifier.weight(1f))
+            CarLabel(
+                track.upNext?.let { stringResource(R.string.music_up_next, it) } ?: "",
+                19.sp, colors.text2, Modifier.weight(1f),
+            )
             ShuffleRepeat(track)
         }
     }
@@ -121,10 +131,9 @@ private fun EmptyPlayer(hasAccess: Boolean) {
         Box(Modifier.size(96.dp).background(colors.surface2, CircleShape), contentAlignment = Alignment.Center) {
             CarIcon(CarIcons.Music, colors.text2, Modifier.size(44.dp))
         }
-        CarLabel("Nothing playing", 34.sp, colors.text, weight = FontWeight.ExtraBold)
+        CarLabel(stringResource(R.string.music_nothing_playing), 34.sp, colors.text, weight = FontWeight.ExtraBold)
         CarLabel(
-            if (hasAccess) "Start music on the phone or pick an app from the bar"
-            else "Allow notification access for BetterAuto on the phone to show your music",
+            stringResource(if (hasAccess) R.string.music_start_hint else R.string.music_access_hint),
             22.sp, colors.text2, maxLines = 2, textAlign = TextAlign.Center,
         )
     }
@@ -147,7 +156,7 @@ private fun Cover(track: Track, size: Dp, badge: Boolean) {
         if (badge && icon != null) {
             Image(
                 icon,
-                contentDescription = "Playing from ${track.appLabel}",
+                contentDescription = stringResource(R.string.music_playing_from, track.appLabel),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(12.dp)
@@ -181,8 +190,16 @@ private fun SourceRow(track: Track) {
 @Composable
 private fun ShuffleRepeat(track: Track) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToggleButton(CarIcons.Shuffle, "Shuffle", track.shuffle) { NowPlaying.toggleShuffle() }
-        ToggleButton(CarIcons.Repeat, "Repeat", track.repeat) { NowPlaying.toggleRepeat() }
+        ToggleButton(
+            CarIcons.Shuffle,
+            stringResource(if (track.shuffle) R.string.music_shuffle_on else R.string.music_shuffle_off),
+            track.shuffle,
+        ) { NowPlaying.toggleShuffle() }
+        ToggleButton(
+            CarIcons.Repeat,
+            stringResource(if (track.repeat) R.string.music_repeat_on else R.string.music_repeat_off),
+            track.repeat,
+        ) { NowPlaying.toggleRepeat() }
     }
 }
 
@@ -191,7 +208,7 @@ private fun ToggleButton(icon: ImageVector, label: String, active: Boolean, onCl
     val colors = LocalCarColors.current
     Box(
         Modifier
-            .carClickable(CircleShape, if (active) "$label on" else "$label off", onClick = onClick)
+            .carClickable(CircleShape, label, onClick = onClick)
             .background(if (active) colors.album.copy(alpha = 0.3f) else colors.text.copy(alpha = 0.08f), CircleShape)
             .size(52.dp),
         contentAlignment = Alignment.Center,
@@ -205,14 +222,27 @@ private fun TitleBlock(track: Track, titleSize: TextUnit, maxLines: Int, modifie
     val colors = LocalCarColors.current
     Column(modifier) {
         CarLabel(
-            track.title.ifBlank { "Unknown title" }, titleSize, colors.text,
+            track.title.ifBlank { stringResource(R.string.music_unknown_title) }, titleSize, colors.text,
             weight = FontWeight.ExtraBold, maxLines = maxLines, lineHeight = 1.24.em,
         )
-        val subtitle = listOf(track.artist, track.album).filter { it.isNotBlank() }.joinToString(" · ")
-        if (subtitle.isNotEmpty()) {
+        if (track.artist.isNotBlank()) {
             Spacer(Modifier.height(16.dp))
-            CarLabel(subtitle, 26.sp, colors.text2, lineHeight = 1.3.em)
+            InfoLine(CarIcons.Artist, track.artist, 26.sp)
         }
+        if (track.album.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            InfoLine(CarIcons.Album, track.album, 23.sp)
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(icon: ImageVector, text: String, size: TextUnit) {
+    val colors = LocalCarColors.current
+    val iconSize = with(LocalDensity.current) { size.toDp() } * 0.95f
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        CarIcon(icon, colors.text2, Modifier.size(iconSize))
+        CarLabel(text, size, colors.text2, lineHeight = 1.3.em)
     }
 }
 
@@ -263,22 +293,33 @@ private fun Transport(track: Track, playSize: Dp) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.carClickable(CircleShape, "Previous track") { NowPlaying.previous() }.size(skipSize),
+            Modifier.carClickable(CircleShape, stringResource(R.string.music_previous)) { NowPlaying.previous() }.size(skipSize),
             contentAlignment = Alignment.Center,
         ) {
             CarIcon(CarIcons.Previous, colors.text, Modifier.size(skipSize * 0.5f))
         }
+        // Circle while playing, rounded square while paused
+        val corner by animateIntAsState(
+            targetValue = if (track.playing) 50 else 28,
+            animationSpec = spring(dampingRatio = 0.5f, stiffness = 300f),
+            label = "playCorner",
+        )
+        val playShape = RoundedCornerShape(corner)
         Box(
             Modifier
-                .carClickable(CircleShape, if (track.playing) "Pause" else "Play") { NowPlaying.playPause() }
-                .background(colors.album, CircleShape)
+                .carClickable(playShape, stringResource(if (track.playing) R.string.music_pause else R.string.music_play)) {
+                    NowPlaying.playPause()
+                }
+                .background(colors.album, playShape)
                 .size(playSize),
             contentAlignment = Alignment.Center,
         ) {
-            CarIcon(if (track.playing) CarIcons.Pause else CarIcons.Play, colors.onAlbum, Modifier.size(playSize * 0.4f))
+            Crossfade(track.playing, animationSpec = tween(180), label = "playIcon") { playing ->
+                CarIcon(if (playing) CarIcons.Pause else CarIcons.Play, colors.onAlbum, Modifier.size(playSize * 0.4f))
+            }
         }
         Box(
-            Modifier.carClickable(CircleShape, "Next track") { NowPlaying.next() }.size(skipSize),
+            Modifier.carClickable(CircleShape, stringResource(R.string.music_next)) { NowPlaying.next() }.size(skipSize),
             contentAlignment = Alignment.Center,
         ) {
             CarIcon(CarIcons.Next, colors.text, Modifier.size(skipSize * 0.5f))

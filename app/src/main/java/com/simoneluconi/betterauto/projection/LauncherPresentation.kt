@@ -61,6 +61,7 @@ class LauncherPresentation(context: Context, display: Display) :
     }
 
     fun dispatchTouch(event: MotionEvent) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) focus.clearFocus()
         window?.decorView?.dispatchTouchEvent(event)
     }
 

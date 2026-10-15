@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.launcher
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,8 +28,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -58,7 +61,7 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
             val selected = section == target
             RailButton(
                 icon = icon,
-                label = label,
+                label = stringResource(label),
                 selected = selected,
                 modifier = if (selected) Modifier.focusRequester(firstFocus) else Modifier,
             ) { settings.setSection(target) }
@@ -70,7 +73,7 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
                 Modifier
                     .carClickable(
                         RoundedCornerShape(22.dp),
-                        if (isPinned) "${app.label}, pinned" else app.label,
+                        if (isPinned) stringResource(R.string.app_pinned, app.label) else app.label,
                         onLongClick = { settings.togglePinned(app.packageName) },
                     ) {
                         NowPlaying.open(app.packageName)
@@ -92,7 +95,7 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
             }
         }
         Spacer(spacerModifier)
-        RailButton(CarIcons.Settings, "Settings", section == Section.SETTINGS) { settings.setSection(Section.SETTINGS) }
+        RailButton(CarIcons.Settings, stringResource(R.string.nav_settings), section == Section.SETTINGS) { settings.setSection(Section.SETTINGS) }
     }
 
     val surface = Modifier
@@ -118,13 +121,13 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
     }
 }
 
-private data class Destination(val section: Section, val icon: ImageVector, val label: String)
+private data class Destination(val section: Section, val icon: ImageVector, @StringRes val label: Int)
 
 private val Destinations = listOf(
-    Destination(Section.HOME, CarIcons.Home, "Home"),
-    Destination(Section.MUSIC, CarIcons.Music, "Music"),
-    Destination(Section.MAP, CarIcons.Map, "Map"),
-    Destination(Section.PHONE, CarIcons.Phone, "Phone"),
+    Destination(Section.HOME, CarIcons.Home, R.string.nav_home),
+    Destination(Section.MUSIC, CarIcons.Music, R.string.nav_music),
+    Destination(Section.MAP, CarIcons.Map, R.string.nav_map),
+    Destination(Section.PHONE, CarIcons.Phone, R.string.nav_phone),
 )
 
 @Composable

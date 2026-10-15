@@ -1,5 +1,11 @@
 package com.simoneluconi.betterauto.ui.launcher
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +33,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,14 +85,19 @@ private fun LauncherContent(focus: LauncherFocus?) {
     }
     val railFocus = remember { FocusRequester() }
     var hasFocus by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     DisposableEffect(focus) {
+        focus?.clear = { focusManager.clearFocus(force = true) }
         focus?.ensure = {
             if (hasFocus) false else {
                 runCatching { railFocus.requestFocus() }
                 true
             }
         }
-        onDispose { focus?.ensure = null }
+        onDispose {
+            focus?.ensure = null
+            focus?.clear = null
+        }
     }
 
     CarTheme(night = night, album = track?.accent) {
@@ -123,7 +135,7 @@ private fun LauncherContent(focus: LauncherFocus?) {
                 BarPosition.BOTTOM -> false
                 BarPosition.AUTO -> maxWidth / maxHeight >= 1.3f
             }
-            val main = @Composable { mod: Modifier -> MainArea(section, settings, night, mod) }
+            val main = @Composable { mod: Modifier -> MainArea(section, settings, mod) }
             if (left) {
                 Row(Modifier.fillMaxSize()) {
                     AppRail(settings, section, vertical = true, firstFocus = railFocus)
@@ -141,16 +153,24 @@ private fun LauncherContent(focus: LauncherFocus?) {
 }
 
 @Composable
-private fun MainArea(section: Section, settings: LauncherSettings, night: Boolean, modifier: Modifier) {
+private fun MainArea(section: Section, settings: LauncherSettings, modifier: Modifier) {
     Column(
         modifier
             .fillMaxSize()
             .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        StatusBar(settings, isNight = night, showLayoutButton = section == Section.HOME)
-        Box(Modifier.weight(1f)) {
-            when (section) {
+        StatusBar(settings, showLayoutButton = section == Section.HOME)
+        AnimatedContent(
+            targetState = section,
+            transitionSpec = {
+                (fadeIn(tween(220, delayMillis = 60)) + scaleIn(tween(320), initialScale = 0.96f)) togetherWith
+                    fadeOut(tween(140))
+            },
+            modifier = Modifier.weight(1f),
+            label = "section",
+        ) { current ->
+            when (current) {
                 Section.HOME -> WidgetArea(settings, Modifier.fillMaxSize())
                 Section.MUSIC -> MusicWidget(Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())

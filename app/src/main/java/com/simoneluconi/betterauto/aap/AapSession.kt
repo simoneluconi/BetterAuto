@@ -1,6 +1,9 @@
 package com.simoneluconi.betterauto.aap
 
 import aap_protobuf.service.ServiceOuterClass.Service
+import aap_protobuf.service.control.message.AudioFocusNotificationOuterClass.AudioFocusNotification
+import aap_protobuf.service.control.message.AudioFocusRequestNotificationOuterClass.AudioFocusRequestNotification
+import aap_protobuf.service.control.message.AudioFocusRequestTypeOuterClass.AudioFocusRequestType
 import aap_protobuf.service.control.message.AuthResponseOuterClass.AuthResponse
 import aap_protobuf.service.control.message.ByeByeRequestOuterClass.ByeByeRequest
 import aap_protobuf.service.control.message.ByeByeResponseOuterClass.ByeByeResponse
@@ -9,6 +12,7 @@ import aap_protobuf.service.control.message.PingRequestOuterClass.PingRequest
 import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
 import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse
+import aap_protobuf.service.media.sink.message.AudioStreamTypeOuterClass.AudioStreamType
 import android.os.Build
 import com.google.protobuf.MessageLite
 import com.simoneluconi.betterauto.EventLog
@@ -69,6 +73,10 @@ class AapSession(
                 running = false
             }
             ControlMessageType.MESSAGE_BYEBYE_RESPONSE_VALUE -> running = false
+            ControlMessageType.MESSAGE_AUDIO_FOCUS_NOTIFICATION_VALUE -> {
+                val focus = AudioFocusNotification.parseFrom(msg.payload)
+                EventLog.log("Audio focus from car: ${focus.focusState}${if (focus.unsolicited) " (unsolicited)" else ""}")
+            }
             else -> EventLog.log("Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes)")
         }
     }
@@ -122,6 +130,14 @@ class AapSession(
             }
             VideoChannel(this, service.id, service.mediaSinkService.videoConfigsList, projection)
         }
+        service.hasMediaSinkService() &&
+            service.mediaSinkService.audioType == AudioStreamType.AUDIO_STREAM_MEDIA &&
+            service.mediaSinkService.audioConfigsCount > 0 -> {
+            service.mediaSinkService.audioConfigsList.forEachIndexed { i, cfg ->
+                EventLog.log("    audio config $i: ${cfg.samplingRate} Hz ${cfg.numberOfBits}-bit ${cfg.numberOfChannels}ch")
+            }
+            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList)
+        }
         service.hasInputSourceService() -> {
             val touchscreen = service.inputSourceService.touchscreenList.firstOrNull()
             EventLog.log("    touchscreen: ${touchscreen?.width}x${touchscreen?.height}")
@@ -151,6 +167,15 @@ class AapSession(
     }
 
     private fun send(id: Int, message: MessageLite, encrypted: Boolean) = send(id, message.toByteArray(), encrypted)
+
+    /** Asks the car for (or gives back) the right to play sound on its speakers. */
+    fun requestAudioFocus(type: AudioFocusRequestType) {
+        send(
+            ControlMessageType.MESSAGE_AUDIO_FOCUS_REQUEST_VALUE,
+            AudioFocusRequestNotification.newBuilder().setRequest(type).build(),
+            encrypted = true,
+        )
+    }
 
     private fun send(id: Int, payload: ByteArray, encrypted: Boolean) =
         send(Aap.CONTROL_CHANNEL, id, payload, encrypted)

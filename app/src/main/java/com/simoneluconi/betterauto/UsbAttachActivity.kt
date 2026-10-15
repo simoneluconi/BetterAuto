@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import com.simoneluconi.betterauto.audio.CarAudio
 
 /**
  * Invisible entry point for USB_ACCESSORY_ATTACHED: hands the accessory to [AapService] and finishes
@@ -18,6 +19,8 @@ class UsbAttachActivity : Activity() {
             startForegroundService(
                 Intent(this, AapService::class.java).putExtra(UsbManager.EXTRA_ACCESSORY, accessory)
             )
+            // We are in the foreground only now: ask for car audio consent while we can show it
+            if (!CarAudio.hasProjection) startActivity(Intent(this, AudioConsentActivity::class.java))
         }
         finish()
     }

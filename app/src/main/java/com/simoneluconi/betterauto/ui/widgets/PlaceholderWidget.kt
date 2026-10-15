@@ -15,10 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.settings.WidgetType
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
@@ -30,9 +32,9 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 fun PlaceholderWidget(type: WidgetType?, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
     val (title, caption, icon) = when (type) {
-        WidgetType.MAP -> Triple("Map", "Widget slot · coming next", CarIcons.Map)
-        WidgetType.NOTIFICATIONS -> Triple("Notifications", "Widget slot · coming later", CarIcons.Bell)
-        else -> Triple("Phone", "Coming later", CarIcons.Phone)
+        WidgetType.MAP -> Triple(R.string.widget_map, R.string.widget_slot_next, CarIcons.Map)
+        WidgetType.NOTIFICATIONS -> Triple(R.string.widget_notifications, R.string.widget_slot_later, CarIcons.Bell)
+        else -> Triple(R.string.nav_phone, R.string.phone_coming_later, CarIcons.Phone)
     }
     val grid = type == WidgetType.MAP
     Column(
@@ -68,11 +70,11 @@ fun PlaceholderWidget(type: WidgetType?, modifier: Modifier = Modifier) {
             CarIcon(icon, colors.text, Modifier.size(38.dp))
         }
         CarLabel(
-            title, 30.sp, colors.text, weight = FontWeight.ExtraBold,
+            stringResource(title), 30.sp, colors.text, weight = FontWeight.ExtraBold,
             modifier = Modifier.background(colors.surface, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp),
         )
         CarLabel(
-            caption, 19.sp, colors.text2, textAlign = TextAlign.Center,
+            stringResource(caption), 19.sp, colors.text2, textAlign = TextAlign.Center,
             modifier = Modifier.background(colors.surface, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp),
         )
     }

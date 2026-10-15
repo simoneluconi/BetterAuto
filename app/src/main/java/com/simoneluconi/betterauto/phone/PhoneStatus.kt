@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class PhoneStatus(
     val time: String,
@@ -62,8 +61,7 @@ private fun read(context: Context): PhoneStatus {
 
     return PhoneStatus(
         time = now.format(DateTimeFormatter.ofPattern(timePattern)),
-        // English until the UI gets proper localization, so the date matches the rest of the labels
-        date = now.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)),
+        date = now.format(DateTimeFormatter.ofPattern("EEE d MMM")),
         batteryPercent = if (level >= 0 && scale > 0) level * 100 / scale else null,
         charging = plugged,
         signalLevel = signal,

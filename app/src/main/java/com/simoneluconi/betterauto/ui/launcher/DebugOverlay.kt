@@ -34,6 +34,7 @@ private val ClockFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 fun DebugOverlay(modifier: Modifier = Modifier) {
     val video by CarState.video.collectAsStateWithLifecycle()
     val link by CarState.link.collectAsStateWithLifecycle()
+    val audio by CarState.audio.collectAsStateWithLifecycle()
     val carNight by CarState.nightMode.collectAsStateWithLifecycle()
     var renderFps by remember { mutableDoubleStateOf(0.0) }
     var clock by remember { mutableStateOf("") }
@@ -60,6 +61,7 @@ fun DebugOverlay(modifier: Modifier = Modifier) {
         "sent     %.1f fps · %d kbps".format(Locale.ROOT, video.sentFps, video.kbps),
         "encoder  ${video.width}×${video.height} ${video.encoder}",
         "ack win  ${video.maxUnacked}",
+        "audio    ${audio ?: "no channel"}",
         "link     ${link ?: "not connected"}",
         "night    ${carNight?.let { if (it) "yes (car)" else "no (car)" } ?: "unknown"}",
     )

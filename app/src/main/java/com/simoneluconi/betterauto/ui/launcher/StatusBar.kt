@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -22,13 +20,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.phone.rememberPhoneStatus
 import com.simoneluconi.betterauto.settings.LauncherSettings
-import com.simoneluconi.betterauto.settings.ThemeMode
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -36,10 +34,9 @@ import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
 @Composable
-fun StatusBar(settings: LauncherSettings, isNight: Boolean, showLayoutButton: Boolean) {
+fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val colors = LocalCarColors.current
     val phone = rememberPhoneStatus()
-    val themeMode by settings.themeMode.collectAsStateWithLifecycle()
 
     Row(
         Modifier
@@ -52,30 +49,11 @@ fun StatusBar(settings: LauncherSettings, isNight: Boolean, showLayoutButton: Bo
         CarLabel(phone.date, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         Spacer(Modifier.weight(1f))
 
-        val pillShape = RoundedCornerShape(50)
-        val themeLabel = when (themeMode) {
-            ThemeMode.AUTO -> if (isNight) "Night · auto" else "Day · auto"
-            ThemeMode.DAY -> "Day"
-            ThemeMode.NIGHT -> "Night"
-        }
-        Row(
-            Modifier
-                .carClickable(pillShape, "Theme: $themeLabel") {
-                    settings.setThemeMode(ThemeMode.entries[(themeMode.ordinal + 1) % ThemeMode.entries.size])
-                }
-                .background(colors.surface, pillShape)
-                .height(52.dp)
-                .padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            CarIcon(if (isNight) CarIcons.Moon else CarIcons.Sun, colors.text, Modifier.size(24.dp))
-            CarLabel(themeLabel, 19.sp, colors.text, weight = FontWeight.Bold)
-        }
         if (showLayoutButton) {
+            val layoutDescription = stringResource(R.string.change_layout)
             Box(
                 Modifier
-                    .carClickable(CircleShape, "Change widget layout") { settings.cycleLayout() }
+                    .carClickable(CircleShape, layoutDescription) { settings.cycleLayout() }
                     .background(colors.surface, CircleShape)
                     .size(52.dp),
                 contentAlignment = Alignment.Center,
@@ -84,7 +62,7 @@ fun StatusBar(settings: LauncherSettings, isNight: Boolean, showLayoutButton: Bo
             }
         }
         Spacer(Modifier.width(6.dp))
-        if (phone.onWifi) CarLabel("Wi-Fi", 19.sp, colors.text, weight = FontWeight.Bold)
+        if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
         phone.signalLevel?.let { SignalBars(it) }
         phone.batteryPercent?.let { Battery(it, phone.charging) }
     }

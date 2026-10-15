@@ -9,12 +9,16 @@ object CarState {
 
     val video = MutableStateFlow(VideoStats())
 
+    /** Car audio format and state, e.g. "PCM 48000 Hz 16-bit 2ch · streaming". Null without an audio channel. */
+    val audio = MutableStateFlow<String?>(null)
+
     /** Short description of the link, e.g. "USB · TLSv1.2". Null when disconnected. */
     val link = MutableStateFlow<String?>(null)
 
     fun reset() {
         nightMode.value = null
         video.value = VideoStats()
+        audio.value = null
         link.value = null
     }
 }

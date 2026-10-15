@@ -42,6 +42,8 @@ object CarIcons {
             "M15.2 4h2.1a1.2 1.2 0 0 1 1.2 1.2v13.6a1.2 1.2 0 0 1-1.2 1.2h-2.1a1.2 1.2 0 0 1-1.2-1.2V5.2A1.2 1.2 0 0 1 15.2 4z",
         )
     )
+    val Artist = icon("M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", circle(12f, 7f, 4f))
+    val Album = icon(circle(12f, 12f, 10f), circle(12f, 12f, 3f))
     val Shuffle = icon("M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6 6", "M4 4l5 5")
     val Repeat = icon("M17 2l4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "M7 22l-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3")
 
