@@ -89,7 +89,10 @@ object CarAudio {
         // Like Android Auto: start the music once per connection, only when it really goes to the car
         if (!autoPlayed) {
             autoPlayed = true
-            if (LauncherSettings.get(appContext).autoPlay.value) NowPlaying.resume()
+            if (LauncherSettings.get(appContext).autoPlay.value) {
+                EventLog.log("Car audio: auto-play on connect")
+                NowPlaying.resume()
+            }
         }
     }
 }
