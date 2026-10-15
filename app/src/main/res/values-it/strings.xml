@@ -95,4 +95,9 @@
     <string name="log_show">Mostra</string>
     <string name="log_hide">Nascondi</string>
     <string name="log_empty">Ancora niente</string>
+    <string name="settings_music_view">Sezione musica</string>
+    <string name="option_music_fullscreen">Player a schermo intero</string>
+    <string name="option_music_panel">Player e libreria</string>
+    <string name="phone_settings_title">Schermo dell\'auto</string>
+    <string name="phone_settings_hint">Le modifiche arrivano subito in auto, anche mentre sei collegato.</string>
 </resources>

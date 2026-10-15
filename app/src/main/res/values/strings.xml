@@ -95,4 +95,9 @@
     <string name="log_show">Show</string>
     <string name="log_hide">Hide</string>
     <string name="log_empty">Nothing yet</string>
+    <string name="settings_music_view">Music section</string>
+    <string name="option_music_fullscreen">Full-screen player</string>
+    <string name="option_music_panel">Player and library</string>
+    <string name="phone_settings_title">Car screen</string>
+    <string name="phone_settings_hint">Changes show up in the car right away, also while connected.</string>
 </resources>

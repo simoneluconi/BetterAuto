@@ -132,6 +132,7 @@ private fun PhoneHome() {
             CarLabel(stringResource(R.string.setup_progress, ready, steps.size), 15.sp, colors.text2)
         }
         steps.forEach { StepCard(it) }
+        PhoneSettings()
 
         PillButton(stringResource(R.string.action_preview), primary = true, modifier = Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, CarPreviewActivity::class.java))

@@ -30,23 +30,20 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.media.MediaApps
-import com.simoneluconi.betterauto.settings.BarPosition
-import com.simoneluconi.betterauto.settings.HomeLayout
+import com.simoneluconi.betterauto.settings.ActionSetting
+import com.simoneluconi.betterauto.settings.ChoiceSetting
 import com.simoneluconi.betterauto.settings.LauncherSettings
-import com.simoneluconi.betterauto.settings.ThemeMode
+import com.simoneluconi.betterauto.settings.PinnedAppsSetting
+import com.simoneluconi.betterauto.settings.SettingsCatalog
+import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
+/** The car's settings screen: everything in [SettingsCatalog], in the car's style. */
 @Composable
 fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
-    val theme by settings.themeMode.collectAsStateWithLifecycle()
-    val bar by settings.barPosition.collectAsStateWithLifecycle()
-    val layout by settings.layout.collectAsStateWithLifecycle()
-    val debug by settings.debugOverlay.collectAsStateWithLifecycle()
-    val autoPlay by settings.autoPlay.collectAsStateWithLifecycle()
-
     Column(
         modifier
             .clip(RoundedCornerShape(32.dp))
@@ -56,56 +53,36 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {
         CarLabel(stringResource(R.string.settings_title), 36.sp, colors.text, weight = FontWeight.ExtraBold)
-        Setting(R.string.settings_theme, ThemeMode.entries, theme, {
-            stringResource(
-                when (it) {
-                    ThemeMode.AUTO -> R.string.option_auto
-                    ThemeMode.DAY -> R.string.option_day
-                    ThemeMode.NIGHT -> R.string.option_night
+        for (item in SettingsCatalog.all) {
+            when (item) {
+                is ChoiceSetting<*> -> ChoiceRow(item, settings)
+                is ActionSetting -> Setting(item.title, listOf(Unit), null, { stringResource(item.label) }) {
+                    item.run(settings, SettingsSurface.CAR)
                 }
-            )
-        }) { settings.setThemeMode(it) }
-        Setting(R.string.settings_app_bar, BarPosition.entries, bar, {
-            stringResource(
-                when (it) {
-                    BarPosition.AUTO -> R.string.option_auto
-                    BarPosition.LEFT -> R.string.option_left
-                    BarPosition.BOTTOM -> R.string.option_bottom
-                }
-            )
-        }) { settings.setBarPosition(it) }
-        Setting(R.string.settings_home_layout, HomeLayout.entries, layout, {
-            stringResource(
-                when (it) {
-                    HomeLayout.SINGLE -> R.string.layout_one
-                    HomeLayout.SPLIT -> R.string.layout_two
-                    HomeLayout.TRIO -> R.string.layout_three
-                }
-            )
-        }) { settings.setLayout(it) }
-        Setting(R.string.settings_widget_order, listOf(Unit), null, { stringResource(R.string.rotate_widgets) }) {
-            settings.rotateWidgets()
+                is PinnedAppsSetting -> BarApps(item, settings)
+            }
         }
-        Setting(R.string.settings_auto_play, listOf(false, true), autoPlay, {
-            stringResource(if (it) R.string.option_on else R.string.option_off)
-        }) { settings.setAutoPlay(it) }
-        Setting(R.string.settings_debug, listOf(false, true), debug, {
-            stringResource(if (it) R.string.option_on else R.string.option_off)
-        }) { settings.setDebugOverlay(it) }
-        BarApps(settings)
+    }
+}
+
+@Composable
+private fun <T> ChoiceRow(item: ChoiceSetting<T>, settings: LauncherSettings) {
+    val selected by item.state(settings).collectAsStateWithLifecycle()
+    Setting(item.title, item.options, item.options.firstOrNull { it.value == selected }, { stringResource(it.label) }) {
+        item.select(settings, it.value, SettingsSurface.CAR)
     }
 }
 
 /** Media apps on the phone; the selected ones are pinned to the app bar. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BarApps(settings: LauncherSettings) {
+private fun BarApps(item: PinnedAppsSetting, settings: LauncherSettings) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val pinned by settings.pinnedApps.collectAsStateWithLifecycle()
     val apps = remember { MediaApps.installed(context).mapNotNull { MediaApps.info(context, it) } }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        CarLabel(stringResource(R.string.settings_bar_apps), 26.sp, colors.text2, weight = FontWeight.Bold)
+        CarLabel(stringResource(item.title), 26.sp, colors.text2, weight = FontWeight.Bold)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             for (app in apps) {
                 val shape = RoundedCornerShape(50)
@@ -113,7 +90,7 @@ private fun BarApps(settings: LauncherSettings) {
                 Row(
                     Modifier
                         .carClickable(shape, if (isPinned) stringResource(R.string.app_pinned, app.label) else app.label) {
-                            settings.togglePinned(app.packageName)
+                            item.toggle(settings, app.packageName, SettingsSurface.CAR)
                         }
                         .background(if (isPinned) colors.focus.copy(alpha = 0.22f) else colors.surface2, shape)
                         .height(64.dp)
@@ -129,6 +106,7 @@ private fun BarApps(settings: LauncherSettings) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> Setting(
     @StringRes titleRes: Int,
@@ -141,7 +119,8 @@ private fun <T> Setting(
     val title = stringResource(titleRes)
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         CarLabel(title, 26.sp, colors.text2, weight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // Wraps on narrow (portrait) screens
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             for (option in options) {
                 val shape = RoundedCornerShape(50)
                 val isSelected = option == selected
