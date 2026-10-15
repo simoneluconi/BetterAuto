@@ -240,7 +240,7 @@ private fun AppsList(current: String?) {
 }
 
 @Composable
-private fun ListRow(
+internal fun ListRow(
     icon: ImageBitmap?,
     fallback: ImageVector,
     title: String,
@@ -285,7 +285,7 @@ private fun ListRow(
 }
 
 @Composable
-private fun PanelMessage(text: String) {
+internal fun PanelMessage(text: String) {
     val colors = LocalCarColors.current
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         CarLabel(text, 22.sp, colors.text2, maxLines = 3, textAlign = TextAlign.Center)

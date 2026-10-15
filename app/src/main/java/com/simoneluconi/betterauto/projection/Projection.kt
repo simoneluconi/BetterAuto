@@ -15,6 +15,8 @@ import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.NowPlaying
+import com.simoneluconi.betterauto.phone.CallPhase
+import com.simoneluconi.betterauto.phone.Calls
 
 /**
  * The car screen: a private virtual display rendering into the encoder surface,
@@ -108,6 +110,15 @@ class Projection(private val context: Context) {
             }
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                 if (down) NowPlaying.previous()
+                return@post
+            }
+            // Steering wheel phone buttons: answer a ringing call, hang up or decline
+            KeyEvent.KEYCODE_CALL -> if (Calls.current.value?.phase == CallPhase.RINGING) {
+                if (down) Calls.answer()
+                return@post
+            }
+            KeyEvent.KEYCODE_ENDCALL -> if (Calls.current.value != null) {
+                if (down) Calls.end()
                 return@post
             }
         }

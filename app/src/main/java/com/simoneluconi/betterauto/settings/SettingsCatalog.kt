@@ -104,6 +104,14 @@ object SettingsCatalog {
             ),
             { it.musicPanel }, LauncherSettings::setMusicPanel,
         ),
+        ChoiceSetting(
+            "contact_names", R.string.settings_contact_names,
+            listOf(
+                SettingOption(NameOrder.FIRST_LAST, R.string.option_first_last),
+                SettingOption(NameOrder.LAST_FIRST, R.string.option_last_first),
+            ),
+            { it.nameOrder }, LauncherSettings::setNameOrder,
+        ),
         ChoiceSetting("auto_play", R.string.settings_auto_play, onOff, { it.autoPlay }, LauncherSettings::setAutoPlay),
         ChoiceSetting("debug_overlay", R.string.settings_debug, onOff, { it.debugOverlay }, LauncherSettings::setDebugOverlay),
         PinnedAppsSetting("bar_apps", R.string.settings_bar_apps),

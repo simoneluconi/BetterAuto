@@ -101,12 +101,14 @@ private fun PhoneHome() {
     }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
     val askMicrophone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
+    val askPhone = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { resumes++ }
 
     val steps = remember(resumes) {
         listOf(
             notificationsStep(context) { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) },
             mediaStep(context),
             audioStep(context) { askMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
+            phoneStep(context) { askPhone.launch(PhonePermissions) },
             androidAutoStep(context),
         )
     }
@@ -352,6 +354,22 @@ private fun audioStep(context: Context, request: () -> Unit): Step {
             command = "adb shell appops set ${context.packageName} PROJECT_MEDIA allow",
         )
     }
+}
+
+private val PhonePermissions = arrayOf(
+    Manifest.permission.READ_CONTACTS, Manifest.permission.READ_CALL_LOG, Manifest.permission.CALL_PHONE,
+)
+
+private fun phoneStep(context: Context, request: () -> Unit): Step {
+    val granted = PhonePermissions.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    return Step(
+        icon = CarIcons.Phone,
+        title = context.getString(R.string.step_phone_title),
+        text = context.getString(R.string.step_phone_text),
+        state = if (granted) StepState.DONE else StepState.TODO,
+        action = if (granted) null else context.getString(R.string.action_allow),
+        onAction = request,
+    )
 }
 
 private fun androidAutoStep(context: Context): Step {

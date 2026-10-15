@@ -51,6 +51,27 @@ object CarIcons {
     val Check = icon("M5 12.5l4.5 4.5L19 7.5")
     val Speaker = icon("M11 5L6 9H3v6h3l5 4V5z", "M15.5 8.5a5 5 0 0 1 0 7", "M18.5 5.5a9.5 9.5 0 0 1 0 13")
     val Car = icon("M5 16V11l2-5h10l2 5v5", "M3 16h18v2H3z", "M5 11h14", circle(7.5f, 14f, 0.6f), circle(16.5f, 14f, 0.6f))
+    val CallEnd = icon(filled = listOf(
+        "M12 9.5c-2.6 0-5.1.5-7.3 1.6-.7.3-1.1 1-1.1 1.8v2.3c0 .8.8 1.3 1.5 1.1l2.9-.9c.6-.2 1-.7 1-1.4v-1.6c1-.3 2-.4 3-.4s2 .1 3 .4V14c0 .6.4 1.2 1 1.4l2.9.9c.7.2 1.5-.3 1.5-1.1v-2.3c0-.8-.4-1.5-1.1-1.8-2.2-1.1-4.7-1.6-7.3-1.6z"
+    ))
+    val CallAnswer = icon(filled = listOf(
+        "M20 15.5c-1.2 0-2.4-.2-3.6-.6-.3-.1-.7 0-1 .2l-2.2 2.2c-2.8-1.4-5.1-3.8-6.6-6.6l2.2-2.2c.3-.3.4-.7.2-1-.3-1.1-.5-2.3-.5-3.5 0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1 0 9.4 7.6 17 17 17 .6 0 1-.4 1-1v-3.5c0-.6-.4-1-1-1z"
+    ))
+    val Mic = icon("M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z", "M19 11a7 7 0 0 1-14 0", "M12 18v3")
+    val MicOff = icon("M9 9v3a3 3 0 0 0 5.1 2.1", "M15 9.3V6a3 3 0 0 0-5.9-.8", "M19 11a7 7 0 0 1-1.1 3.8", "M5 11a7 7 0 0 0 11.6 5.3", "M12 18v3", "M3 3l18 18")
+    val Dialpad = icon(
+        circle(6f, 4.5f, 1.3f), circle(12f, 4.5f, 1.3f), circle(18f, 4.5f, 1.3f),
+        circle(6f, 10f, 1.3f), circle(12f, 10f, 1.3f), circle(18f, 10f, 1.3f),
+        circle(6f, 15.5f, 1.3f), circle(12f, 15.5f, 1.3f), circle(18f, 15.5f, 1.3f),
+        circle(12f, 21f, 1.3f),
+    )
+    val Backspace = icon("M21 5H8l-6 7 6 7h13z", "M11 9l6 6", "M17 9l-6 6")
+    val Star = icon("M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z")
+    val Clock = icon(circle(12f, 12f, 9f), "M12 7v5l3 2")
+    val Contacts = icon("M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2", circle(10f, 8f, 4f), "M21 21v-2a4 4 0 0 0-3-3.9", "M16 4.1a4 4 0 0 1 0 7.8")
+    val Incoming = icon("M17 7L7 17", "M7 9v8h8")
+    val Outgoing = icon("M7 17L17 7", "M9 7h8v8")
+    val Missed = icon("M4 8l8 8 8-8", "M15 8h5v5")
     val List = icon("M9 6h12M9 12h12M9 18h12", circle(4f, 6f, 1.2f), circle(4f, 12f, 1.2f), circle(4f, 18f, 1.2f))
     val Shuffle = icon("M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6 6", "M4 4l5 5")
     val Repeat = icon("M17 2l4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "M7 22l-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3")

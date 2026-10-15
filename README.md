@@ -106,7 +106,8 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
       instrument cluster
 - [ ] Notifications and messages widgets
-- [ ] Calls: incoming call screen and controls (audio over Bluetooth)
+- [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
+      (audio over Bluetooth)
 - [ ] Voice commands through the car's microphone
 - [ ] Wireless connection
 - [ ] Steering wheel and knob shortcuts, driving restrictions

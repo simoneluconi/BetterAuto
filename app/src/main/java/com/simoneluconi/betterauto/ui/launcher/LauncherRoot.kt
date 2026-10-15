@@ -22,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
+import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.ui.phone.CallScreen
+import com.simoneluconi.betterauto.ui.phone.PhoneScreen
 import com.simoneluconi.betterauto.settings.BarPosition
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.Section
@@ -93,6 +97,9 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val section by settings.section.collectAsStateWithLifecycle()
     val barSetting by settings.barPosition.collectAsStateWithLifecycle()
     val debug by settings.debugOverlay.collectAsStateWithLifecycle()
+    val call by Calls.current.collectAsStateWithLifecycle()
+    val callMinimized by Calls.minimized.collectAsStateWithLifecycle()
+    val shownCall = call?.takeUnless { callMinimized }
 
     val systemDark = isSystemInDarkTheme()
     val night = when (themeMode) {
@@ -101,14 +108,25 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
         ThemeMode.NIGHT -> true
     }
     val railFocus = remember { FocusRequester() }
+    val callFocus = remember { FocusRequester() }
     var hasFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    // Read by the bridge below long after composition: always the latest value
+    val callShown by rememberUpdatedState(shownCall != null)
     DisposableEffect(focus) {
         focus?.clear = { focusManager.clearFocus(force = true) }
         focus?.ensure = {
-            if (hasFocus) false else {
-                runCatching { railFocus.requestFocus() }
-                true
+            when {
+                hasFocus -> false
+                // On the call screen the first knob press must act (answer, hang up), not just show the focus
+                callShown -> {
+                    runCatching { callFocus.requestFocus() }
+                    false
+                }
+                else -> {
+                    runCatching { railFocus.requestFocus() }
+                    true
+                }
             }
         }
         onDispose {
@@ -155,7 +173,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 BarPosition.AUTO -> maxWidth / maxHeight >= 1.3f
             }
             val main = @Composable { mod: Modifier -> MainArea(section, settings, mod) }
-            if (left) {
+            val current = shownCall
+            if (current != null) {
+                // The call takes the whole screen, so the knob only moves between its buttons
+                CallScreen(current, callFocus, Modifier.fillMaxSize())
+            } else if (left) {
                 Row(Modifier.fillMaxSize()) {
                     AppRail(settings, section, vertical = true, firstFocus = railFocus)
                     main(Modifier.weight(1f))
@@ -193,7 +215,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.HOME -> WidgetArea(settings, Modifier.fillMaxSize())
                 Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
-                Section.PHONE -> PlaceholderWidget(null, Modifier.fillMaxSize())
+                Section.PHONE -> PhoneScreen(settings, Modifier.fillMaxSize())
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
             }
         }

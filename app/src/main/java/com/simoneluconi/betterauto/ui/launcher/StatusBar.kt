@@ -25,6 +25,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.ui.phone.CallPill
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.phone.rememberPhoneStatus
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -37,6 +41,8 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val colors = LocalCarColors.current
     val phone = rememberPhoneStatus()
+    val call by Calls.current.collectAsStateWithLifecycle()
+    val callMinimized by Calls.minimized.collectAsStateWithLifecycle()
 
     Row(
         Modifier
@@ -49,6 +55,7 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         CarLabel(phone.date, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         Spacer(Modifier.weight(1f))
 
+        call?.takeIf { callMinimized }?.let { CallPill(it) }
         if (showLayoutButton) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(

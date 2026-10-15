@@ -16,6 +16,9 @@ enum class Section { HOME, MUSIC, MAP, PHONE, SETTINGS }
 
 enum class WidgetType { MUSIC, MAP, NOTIFICATIONS }
 
+/** How contact names are written and sorted: "Mario Rossi" or "Rossi Mario". */
+enum class NameOrder { FIRST_LAST, LAST_FIRST }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -42,6 +45,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _musicTab = MutableStateFlow(prefs.getString(KEY_MUSIC_TAB, null))
     val musicTab: StateFlow<String?> = _musicTab
+
+    private val _nameOrder = MutableStateFlow(enumOf(KEY_NAME_ORDER, NameOrder.FIRST_LAST))
+    val nameOrder: StateFlow<NameOrder> = _nameOrder
+
+    private val _phoneTab = MutableStateFlow(prefs.getString(KEY_PHONE_TAB, null))
+    val phoneTab: StateFlow<String?> = _phoneTab
 
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
@@ -81,6 +90,13 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setMusicTab(value: String) {
         _musicTab.value = value
         prefs.edit { putString(KEY_MUSIC_TAB, value) }
+    }
+
+    fun setNameOrder(value: NameOrder) = saveEnum(KEY_NAME_ORDER, value, _nameOrder)
+
+    fun setPhoneTab(value: String) {
+        _phoneTab.value = value
+        prefs.edit { putString(KEY_PHONE_TAB, value) }
     }
 
     fun setAutoPlay(value: Boolean) {
@@ -139,6 +155,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_AUTO_PLAY = "auto_play"
         private const val KEY_MUSIC_PANEL = "music_panel"
         private const val KEY_MUSIC_TAB = "music_tab"
+        private const val KEY_NAME_ORDER = "name_order"
+        private const val KEY_PHONE_TAB = "phone_tab"
         private const val KEY_PINNED = "pinned_apps"
         private const val KEY_RECENT = "recent_apps"
         private const val MAX_RECENT = 4
