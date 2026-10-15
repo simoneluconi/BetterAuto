@@ -104,6 +104,9 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it).
+  Pretend messages: `--es notify "Text" --es from "Name"` (add `--ez group true` for a group chat);
+  `--ez demo true` shows only pretend notifications, for screenshots without personal data
+  (see `docs/screenshots`).
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 

@@ -59,8 +59,17 @@ object CarNotifications {
     private var listener: NotificationListenerService? = null
     private val byKey = LinkedHashMap<String, CarNotification>()
 
+    /** Development: show only pretend notifications, e.g. for screenshots without personal data. */
+    @Volatile
+    var demoOnly = false
+        set(value) {
+            field = value
+            publish()
+        }
+
     /** Visible notifications, newest first, with the driver's filters applied. */
     fun visible(list: List<CarNotification>, settings: LauncherSettings): List<CarNotification> {
+        if (demoOnly) return list.filter { it.key.startsWith(DEBUG_KEY) }
         val hiddenApps = settings.notificationHiddenApps.value
         val mutedChats = settings.mutedChats.value
         val groups = settings.notificationGroups.value
@@ -84,7 +93,7 @@ object CarNotifications {
     /** Development: a pretend message, to try the widget and the banner. */
     fun simulate(title: String, text: String, group: Boolean) {
         val n = CarNotification(
-            key = "debug:${System.nanoTime()}",
+            key = "$DEBUG_KEY${System.nanoTime()}",
             packageName = "com.whatsapp",
             appLabel = "WhatsApp",
             appIcon = null,
@@ -219,5 +228,6 @@ object CarNotifications {
     )
 
     private const val MAX_MESSAGES = 12
+    private const val DEBUG_KEY = "debug:"
     private const val AVATAR_PX = 128
 }
