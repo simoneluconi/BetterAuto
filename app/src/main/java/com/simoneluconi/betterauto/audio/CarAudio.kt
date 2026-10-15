@@ -2,6 +2,7 @@ package com.simoneluconi.betterauto.audio
 
 import android.content.Context
 import android.media.projection.MediaProjection
+import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -58,6 +59,38 @@ object CarAudio {
         onProjectionChanged?.invoke()
     }
 
+    /**
+     * Call when the car disconnects, before the music is paused. Back within [RESUME_MEMORY_MS], the
+     * music comes back as it was: still paused if the driver had paused it, playing if it was playing.
+     * Only real sessions count (the car's audio channel was set up), not failed connection attempts.
+     */
+    @Synchronized
+    fun onDisconnected() {
+        if (sink == null) return
+        val playing = NowPlaying.track.value?.playing == true
+        prefs().edit { putLong(KEY_DISCONNECTED_AT, System.currentTimeMillis()).putBoolean(KEY_WAS_PLAYING, playing) }
+        EventLog.log("Car audio: disconnected, music was ${if (playing) "playing" else "paused"}")
+    }
+
+    private fun shouldAutoPlay(): Boolean {
+        val prefs = prefs()
+        val away = System.currentTimeMillis() - prefs.getLong(KEY_DISCONNECTED_AT, 0L)
+        if (away in 0 until RESUME_MEMORY_MS) {
+            val wasPlaying = prefs.getBoolean(KEY_WAS_PLAYING, false)
+            EventLog.log("Car audio: back after ${away / 1000} s, music ${if (wasPlaying) "resumes" else "stays paused"} as it was")
+            return wasPlaying
+        }
+        return LauncherSettings.get(appContext).autoPlay.value
+    }
+
+    private fun prefs() = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private const val PREFS = "car_audio_state"
+    private const val KEY_DISCONNECTED_AT = "disconnected_at"
+    private const val KEY_WAS_PLAYING = "was_playing"
+    /** How long a disconnection keeps the music as it was, instead of the auto-play setting. */
+    private const val RESUME_MEMORY_MS = 15 * 60 * 1000L
+
     @Synchronized
     fun setSink(value: AudioSink?) {
         // A new car audio channel is a new connection: allow auto-play again
@@ -89,7 +122,7 @@ object CarAudio {
         // Like Android Auto: start the music once per connection, only when it really goes to the car
         if (!autoPlayed) {
             autoPlayed = true
-            if (LauncherSettings.get(appContext).autoPlay.value) {
+            if (shouldAutoPlay()) {
                 EventLog.log("Car audio: auto-play on connect")
                 NowPlaying.resume()
             }

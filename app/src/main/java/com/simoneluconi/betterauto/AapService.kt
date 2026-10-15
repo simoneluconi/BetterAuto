@@ -76,6 +76,7 @@ class AapService : Service() {
                 EventLog.log("Session ended: $e")
             } finally {
                 // Like Android Auto: pause on disconnect, before the phone volume comes back
+                CarAudio.onDisconnected()
                 NowPlaying.pause()
                 newSession.close()
                 main.post { onSessionEnded(newSession) }
