@@ -103,6 +103,7 @@ object NowPlaying {
     private val actionIcons = HashMap<String, ImageBitmap?>()
     private const val MAX_QUEUE = 200
     private const val ACTION_ICON_PX = 96
+    private const val ART_PX = 1024
     private const val QUEUE_ART_PX = 128
     private const val ART_BEHIND = 5
     private const val ART_AHEAD = 40
@@ -117,12 +118,31 @@ object NowPlaying {
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { onSessionsChanged(it) }
 
+    // What the player last delivered. Reading the controller again copies everything through Binder,
+    // album art included, so it is read once in attach() and then kept up to date by the callbacks.
+    private var metadata: MediaMetadataCompat? = null
+    private var state: PlaybackStateCompat? = null
+    private var queue: List<MediaSessionCompat.QueueItem> = emptyList()
+
     private val callback = object : MediaControllerCompat.Callback() {
-        override fun onMetadataChanged(metadata: MediaMetadataCompat?) = publish()
-        override fun onPlaybackStateChanged(state: PlaybackStateCompat?) = publish()
+        override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
+            this@NowPlaying.metadata = metadata
+            publish()
+        }
+
+        override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
+            this@NowPlaying.state = state
+            publish()
+        }
+
         override fun onShuffleModeChanged(shuffleMode: Int) = publish()
         override fun onRepeatModeChanged(repeatMode: Int) = publish()
-        override fun onQueueChanged(queue: MutableList<MediaSessionCompat.QueueItem>?) = publish()
+
+        override fun onQueueChanged(queue: MutableList<MediaSessionCompat.QueueItem>?) {
+            this@NowPlaying.queue = queue.orEmpty()
+            publish()
+        }
+
         override fun onSessionDestroyed() = refresh()
     }
 
@@ -263,6 +283,9 @@ object NowPlaying {
             MediaControllerCompat(appContext, MediaSessionCompat.Token.fromToken(it.sessionToken))
         }
         controller?.registerCallback(callback, main)
+        metadata = controller?.metadata
+        state = controller?.playbackState
+        queue = controller?.queue.orEmpty()
         publish()
     }
 
@@ -272,14 +295,10 @@ object NowPlaying {
             _track.value = null
             return
         }
-        val metadata = c.metadata
-        val state = c.playbackState
+        val metadata = this.metadata
+        val state = this.state
         val playing = state?.state == PlaybackStateCompat.STATE_PLAYING
-        val art = metadata?.let {
-            it.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                ?: it.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: it.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        }
+        val art = updateArt(metadata)
         updateAccent(art, metadata?.let { "${it.text(MediaMetadata.METADATA_KEY_ALBUM)}|${it.text(MediaMetadata.METADATA_KEY_TITLE)}" })
         val app = MediaApps.info(appContext, c.packageName)
         if (playing) LauncherSettings.get(appContext).markRecent(c.packageName)
@@ -294,7 +313,7 @@ object NowPlaying {
                 ?: metadata?.text(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
                 ?: metadata?.text(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: "",
             album = metadata?.text(MediaMetadata.METADATA_KEY_ALBUM) ?: "",
-            art = art?.asImageBitmap(),
+            art = artImage,
             accent = if (art != null) accent else null,
             durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.coerceAtLeast(0) ?: 0,
             positionMs = state?.position ?: 0,
@@ -305,8 +324,8 @@ object NowPlaying {
             repeat = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE && c.repeatMode >= 0,
             repeatOne = c.repeatMode == PlaybackStateCompat.REPEAT_MODE_ONE,
             playlist = c.queueTitle?.toString()?.takeIf { it.isNotBlank() },
-            upNext = nextInQueue(c),
-            queue = queueEntries(c, state?.activeQueueItemId ?: -1L),
+            upNext = nextInQueue(),
+            queue = queueEntries(state?.activeQueueItemId ?: -1L),
             activeQueueId = state?.activeQueueItemId ?: -1L,
             customActions = state?.customActions.orEmpty().map { action ->
                 MediaAction(action.action, action.name.toString(), actionIcon(c.packageName, action.icon))
@@ -314,8 +333,8 @@ object NowPlaying {
         )
     }
 
-    private fun queueEntries(c: MediaControllerCompat, activeId: Long): List<QueueEntry> {
-        val items = c.queue.orEmpty().take(MAX_QUEUE)
+    private fun queueEntries(activeId: Long): List<QueueEntry> {
+        val items = queue.take(MAX_QUEUE)
         val active = items.indexOfFirst { it.queueId == activeId }.coerceAtLeast(0)
         return items.mapIndexed { index, item ->
             val d = item.description
@@ -377,14 +396,48 @@ object NowPlaying {
         }
     }
 
-    private fun nextInQueue(c: MediaControllerCompat): String? {
-        val queue = c.queue ?: return null
-        val activeId = c.playbackState?.activeQueueItemId ?: return null
+    private fun nextInQueue(): String? {
+        val activeId = state?.activeQueueItemId ?: return null
         val index = queue.indexOfFirst { it.queueId == activeId }
         if (index < 0) return null
         val next = queue.getOrNull(index + 1)?.description ?: return null
         return listOfNotNull(next.title, next.subtitle).map { it.toString() }.filter { it.isNotBlank() }
             .joinToString(" · ").ifEmpty { null }
+    }
+
+    // The player's art and its screen-sized copy, kept as long as the player sends the same bitmap
+    private var artSource: Bitmap? = null
+    private var artImage: ImageBitmap? = null
+
+    /**
+     * The album art as the screen uses it. Local players may embed covers of thousands of pixels:
+     * drawn as they are they cost tens of MB of texture per track, and Canvas refuses the largest.
+     */
+    private fun updateArt(metadata: MediaMetadataCompat?): Bitmap? {
+        val raw = metadata?.let {
+            it.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                ?: it.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: it.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+        }
+        if (raw === artSource) return raw
+        artSource = raw
+        val longest = raw?.let { maxOf(it.width, it.height) } ?: 0
+        if (raw == null || longest <= ART_PX) {
+            artImage = raw?.asImageBitmap()
+            return raw
+        }
+        artImage = null
+        scope.launch {
+            val scale = ART_PX.toFloat() / longest
+            val scaled = withContext(Dispatchers.Default) {
+                Bitmap.createScaledBitmap(raw, (raw.width * scale).toInt(), (raw.height * scale).toInt(), true)
+            }
+            if (artSource === raw) {
+                artImage = scaled.asImageBitmap()
+                publish()
+            }
+        }
+        return raw
     }
 
     /** Extracts the album color off the main thread, then republishes. */

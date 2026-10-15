@@ -6,8 +6,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaControllerCompat
 import androidx.compose.ui.graphics.ImageBitmap
@@ -42,6 +42,9 @@ sealed interface LibraryState {
     data class Loaded(val title: String?, val items: List<LibraryItem>, val canGoBack: Boolean) : LibraryState
 }
 
+/** Icons are shown at about 60 design units: decoding bigger ones only costs memory. */
+private const val ICON_PX = 128
+
 /**
  * Browses a music app's library through its MediaBrowserService, like Android Auto does.
  * Many apps only accept the callers they trust, so [LibraryState.Unavailable] is a normal outcome.
@@ -60,20 +63,26 @@ class MediaLibrary(private val context: Context, private val packageName: String
     private val subscription = object : MediaBrowserCompat.SubscriptionCallback() {
         override fun onChildrenLoaded(parentId: String, children: MutableList<MediaBrowserCompat.MediaItem>) {
             if (path.lastOrNull()?.first != parentId) return
-            val items = children.map { item ->
-                val d = item.description
-                LibraryItem(
-                    id = item.mediaId.orEmpty(),
-                    title = d.title?.toString().orEmpty(),
-                    subtitle = d.subtitle?.toString().orEmpty(),
-                    icon = d.iconBitmap?.asImageBitmap(),
-                    glyph = d.iconBitmap?.let(::isGlyph) ?: false,
-                    browsable = item.isBrowsable,
-                    playable = item.isPlayable,
-                )
+            scope.launch {
+                // Glyph detection reads pixels: not on the main thread for a folder of hundreds of items
+                val items = withContext(Dispatchers.Default) {
+                    children.map { item ->
+                        val d = item.description
+                        LibraryItem(
+                            id = item.mediaId.orEmpty(),
+                            title = d.title?.toString().orEmpty(),
+                            subtitle = d.subtitle?.toString().orEmpty(),
+                            icon = d.iconBitmap?.asImageBitmap(),
+                            glyph = d.iconBitmap?.let(::isGlyph) ?: false,
+                            browsable = item.isBrowsable,
+                            playable = item.isPlayable,
+                        )
+                    }
+                }
+                if (path.lastOrNull()?.first != parentId) return@launch
+                _state.value = LibraryState.Loaded(path.last().second, items, path.size > 1)
+                loadIcons(parentId, children)
             }
-            _state.value = LibraryState.Loaded(path.last().second, items, path.size > 1)
-            loadIcons(parentId, children)
         }
 
         override fun onError(parentId: String) {
@@ -160,7 +169,7 @@ class MediaLibrary(private val context: Context, private val packageName: String
         return transparent > 24 * 24 / 4 && sameColor
     }
 
-    /** Items often carry only an icon URI: decode those off the main thread and republish. */
+    /** Items often carry only an icon URI: decode those off the main thread, at list size, and republish. */
     private fun loadIcons(parentId: String, children: List<MediaBrowserCompat.MediaItem>) {
         val missing = children.filter { it.description.iconBitmap == null && it.description.iconUri != null }
         if (missing.isEmpty()) return
@@ -168,9 +177,12 @@ class MediaLibrary(private val context: Context, private val packageName: String
             val icons = withContext(Dispatchers.IO) {
                 missing.associate { item ->
                     item.mediaId.orEmpty() to runCatching {
-                        context.contentResolver.openInputStream(item.description.iconUri!!)?.use { stream ->
-                            BitmapFactory.decodeStream(stream, null, BitmapFactory.Options().apply { inSampleSize = 2 })
+                        val source = ImageDecoder.createSource(context.contentResolver, item.description.iconUri!!)
+                        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                            decoder.setTargetSampleSize((minOf(info.size.width, info.size.height) / ICON_PX).coerceAtLeast(1))
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                         }
+                        bitmap to isGlyph(bitmap)
                     }.getOrNull()
                 }
             }
@@ -180,7 +192,7 @@ class MediaLibrary(private val context: Context, private val packageName: String
                 items = current.items.map { item ->
                     val loaded = icons[item.id]
                     if (item.icon != null || loaded == null) item
-                    else item.copy(icon = loaded.asImageBitmap(), glyph = isGlyph(loaded))
+                    else item.copy(icon = loaded.first.asImageBitmap(), glyph = loaded.second)
                 }
             )
         }

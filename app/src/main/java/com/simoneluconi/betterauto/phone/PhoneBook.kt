@@ -49,7 +49,12 @@ data class RecentCall(
 object PhoneBook {
     private const val MAX_RECENTS = 150
     private const val MAX_PHOTO_PX = 400
-    private val photos = LruCache<String, ImageBitmap>(120)
+    private const val PHOTO_CACHE_BYTES = 24 * 1024 * 1024
+
+    /** Decoded photos, bounded by their memory rather than their number. */
+    private val photos = object : LruCache<String, ImageBitmap>(PHOTO_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+    }
 
     fun canRead(context: Context) =
         context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
@@ -205,8 +210,11 @@ object PhoneBook {
             runCatching {
                 ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
                     decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    val side = minOf(info.size.width, info.size.height)
-                    if (side > MAX_PHOTO_PX) decoder.setTargetSampleSize(side / MAX_PHOTO_PX)
+                    // Full-size contact photos can be huge: the biggest avatar on screen is far below this
+                    val longest = maxOf(info.size.width, info.size.height)
+                    if (longest > MAX_PHOTO_PX) {
+                        decoder.setTargetSize(info.size.width * MAX_PHOTO_PX / longest, info.size.height * MAX_PHOTO_PX / longest)
+                    }
                 }.asImageBitmap()
             }.getOrNull()?.also { photos.put(uri.toString(), it) }
         }

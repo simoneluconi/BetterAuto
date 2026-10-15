@@ -62,6 +62,8 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.MusicScreen
 import com.simoneluconi.betterauto.ui.widgets.PlaceholderWidget
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlin.math.min
 
 /**
@@ -99,7 +101,8 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val settings = remember { LauncherSettings.get(context) }
     val themeMode by settings.themeMode.collectAsStateWithLifecycle()
     val carNight by CarState.nightMode.collectAsStateWithLifecycle()
-    val track by NowPlaying.track.collectAsStateWithLifecycle()
+    // Only the accent: a new Track arrives on every position or queue update, the root must not recompose for those
+    val accent by remember { NowPlaying.track.map { it?.accent }.distinctUntilChanged() }.collectAsStateWithLifecycle(null)
     val section by settings.section.collectAsStateWithLifecycle()
     val barSetting by settings.barPosition.collectAsStateWithLifecycle()
     val debug by settings.debugOverlay.collectAsStateWithLifecycle()
@@ -144,7 +147,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
         }
     }
 
-    CarTheme(night = night, album = track?.accent) {
+    CarTheme(night = night, album = accent) {
         val colors = LocalCarColors.current
         BoxWithConstraints(
             Modifier

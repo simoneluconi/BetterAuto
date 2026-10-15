@@ -30,8 +30,8 @@ import java.io.ByteArrayOutputStream
 class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(session, channelId) {
     override val name = "media status"
 
-    // Off the main thread: sending waits for the USB link
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+    // Off the main thread: sending blocks on the USB link, so an IO thread, one at a time to keep the order
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private var sentMetadata: String? = null
     private var sentStatus: MediaPlaybackStatus? = null
     private var artKey: String? = null
@@ -71,7 +71,7 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
         track.playlist?.let { metadata.setPlaylist(it) }
         cover?.let { metadata.setAlbumArt(it) }
         send(MediaPlaybackStatusMessageId.MEDIA_PLAYBACK_METADATA_VALUE, metadata.build())
-        EventLog.log("Media status: ${track.title} · ${track.artist} · ${track.album}, cover ${cover?.size() ?: 0} bytes")
+        EventLog.log("Media status: new track sent to the car, cover ${cover?.size() ?: 0} bytes")
     }
 
     private fun sendStatus(track: Track?) {

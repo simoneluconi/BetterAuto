@@ -29,23 +29,31 @@ data class PhoneStatus(
     val onWifi: Boolean,
 )
 
-/** Clock and phone indicators for the status bar, refreshed every second. */
+/** Clock and phone indicators for the status bar, refreshed at every minute and a few times in between. */
 @Composable
 fun rememberPhoneStatus(): PhoneStatus {
     val context = LocalContext.current
     var status by remember { mutableStateOf(read(context)) }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(1000 - System.currentTimeMillis() % 1000)
+            val now = System.currentTimeMillis()
+            val nextMinute = now - now % 60_000 + 60_000
+            delay(minOf(nextMinute, now + INDICATORS_MS) - now + 50)
             status = read(context)
         }
     }
     return status
 }
 
+/** Battery, signal and network are polled at this pace; the clock on the minute. */
+private const val INDICATORS_MS = 15_000L
+private val Time24 = DateTimeFormatter.ofPattern("HH:mm")
+private val Time12 = DateTimeFormatter.ofPattern("h:mm")
+private val DayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
+
 private fun read(context: Context): PhoneStatus {
     val now = LocalDateTime.now()
-    val timePattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm"
+    val timeFormat = if (DateFormat.is24HourFormat(context)) Time24 else Time12
     val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
     val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
@@ -60,8 +68,8 @@ private fun read(context: Context): PhoneStatus {
     }.getOrDefault(false)
 
     return PhoneStatus(
-        time = now.format(DateTimeFormatter.ofPattern(timePattern)),
-        date = now.format(DateTimeFormatter.ofPattern("EEE d MMM")),
+        time = now.format(timeFormat),
+        date = now.format(DayFormat),
         batteryPercent = if (level >= 0 && scale > 0) level * 100 / scale else null,
         charging = plugged,
         signalLevel = signal,
