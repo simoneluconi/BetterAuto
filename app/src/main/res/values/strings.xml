@@ -19,7 +19,6 @@
     <string name="music_nothing_playing">Nothing playing</string>
     <string name="music_start_hint">Start music on the phone or pick an app from the bar</string>
     <string name="music_access_hint">Allow notification access for BetterAuto on the phone to show your music</string>
-    <string name="music_up_next">Up next · %1$s</string>
     <string name="music_unknown_title">Unknown title</string>
     <string name="music_playing_from">Playing from %1$s</string>
     <string name="music_shuffle_on">Shuffle on</string>
@@ -61,4 +60,15 @@
     <string name="notification_audio_phone">Music is playing from the phone</string>
     <string name="action_enable_car_audio">Send audio to the car</string>
     <string name="settings_auto_play">Start music when connected</string>
+    <string name="music_tab_queue">Up next</string>
+    <string name="music_tab_library">Library</string>
+    <string name="music_tab_apps">Sources</string>
+    <string name="music_queue_empty">This app doesn\'t share its queue</string>
+    <string name="music_library_unavailable">%1$s doesn\'t share its library with other apps</string>
+    <string name="music_loading">Loading…</string>
+    <string name="music_library_empty">Nothing here</string>
+    <string name="music_back">Back</string>
+    <string name="music_pick_app">Pick a music app in Sources</string>
+    <string name="music_fullscreen">Full-screen player</string>
+    <string name="music_show_panel">Show library</string>
 </resources>

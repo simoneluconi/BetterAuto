@@ -6,6 +6,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.util.Log
+import android.util.LruCache
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -20,10 +24,13 @@ import android.view.KeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +56,11 @@ data class Track(
     val shuffle: Boolean,
     val repeat: Boolean,
     val upNext: String?,
+    /** The player's queue, if the app shares it (many do, some don't). */
+    val queue: List<QueueEntry>,
+    val activeQueueId: Long,
+    /** App-specific buttons (favorite, shuffle, ...) published by the player. */
+    val customActions: List<MediaAction>,
 ) {
     fun positionAt(now: Long): Long {
         val elapsed = if (playing) ((now - positionUpdatedAt) * speed).toLong() else 0L
@@ -56,6 +68,10 @@ data class Track(
         return if (durationMs > 0) position.coerceIn(0, durationMs) else position.coerceAtLeast(0)
     }
 }
+
+data class QueueEntry(val id: Long, val title: String, val subtitle: String, val icon: ImageBitmap?)
+
+data class MediaAction(val action: String, val name: String, val icon: ImageBitmap?)
 
 /**
  * Follows the phone's active media session (any app: Spotify, YouTube Music, ...) and controls it.
@@ -76,6 +92,19 @@ object NowPlaying {
     private var controller: MediaControllerCompat? = null
     // Each metadata read hands out a new Bitmap copy, so the art is identified by track + size, not by instance
     private var accentKey: String? = null
+    private val actionIcons = HashMap<String, ImageBitmap?>()
+    private const val MAX_QUEUE = 200
+    private const val ACTION_ICON_PX = 96
+    private const val QUEUE_ART_PX = 128
+    private const val ART_BEHIND = 5
+    private const val ART_AHEAD = 40
+    private const val TAG = "BetterAuto"
+    private val queueArtCache = LruCache<String, ImageBitmap>(80)
+    private val queueArtLoading = HashSet<String>()
+    private val queueArtFailed = HashMap<String, Long>()
+    private const val ART_RETRY_MS = 15_000L
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val artDispatcher = Dispatchers.IO.limitedParallelism(3)
     private var accent: Color? = null
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { onSessionsChanged(it) }
@@ -129,21 +158,41 @@ object NowPlaying {
 
     fun previous() = controller?.transportControls?.skipToPrevious()
 
+    /** Standard shuffle when the player supports it, otherwise the player's own "shuffle" button. */
     fun toggleShuffle() {
         val c = controller ?: return
-        val on = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL
-        c.transportControls.setShuffleMode(
-            if (on) PlaybackStateCompat.SHUFFLE_MODE_NONE else PlaybackStateCompat.SHUFFLE_MODE_ALL
-        )
+        if (supports(c, PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE)) {
+            val on = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL
+            c.transportControls.setShuffleMode(
+                if (on) PlaybackStateCompat.SHUFFLE_MODE_NONE else PlaybackStateCompat.SHUFFLE_MODE_ALL
+            )
+        } else {
+            customActionNamed(c, "shuffle")?.let { c.transportControls.sendCustomAction(it, null) }
+        }
     }
 
+    /** Standard repeat when the player supports it, otherwise the player's own "repeat" button. */
     fun toggleRepeat() {
         val c = controller ?: return
-        val on = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE
-        c.transportControls.setRepeatMode(
-            if (on) PlaybackStateCompat.REPEAT_MODE_NONE else PlaybackStateCompat.REPEAT_MODE_ALL
-        )
+        if (supports(c, PlaybackStateCompat.ACTION_SET_REPEAT_MODE)) {
+            val on = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE
+            c.transportControls.setRepeatMode(
+                if (on) PlaybackStateCompat.REPEAT_MODE_NONE else PlaybackStateCompat.REPEAT_MODE_ALL
+            )
+        } else {
+            customActionNamed(c, "repeat")?.let { c.transportControls.sendCustomAction(it, null) }
+        }
     }
+
+    fun skipToQueueItem(id: Long) = controller?.transportControls?.skipToQueueItem(id)
+
+    fun sendCustomAction(action: String) = controller?.transportControls?.sendCustomAction(action, null)
+
+    private fun supports(c: MediaControllerCompat, action: Long) =
+        (c.playbackState?.actions ?: 0L) and action != 0L
+
+    private fun customActionNamed(c: MediaControllerCompat, word: String) =
+        c.playbackState?.customActions?.firstOrNull { it.name.toString().contains(word, ignoreCase = true) }?.action
 
     /** Switches to a media app: controls its session if active, otherwise asks it to start playing. */
     fun open(packageName: String) {
@@ -246,7 +295,75 @@ object NowPlaying {
             shuffle = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL,
             repeat = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE && c.repeatMode >= 0,
             upNext = nextInQueue(c),
+            queue = queueEntries(c, state?.activeQueueItemId ?: -1L),
+            activeQueueId = state?.activeQueueItemId ?: -1L,
+            customActions = state?.customActions.orEmpty().map { action ->
+                MediaAction(action.action, action.name.toString(), actionIcon(c.packageName, action.icon))
+            },
         )
+    }
+
+    private fun queueEntries(c: MediaControllerCompat, activeId: Long): List<QueueEntry> {
+        val items = c.queue.orEmpty().take(MAX_QUEUE)
+        val active = items.indexOfFirst { it.queueId == activeId }.coerceAtLeast(0)
+        return items.mapIndexed { index, item ->
+            val d = item.description
+            // Most players send only an art URI; fetch the ones around the playing track
+            val uri = d.iconUri?.takeIf { index in active - ART_BEHIND..active + ART_AHEAD }
+            QueueEntry(
+                id = item.queueId,
+                title = d.title?.toString().orEmpty(),
+                subtitle = d.subtitle?.toString().orEmpty(),
+                icon = d.iconBitmap?.asImageBitmap() ?: uri?.let(::queueArt),
+            )
+        }
+    }
+
+    /** Cached art for [uri], or null while it loads in the background (then the queue is republished). */
+    private fun queueArt(uri: Uri): ImageBitmap? {
+        val key = uri.toString()
+        queueArtCache.get(key)?.let { return it }
+        // Players may create the art on demand: retry a failed one after a while
+        val failedAt = queueArtFailed[key]
+        if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < ART_RETRY_MS) return null
+        if (!queueArtLoading.add(key)) return null
+        scope.launch {
+            val art = withContext(artDispatcher) {
+                runCatching {
+                    val source = ImageDecoder.createSource(appContext.contentResolver, uri)
+                    ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                        val size = info.size
+                        decoder.setTargetSampleSize((minOf(size.width, size.height) / QUEUE_ART_PX).coerceAtLeast(1))
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    }.asImageBitmap()
+                }.onFailure { Log.i(TAG, "Queue art $uri: $it") }.getOrNull()
+            }
+            queueArtLoading.remove(key)
+            if (art == null) {
+                queueArtFailed[key] = SystemClock.elapsedRealtime()
+                return@launch
+            }
+            queueArtFailed.remove(key)
+            queueArtCache.put(key, art)
+            // Many arrive together: one republish for the batch
+            main.removeCallbacks(republish)
+            main.postDelayed(republish, 150)
+        }
+        return null
+    }
+
+    private val republish = Runnable { publish() }
+
+    /** Custom action icons are resources of the player app. */
+    private fun actionIcon(packageName: String, resId: Int): ImageBitmap? {
+        if (resId == 0) return null
+        val key = "$packageName:$resId"
+        return actionIcons.getOrPut(key) {
+            runCatching {
+                val res = appContext.packageManager.getResourcesForApplication(packageName)
+                ResourcesCompat.getDrawable(res, resId, null)?.toBitmap(ACTION_ICON_PX, ACTION_ICON_PX)?.asImageBitmap()
+            }.getOrNull()
+        }
     }
 
     private fun nextInQueue(c: MediaControllerCompat): String? {
@@ -254,7 +371,9 @@ object NowPlaying {
         val activeId = c.playbackState?.activeQueueItemId ?: return null
         val index = queue.indexOfFirst { it.queueId == activeId }
         if (index < 0) return null
-        return queue.getOrNull(index + 1)?.description?.title?.toString()
+        val next = queue.getOrNull(index + 1)?.description ?: return null
+        return listOfNotNull(next.title, next.subtitle).map { it.toString() }.filter { it.isNotBlank() }
+            .joinToString(" · ").ifEmpty { null }
     }
 
     /** Extracts the album color off the main thread, then republishes. */

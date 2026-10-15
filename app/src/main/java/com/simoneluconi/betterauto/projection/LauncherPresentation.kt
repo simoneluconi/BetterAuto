@@ -77,6 +77,8 @@ class LauncherPresentation(context: Context, display: Display) :
             swallowUp = null
             return
         }
+        // Compose drops keys while nothing is focused: back must still work after the driver used touch
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN) focus.ensureFocused()
         window?.decorView?.dispatchKeyEvent(event)
     }
 

@@ -19,7 +19,6 @@
     <string name="music_nothing_playing">Niente in riproduzione</string>
     <string name="music_start_hint">Avvia la musica sul telefono o scegli un\'app dalla barra</string>
     <string name="music_access_hint">Consenti a BetterAuto l\'accesso alle notifiche sul telefono per vedere la tua musica</string>
-    <string name="music_up_next">A seguire · %1$s</string>
     <string name="music_unknown_title">Titolo sconosciuto</string>
     <string name="music_playing_from">In riproduzione da %1$s</string>
     <string name="music_shuffle_on">Riproduzione casuale attiva</string>
@@ -61,4 +60,15 @@
     <string name="notification_audio_phone">La musica esce dal telefono</string>
     <string name="action_enable_car_audio">Manda l\'audio all\'auto</string>
     <string name="settings_auto_play">Avvia la musica al collegamento</string>
+    <string name="music_tab_queue">A seguire</string>
+    <string name="music_tab_library">Libreria</string>
+    <string name="music_tab_apps">Sorgenti</string>
+    <string name="music_queue_empty">Questa app non condivide la coda</string>
+    <string name="music_library_unavailable">%1$s non condivide la libreria con altre app</string>
+    <string name="music_loading">Caricamento…</string>
+    <string name="music_library_empty">Qui non c\'è niente</string>
+    <string name="music_back">Indietro</string>
+    <string name="music_pick_app">Scegli un\'app musicale in Sorgenti</string>
+    <string name="music_fullscreen">Player a schermo intero</string>
+    <string name="music_show_panel">Mostra la libreria</string>
 </resources>

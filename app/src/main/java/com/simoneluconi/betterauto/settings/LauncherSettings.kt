@@ -36,6 +36,13 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _widgets = MutableStateFlow(loadWidgets())
     val widgets: StateFlow<List<WidgetType>> = _widgets
 
+    private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, true))
+    /** Music section: player plus library panel (true) or full-screen player (false). */
+    val musicPanel: StateFlow<Boolean> = _musicPanel
+
+    private val _musicTab = MutableStateFlow(prefs.getString(KEY_MUSIC_TAB, null))
+    val musicTab: StateFlow<String?> = _musicTab
+
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
 
@@ -64,6 +71,16 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         val rotated = list.drop(1) + list.first()
         _widgets.value = rotated
         prefs.edit { putString(KEY_WIDGETS, rotated.joinToString(",") { it.name }) }
+    }
+
+    fun setMusicPanel(value: Boolean) {
+        _musicPanel.value = value
+        prefs.edit { putBoolean(KEY_MUSIC_PANEL, value) }
+    }
+
+    fun setMusicTab(value: String) {
+        _musicTab.value = value
+        prefs.edit { putString(KEY_MUSIC_TAB, value) }
     }
 
     fun setAutoPlay(value: Boolean) {
@@ -120,6 +137,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_WIDGETS = "widgets"
         private const val KEY_DEBUG = "debug_overlay"
         private const val KEY_AUTO_PLAY = "auto_play"
+        private const val KEY_MUSIC_PANEL = "music_panel"
+        private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_PINNED = "pinned_apps"
         private const val KEY_RECENT = "recent_apps"
         private const val MAX_RECENT = 4

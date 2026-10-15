@@ -44,6 +44,11 @@ object CarIcons {
     )
     val Artist = icon("M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", circle(12f, 7f, 4f))
     val Album = icon(circle(12f, 12f, 10f), circle(12f, 12f, 3f))
+    val Chevron = icon("M9 6l6 6-6 6")
+    val Back = icon("M15 6l-6 6 6 6")
+    val Expand = icon("M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3")
+    val UpNext = icon("M3 6h12M3 12h12M3 18h7", "M15 15l6 3-6 3z")
+    val List = icon("M9 6h12M9 12h12M9 18h12", circle(4f, 6f, 1.2f), circle(4f, 12f, 1.2f), circle(4f, 18f, 1.2f))
     val Shuffle = icon("M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6 6", "M4 4l5 5")
     val Repeat = icon("M17 2l4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "M7 22l-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3")
 

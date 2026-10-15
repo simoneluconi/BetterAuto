@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -61,7 +62,7 @@ private const val NARROW_RATIO = 1.45f
  * Narrow: cover and title on top, progress and transport below, secondary actions at the bottom.
  */
 @Composable
-fun MusicWidget(modifier: Modifier = Modifier) {
+fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShowPanel: (() -> Unit)? = null) {
     val track by NowPlaying.track.collectAsStateWithLifecycle()
     val hasAccess by NowPlaying.hasAccess.collectAsStateWithLifecycle()
     val colors = LocalCarColors.current
@@ -75,14 +76,14 @@ fun MusicWidget(modifier: Modifier = Modifier) {
         val current = track
         when {
             current == null -> EmptyPlayer(hasAccess)
-            maxWidth / maxHeight < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight)
-            else -> WidePlayer(current, maxWidth, maxHeight)
+            maxWidth / maxHeight < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
+            else -> WidePlayer(current, maxWidth, maxHeight, extended, onShowPanel)
         }
     }
 }
 
 @Composable
-private fun WidePlayer(track: Track, width: Dp, height: Dp) {
+private fun WidePlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
     val colors = LocalCarColors.current
     Row(
         Modifier.fillMaxSize(),
@@ -91,17 +92,17 @@ private fun WidePlayer(track: Track, width: Dp, height: Dp) {
     ) {
         Cover(track, size = minOf(height, width * 0.46f), badge = false)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            SourceRow(track)
+            SourceRow(track, extended, onShowPanel)
             TitleBlock(track, titleSize = 44.sp, maxLines = 2)
             Progress(track)
             Transport(track, playSize = (height * 0.25f).coerceIn(104.dp, 160.dp))
-            track.upNext?.let { CarLabel(stringResource(R.string.music_up_next, it), 19.sp, colors.text2) }
+            track.upNext?.let { UpNext(it) }
         }
     }
 }
 
 @Composable
-private fun NarrowPlayer(track: Track, width: Dp, height: Dp) {
+private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
     val colors = LocalCarColors.current
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
@@ -111,11 +112,10 @@ private fun NarrowPlayer(track: Track, width: Dp, height: Dp) {
         Progress(track)
         Transport(track, playSize = (height * 0.19f).coerceIn(96.dp, 124.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CarLabel(
-                track.upNext?.let { stringResource(R.string.music_up_next, it) } ?: "",
-                19.sp, colors.text2, Modifier.weight(1f),
-            )
+            Box(Modifier.weight(1f)) { track.upNext?.let { UpNext(it) } }
+            if (extended) CustomActions(track)
             ShuffleRepeat(track)
+            onShowPanel?.let { ShowPanelButton(it) }
         }
     }
 }
@@ -169,7 +169,7 @@ private fun Cover(track: Track, size: Dp, badge: Boolean) {
 }
 
 @Composable
-private fun SourceRow(track: Track) {
+private fun SourceRow(track: Track, extended: Boolean, onShowPanel: (() -> Unit)?) {
     val colors = LocalCarColors.current
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -183,7 +183,49 @@ private fun SourceRow(track: Track) {
             CarLabel(track.appLabel, 18.sp, colors.text, weight = FontWeight.Bold)
         }
         Spacer(Modifier.weight(1f))
+        if (extended) CustomActions(track)
         ShuffleRepeat(track)
+        onShowPanel?.let { ShowPanelButton(it) }
+    }
+}
+
+/** Next track in the queue: an icon instead of a label, to leave room for title and artist. */
+@Composable
+private fun UpNext(text: String, modifier: Modifier = Modifier) {
+    val colors = LocalCarColors.current
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CarIcon(CarIcons.UpNext, colors.text2, Modifier.size(24.dp))
+        CarLabel(text, 19.sp, colors.text2)
+    }
+}
+
+/** Brings back the library panel next to a full-screen player. */
+@Composable
+private fun ShowPanelButton(onClick: () -> Unit) {
+    ToggleButton(CarIcons.List, stringResource(R.string.music_show_panel), active = false, onClick = onClick)
+}
+
+/** The player's own buttons, except shuffle/repeat which our toggles already cover. */
+@Composable
+private fun CustomActions(track: Track) {
+    val colors = LocalCarColors.current
+    for (action in track.customActions) {
+        val name = action.name.lowercase()
+        if ("shuffle" in name || "repeat" in name) continue
+        Box(
+            Modifier
+                .carClickable(CircleShape, action.name) { NowPlaying.sendCustomAction(action.action) }
+                .background(colors.text.copy(alpha = 0.08f), CircleShape)
+                .size(52.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val icon = action.icon
+            if (icon != null) {
+                Image(icon, contentDescription = null, colorFilter = ColorFilter.tint(colors.text2), modifier = Modifier.size(24.dp))
+            } else {
+                CarLabel(action.name.take(1), 20.sp, colors.text2, weight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -261,19 +303,17 @@ private fun Progress(track: Track) {
     val fraction = if (track.durationMs > 0) position.toFloat() / track.durationMs else 0f
 
     Column {
-        Box(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
             Box(Modifier.fillMaxWidth().height(8.dp).background(colors.text.copy(alpha = 0.16f), RoundedCornerShape(50)))
             if (track.durationMs > 0) {
                 Box(Modifier.fillMaxWidth(fraction).height(8.dp).background(colors.album, RoundedCornerShape(50)))
-                Box(Modifier.fillMaxWidth(fraction.coerceAtLeast(0.001f))) {
-                    Box(
-                        Modifier
-                            .align(Alignment.CenterEnd)
-                            .offset(x = 10.dp)
-                            .size(20.dp)
-                            .background(colors.album, CircleShape)
-                    )
-                }
+                // Knob centred on the playback position, positioned on the full-width track so it never gets squeezed
+                Box(
+                    Modifier
+                        .offset(x = maxWidth * fraction.coerceIn(0f, 1f) - 10.dp)
+                        .size(20.dp)
+                        .background(colors.album, CircleShape)
+                )
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -29,6 +29,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
@@ -46,7 +47,7 @@ import com.simoneluconi.betterauto.settings.ThemeMode
 import com.simoneluconi.betterauto.settings.WidgetType
 import com.simoneluconi.betterauto.ui.theme.CarTheme
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
-import com.simoneluconi.betterauto.ui.widgets.MusicWidget
+import com.simoneluconi.betterauto.ui.widgets.MusicScreen
 import com.simoneluconi.betterauto.ui.widgets.PlaceholderWidget
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
 import kotlin.math.min
@@ -122,12 +123,13 @@ private fun LauncherContent(focus: LauncherFocus?) {
                             if (down) NowPlaying.previous()
                             true
                         }
-                        Key.Back, Key.Escape -> {
-                            if (!down && section != Section.HOME) settings.setSection(Section.HOME)
-                            section != Section.HOME
-                        }
                         else -> false
                     }
+                }
+                .onKeyEvent { event ->
+                    if (event.key != Key.Back && event.key != Key.Escape) return@onKeyEvent false
+                    if (event.type == KeyEventType.KeyUp && section != Section.HOME) settings.setSection(Section.HOME)
+                    section != Section.HOME
                 },
         ) {
             val left = when (barSetting) {
@@ -172,7 +174,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
         ) { current ->
             when (current) {
                 Section.HOME -> WidgetArea(settings, Modifier.fillMaxSize())
-                Section.MUSIC -> MusicWidget(Modifier.fillMaxSize())
+                Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
                 Section.PHONE -> PlaceholderWidget(null, Modifier.fillMaxSize())
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
