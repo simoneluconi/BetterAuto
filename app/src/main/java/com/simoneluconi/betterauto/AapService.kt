@@ -5,7 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
@@ -35,12 +38,27 @@ class AapService : Service() {
     // Every startForeground call replaces the types, so keep the media projection type once granted
     private var foregroundTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
 
+    // Unplugging normally fails the USB read, but not on every phone: the detach broadcast is the sure way out
+    private val detached = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            EventLog.log("Accessory detached")
+            endSession(session ?: return)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Media sessions are needed by audio (auto-play, pause on disconnect) before the screen is up
         NowPlaying.acquire(this)
         CarAudio.init(this)
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
+        val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(detached, filter, RECEIVER_EXPORTED) else registerReceiver(detached, filter)
+    }
+
+    /** Closing stops the encoder and the projection: off the main thread. The session thread then reports the end. */
+    private fun endSession(ended: AapSession) {
+        thread(name = "aap-close") { ended.close() }
     }
 
     private fun refreshNotification() {
@@ -64,7 +82,7 @@ class AapService : Service() {
 
         session?.let {
             EventLog.log("Replacing the previous session")
-            it.close()
+            endSession(it)
         }
         EventLog.status = "${accessory.manufacturer} ${accessory.model}"
         val newSession = AapSession(UsbAccessoryTransport(fd), AapTls.fromAssets(this), Projection(this))
@@ -131,10 +149,11 @@ class AapService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(detached)
         CarAudio.onProjectionChanged = null
         CarAudio.setProjection(null)
         NowPlaying.release()
-        session?.close()
+        session?.let { endSession(it) }
         session = null
         EventLog.status = null
         super.onDestroy()

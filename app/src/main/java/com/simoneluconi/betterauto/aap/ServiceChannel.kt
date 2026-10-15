@@ -21,12 +21,17 @@ abstract class ServiceChannel(private val session: AapSession, val channelId: In
     }
 
     fun onMessage(msg: AapMessage) {
-        if (msg.controlType && msg.id == ControlMessageType.MESSAGE_CHANNEL_OPEN_RESPONSE_VALUE) {
-            val status = ChannelOpenResponse.parseFrom(msg.payload).status
-            EventLog.log("Channel $channelId ($name) opened: $status")
-            if (status == MessageStatus.STATUS_SUCCESS) onOpened()
-        } else {
-            onChannelMessage(msg)
+        when {
+            msg.controlType && msg.id == ControlMessageType.MESSAGE_CHANNEL_OPEN_RESPONSE_VALUE -> {
+                val status = ChannelOpenResponse.parseFrom(msg.payload).status
+                EventLog.log("Channel $channelId ($name) opened: $status")
+                if (status == MessageStatus.STATUS_SUCCESS) onOpened()
+            }
+            msg.controlType && msg.id == ControlMessageType.MESSAGE_CHANNEL_CLOSE_NOTIFICATION_VALUE -> {
+                EventLog.log("Channel $channelId ($name) closed by the head unit")
+                runCatching { close() }
+            }
+            else -> onChannelMessage(msg)
         }
     }
 

@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -72,6 +73,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // If the app died while connected, the phone may still be muted: put the volume back now
+        CarAudio.init(this)
         setContent {
             CarTheme(night = isSystemInDarkTheme(), album = null) {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }

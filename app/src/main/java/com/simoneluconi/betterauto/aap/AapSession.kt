@@ -13,6 +13,7 @@ import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
 import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse
 import aap_protobuf.service.media.sink.message.AudioStreamTypeOuterClass.AudioStreamType
+import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.os.Build
 import com.google.protobuf.MessageLite
 import com.simoneluconi.betterauto.EventLog
@@ -20,6 +21,7 @@ import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.Transport
 import java.io.Closeable
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Phone side of the Android Auto Protocol on one connection.
@@ -37,11 +39,12 @@ class AapSession(
     private val projection: Projection,
 ) : Closeable {
     private val codec = FrameCodec(transport, tls)
-    private val channels = HashMap<Int, ServiceChannel>()
+    private val channels = ConcurrentHashMap<Int, ServiceChannel>()
     private var audioSink: AudioSinkChannel? = null
 
     @Volatile
     private var running = true
+    private var closed = false
 
     /** Head unit channels, available after service discovery. */
     var services: List<Service> = emptyList()
@@ -106,6 +109,10 @@ class AapSession(
 
     private fun onAuthComplete(auth: AuthResponse) {
         EventLog.log("AUTH_COMPLETE, status ${auth.status}")
+        // A head unit that checks the phone certificate says so here, before anything else
+        if (auth.status != MessageStatus.STATUS_SUCCESS_VALUE) {
+            EventLog.log("The head unit rejected the authentication (status ${auth.status}): it may require a certificate signed for Android Auto")
+        }
         val request = ServiceDiscoveryRequest.newBuilder()
             .setLabelText("BetterAuto")
             .setDeviceName(Build.MODEL)
@@ -120,7 +127,10 @@ class AapSession(
         for (service in services) {
             EventLog.log("  channel ${service.id}: ${service.kind()}")
             val channel = createChannel(service) ?: continue
-            channels[service.id] = channel
+            synchronized(this) {
+                if (closed) return
+                channels[service.id] = channel
+            }
             channel.open()
         }
     }
@@ -183,12 +193,17 @@ class AapSession(
     private fun send(id: Int, payload: ByteArray, encrypted: Boolean) =
         send(Aap.CONTROL_CHANNEL, id, payload, encrypted)
 
+    /** Ends the connection; safe from any thread and more than once. Closing the transport unblocks [run]. */
     override fun close() {
+        synchronized(this) {
+            if (closed) return
+            closed = true
+        }
         running = false
         channels.values.forEach { runCatching { it.close() } }
         channels.clear()
         audioSink = null
-        transport.close()
+        runCatching { transport.close() }
     }
 
     private fun describeId(id: Int) = ControlMessageType.forNumber(id)?.name ?: id.toString()

@@ -35,13 +35,15 @@ object CarAudio {
     private val main = Handler(Looper.getMainLooper())
 
     /**
-     * Call once before use (after NowPlaying is acquired). If the app died while the phone was muted,
-     * the music may still be playing: pause it first, so restoring the volume never blasts the phone.
+     * Call on the main thread when the service or the app starts. If the app died while the phone was
+     * muted, the music may still be playing: pause it first, so restoring the volume never blasts the phone.
      */
     fun init(context: Context) {
         appContext = context.applicationContext
         if (capture == null && PhoneSpeakerMute.isMuted(appContext)) {
+            NowPlaying.acquire(appContext)
             NowPlaying.pause()
+            NowPlaying.release()
             PhoneSpeakerMute.release(appContext)
         }
     }

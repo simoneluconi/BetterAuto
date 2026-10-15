@@ -61,8 +61,11 @@ object PhoneSpeakerMute {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.contains(KEY_SAVED)) return
         val saved = prefs.getInt(KEY_SAVED, 0)
-        app.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_MUSIC, saved, 0)
         prefs.edit { remove(KEY_SAVED) }
+        val audio = app.getSystemService(AudioManager::class.java)
+        // Still at zero: ours to put back. Otherwise the user already set a volume they want, after the app died
+        if (audio.getStreamVolume(AudioManager.STREAM_MUSIC) > 0) return
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, saved, 0)
         EventLog.log("Phone media volume restored to $saved")
     }
 }

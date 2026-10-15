@@ -7,8 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -69,7 +69,9 @@ private fun manrope(weight: Int) = Font(
 
 val Manrope = FontFamily(manrope(500), manrope(600), manrope(700), manrope(800))
 
-val LocalCarColors = staticCompositionLocalOf { NightColors }
+// The palette changes on every frame of a theme fade or album color change: a tracked local
+// recomposes only what reads it, a static one would recompose the whole launcher each frame
+val LocalCarColors = compositionLocalOf { NightColors }
 
 /** Base text style; sizes are in design units (1 unit = 1 px on a 1280x720 screen). */
 val CarText = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)

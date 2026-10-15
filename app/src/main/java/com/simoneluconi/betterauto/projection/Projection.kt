@@ -39,8 +39,8 @@ class Projection(private val context: Context) {
             val display = context.getSystemService(DisplayManager::class.java)
                 .createVirtualDisplay("BetterAuto", width, height, densityDpi, surface, 0)
             virtualDisplay = display
-            NowPlaying.acquire(context)
             presentation = LauncherPresentation(context, display.display).also { it.show() }
+            NowPlaying.acquire(context) // released by stop(), which checks for a presentation
             EventLog.log("Projection started: ${width}x$height @ $densityDpi dpi")
         } catch (e: Exception) {
             EventLog.log("Projection failed: $e")
