@@ -85,7 +85,9 @@ class AapService : Service() {
             endSession(it)
         }
         EventLog.status = "${accessory.manufacturer} ${accessory.model}"
-        val newSession = AapSession(UsbAccessoryTransport(fd), AapTls.fromAssets(this), Projection(this))
+        val newSession = AapSession(UsbAccessoryTransport(fd), AapTls.fromAssets(this), Projection(this)) {
+            AppIcon.Sizes.mapNotNull { AppIcon.png(this, it) }.takeIf { it.size == AppIcon.Sizes.size }.orEmpty()
+        }
         session = newSession
         thread(name = "aap-session") {
             try {

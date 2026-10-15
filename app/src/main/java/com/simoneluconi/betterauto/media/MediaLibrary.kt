@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // androidx.media compat APIs; to be migrated to Media3
-
 package com.simoneluconi.betterauto.media
 
 import android.content.ComponentName
@@ -7,11 +5,15 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.ImageDecoder
-import android.support.v4.media.MediaBrowserCompat
-import android.support.v4.media.session.MediaControllerCompat
+import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaBrowser
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,50 +47,29 @@ sealed interface LibraryState {
 /** Icons are shown at about 60 design units: decoding bigger ones only costs memory. */
 private const val ICON_PX = 128
 
+/** Folders are fetched in one page; apps that page by themselves slice at this size. */
+private const val PAGE_SIZE = 2000
+
 /**
- * Browses a music app's library through its MediaBrowserService, like Android Auto does.
- * Many apps only accept the callers they trust, so [LibraryState.Unavailable] is a normal outcome.
- * Create, use and close on the main thread.
+ * Browses a music app's library through its media browser service (Media3 or the older kind), like
+ * Android Auto does. Many apps only accept the callers they trust, so [LibraryState.Unavailable] is a
+ * normal outcome. Create, use and close on the main thread.
  */
+@OptIn(UnstableApi::class)
 class MediaLibrary(private val context: Context, private val packageName: String) {
     private val _state = MutableStateFlow<LibraryState>(LibraryState.Connecting)
     val state: StateFlow<LibraryState> = _state
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var browser: MediaBrowserCompat? = null
+    private var browserFuture: ListenableFuture<MediaBrowser>? = null
+    private var browser: MediaBrowser? = null
+    private var closed = false
 
     /** Opened folders, root first: id to title. */
     private val path = ArrayList<Pair<String, String?>>()
 
-    private val subscription = object : MediaBrowserCompat.SubscriptionCallback() {
-        override fun onChildrenLoaded(parentId: String, children: MutableList<MediaBrowserCompat.MediaItem>) {
-            if (path.lastOrNull()?.first != parentId) return
-            scope.launch {
-                // Glyph detection reads pixels: not on the main thread for a folder of hundreds of items
-                val items = withContext(Dispatchers.Default) {
-                    children.map { item ->
-                        val d = item.description
-                        LibraryItem(
-                            id = item.mediaId.orEmpty(),
-                            title = d.title?.toString().orEmpty(),
-                            subtitle = d.subtitle?.toString().orEmpty(),
-                            icon = d.iconBitmap?.asImageBitmap(),
-                            glyph = d.iconBitmap?.let(::isGlyph) ?: false,
-                            browsable = item.isBrowsable,
-                            playable = item.isPlayable,
-                        )
-                    }
-                }
-                if (path.lastOrNull()?.first != parentId) return@launch
-                _state.value = LibraryState.Loaded(path.last().second, items, path.size > 1)
-                loadIcons(parentId, children)
-            }
-        }
-
-        override fun onError(parentId: String) {
-            _state.value = LibraryState.Unavailable
-        }
-    }
+    /** Only the latest folder request may publish: going back quickly must not show a stale folder. */
+    private var request = 0
 
     fun connect() {
         val service = context.packageManager
@@ -98,55 +79,90 @@ class MediaLibrary(private val context: Context, private val packageName: String
             _state.value = LibraryState.Unavailable
             return
         }
-        browser = MediaBrowserCompat(
-            context,
-            ComponentName(service.packageName, service.name),
-            object : MediaBrowserCompat.ConnectionCallback() {
-                override fun onConnected() {
-                    val root = browser?.root ?: return
-                    open(root, null)
-                }
-
-                override fun onConnectionFailed() {
-                    _state.value = LibraryState.Unavailable
-                }
-
-                override fun onConnectionSuspended() {
-                    _state.value = LibraryState.Unavailable
-                }
-            },
-            null,
-        ).also { it.connect() }
+        val token = SessionToken(context, ComponentName(service.packageName, service.name))
+        val future = MediaBrowser.Builder(context, token).buildAsync()
+        browserFuture = future
+        future.addListener({
+            val b = runCatching { future.get() }.getOrNull()
+            if (b == null || closed) {
+                b?.release()
+                if (!closed) _state.value = LibraryState.Unavailable
+                return@addListener
+            }
+            browser = b
+            val rootFuture = b.getLibraryRoot(null)
+            rootFuture.addListener({
+                val root = runCatching { rootFuture.get() }.getOrNull()?.value?.mediaId
+                if (root == null) _state.value = LibraryState.Unavailable else open(root, null)
+            }, context.mainExecutor)
+        }, context.mainExecutor)
     }
 
     fun select(item: LibraryItem) {
         val b = browser ?: return
         when {
             item.browsable -> open(item.id, item.title)
-            item.playable -> MediaControllerCompat(context, b.sessionToken).transportControls.playFromMediaId(item.id, null)
+            item.playable -> {
+                b.setMediaItem(MediaItem.Builder().setMediaId(item.id).build())
+                b.play()
+            }
         }
     }
 
     /** One folder up; false at the root. */
     fun back(): Boolean {
         if (path.size <= 1) return false
-        browser?.unsubscribe(path.removeAt(path.lastIndex).first)
+        path.removeAt(path.lastIndex)
         val (id, title) = path.removeAt(path.lastIndex)
         open(id, title)
         return true
     }
 
     fun close() {
+        closed = true
         scope.cancel()
-        browser?.disconnect()
+        browser?.release()
         browser = null
+        browserFuture?.let { MediaBrowser.releaseFuture(it) }
+        browserFuture = null
     }
 
     private fun open(id: String, title: String?) {
-        path.lastOrNull()?.let { browser?.unsubscribe(it.first) }
+        val b = browser ?: return
         path.add(id to title)
         _state.value = LibraryState.Connecting
-        browser?.subscribe(id, subscription)
+        val current = ++request
+        val future = b.getChildren(id, 0, PAGE_SIZE, null)
+        future.addListener({
+            if (current != request || closed) return@addListener
+            val result = runCatching { future.get() }.getOrNull()
+            if (result == null || result.resultCode != LibraryResult.RESULT_SUCCESS) {
+                _state.value = LibraryState.Unavailable
+                return@addListener
+            }
+            val children = result.value.orEmpty()
+            scope.launch {
+                // Art bytes are decoded and glyphs detected off the main thread: folders can hold hundreds of items
+                val items = withContext(Dispatchers.Default) {
+                    children.map { item ->
+                        val m = item.mediaMetadata
+                        val icon = m.artworkData?.let { Artwork.decode(it, ICON_PX) }
+                        LibraryItem(
+                            id = item.mediaId,
+                            title = m.title?.toString().orEmpty(),
+                            subtitle = (m.subtitle ?: m.artist)?.toString().orEmpty(),
+                            icon = icon?.asImageBitmap(),
+                            glyph = icon?.let(::isGlyph) ?: false,
+                            browsable = m.isBrowsable == true,
+                            playable = m.isPlayable == true,
+                        )
+                    }
+                }
+                if (current != request) return@launch
+                _state.value = LibraryState.Loaded(title, items, path.size > 1)
+                loadIcons(current, children)
+            }
+        }, context.mainExecutor)
     }
 
     /** A glyph has plenty of transparent pixels and all opaque ones of about the same color. */
@@ -170,29 +186,24 @@ class MediaLibrary(private val context: Context, private val packageName: String
     }
 
     /** Items often carry only an icon URI: decode those off the main thread, at list size, and republish. */
-    private fun loadIcons(parentId: String, children: List<MediaBrowserCompat.MediaItem>) {
-        val missing = children.filter { it.description.iconBitmap == null && it.description.iconUri != null }
+    private fun loadIcons(current: Int, children: List<MediaItem>) {
+        val missing = children.filter { it.mediaMetadata.artworkData == null && it.mediaMetadata.artworkUri != null }
         if (missing.isEmpty()) return
         scope.launch {
             val icons = withContext(Dispatchers.IO) {
                 missing.associate { item ->
-                    item.mediaId.orEmpty() to runCatching {
-                        val source = ImageDecoder.createSource(context.contentResolver, item.description.iconUri!!)
-                        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                            decoder.setTargetSampleSize((minOf(info.size.width, info.size.height) / ICON_PX).coerceAtLeast(1))
-                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                        }
-                        bitmap to isGlyph(bitmap)
+                    item.mediaId to runCatching {
+                        Artwork.decode(context, item.mediaMetadata.artworkUri!!, ICON_PX)?.let { it to isGlyph(it) }
                     }.getOrNull()
                 }
             }
-            val current = _state.value as? LibraryState.Loaded ?: return@launch
-            if (path.lastOrNull()?.first != parentId) return@launch
-            _state.value = current.copy(
-                items = current.items.map { item ->
-                    val loaded = icons[item.id]
-                    if (item.icon != null || loaded == null) item
-                    else item.copy(icon = loaded.first.asImageBitmap(), glyph = loaded.second)
+            val loaded = _state.value as? LibraryState.Loaded ?: return@launch
+            if (current != request) return@launch
+            _state.value = loaded.copy(
+                items = loaded.items.map { item ->
+                    val icon = icons[item.id]
+                    if (item.icon != null || icon == null) item
+                    else item.copy(icon = icon.first.asImageBitmap(), glyph = icon.second)
                 }
             )
         }

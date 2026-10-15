@@ -1,32 +1,39 @@
-@file:Suppress("DEPRECATION") // androidx.media compat APIs; to be migrated to Media3
-
 package com.simoneluconi.betterauto.media
 
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.ImageDecoder
-import android.net.Uri
-import android.util.Log
-import android.util.LruCache
-import android.media.MediaMetadata
-import android.media.session.MediaController
+import android.media.session.MediaController as PlatformController
+import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
+import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaControllerCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
+import android.util.LruCache
 import android.view.KeyEvent
+import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.media3.common.C
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.common.Timeline
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.CommandButton
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionCommands
+import androidx.media3.session.SessionToken
 import androidx.palette.graphics.Palette
+import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -75,15 +82,18 @@ data class Track(
     }
 }
 
+/** [id] is the item's position in the player's queue. */
 data class QueueEntry(val id: Long, val title: String, val subtitle: String, val icon: ImageBitmap?)
 
 data class MediaAction(val action: String, val name: String, val icon: ImageBitmap?)
 
 /**
- * Follows the phone's active media session (any app: Spotify, YouTube Music, ...) and controls it.
+ * Follows the phone's active media session (any app: Spotify, YouTube Music, ...) and controls it
+ * through a Media3 controller, which speaks both to Media3 sessions and to the older ones.
  * Needs notification access for [MediaListenerService]; [hasAccess] reports whether we have it.
- * Main thread only, except [pause].
+ * Main thread only, except [pause], which hops there by itself.
  */
+@OptIn(UnstableApi::class)
 object NowPlaying {
     private val _track = MutableStateFlow<Track?>(null)
     val track: StateFlow<Track?> = _track
@@ -97,16 +107,17 @@ object NowPlaying {
     private var users = 0
     private var sessionManager: MediaSessionManager? = null
 
-    // Read by pause() from the session threads; written on the main thread only
-    @Volatile
-    private var controller: MediaControllerCompat? = null
-    // Each metadata read hands out a new Bitmap copy, so the art is identified by track + size, not by instance
-    private var accentKey: String? = null
+    // The controller of the session being followed, the platform token it was built from, and a
+    // generation number so a slow connection cannot install a controller for a session already left
+    private var controller: MediaController? = null
+    private var attachedToken: MediaSession.Token? = null
+    private var generation = 0
+
     private val actionIcons = HashMap<String, ImageBitmap?>()
     private const val MAX_QUEUE = 200
     private const val ACTION_ICON_PX = 96
-    private const val ART_PX = 1024
     private const val QUEUE_ART_PX = 128
+    private const val ART_PX = 1024
     private const val ART_BEHIND = 5
     private const val ART_AHEAD = 40
     private const val TAG = "BetterAuto"
@@ -114,38 +125,30 @@ object NowPlaying {
     private val queueArtLoading = HashSet<String>()
     private val queueArtFailed = HashMap<String, Long>()
     private const val ART_RETRY_MS = 15_000L
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @kotlin.OptIn(ExperimentalCoroutinesApi::class)
     private val artDispatcher = Dispatchers.IO.limitedParallelism(3)
+
+    // The album art as the player sent it (bytes or URI, by identity) and its screen-sized copy
+    private var loggedQueueSize = -1
+    private var artKey: Any? = null
+    private var artImage: ImageBitmap? = null
     private var accent: Color? = null
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { onSessionsChanged(it) }
 
-    // What the player last delivered. Reading the controller again copies everything through Binder,
-    // album art included, so it is read once in attach() and then kept up to date by the callbacks.
-    private var metadata: MediaMetadataCompat? = null
-    private var state: PlaybackStateCompat? = null
-    private var queue: List<MediaSessionCompat.QueueItem> = emptyList()
+    private val playerListener = object : Player.Listener {
+        // One callback per batch of changes (state, metadata, queue, modes...)
+        override fun onEvents(player: Player, events: Player.Events) = publish()
+    }
 
-    private val callback = object : MediaControllerCompat.Callback() {
-        override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-            this@NowPlaying.metadata = metadata
-            publish()
+    private val controllerListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            if (controller === this@NowPlaying.controller) refresh()
         }
 
-        override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
-            this@NowPlaying.state = state
-            publish()
-        }
+        override fun onMediaButtonPreferencesChanged(controller: MediaController, mediaButtonPreferences: MutableList<CommandButton>) = publish()
 
-        override fun onShuffleModeChanged(shuffleMode: Int) = publish()
-        override fun onRepeatModeChanged(repeatMode: Int) = publish()
-
-        override fun onQueueChanged(queue: MutableList<MediaSessionCompat.QueueItem>?) {
-            this@NowPlaying.queue = queue.orEmpty()
-            publish()
-        }
-
-        override fun onSessionDestroyed() = refresh()
+        override fun onAvailableSessionCommandsChanged(controller: MediaController, commands: SessionCommands) = publish()
     }
 
     /** Call from the main thread; every acquire needs a matching [release]. */
@@ -165,67 +168,71 @@ object NowPlaying {
 
     fun playPause() {
         val c = controller ?: return
-        if (c.playbackState?.state == PlaybackStateCompat.STATE_PLAYING) c.transportControls.pause()
-        else c.transportControls.play()
+        if (c.isPlaying) c.pause() else c.play()
     }
 
-    fun next() = controller?.transportControls?.skipToNext()
+    fun next() = controller?.seekToNext()
 
-    /** The one control safe from any thread: a disconnect must pause before the phone volume comes back. */
+    /** The one control callable from any thread: a disconnect pauses before the phone volume comes back. */
     fun pause() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { pause() }
+            return
+        }
         val c = controller ?: return
-        if (c.playbackState?.state == PlaybackStateCompat.STATE_PLAYING) c.transportControls.pause()
+        if (c.isPlaying) c.pause()
     }
 
     /** Resumes the current player, or starts the most recently used music app if none is active. */
     fun resume() {
         val c = controller
         if (c != null) {
-            if (c.playbackState?.state != PlaybackStateCompat.STATE_PLAYING) c.transportControls.play()
+            if (!c.isPlaying) c.play()
             return
         }
         LauncherSettings.get(appContext).recentApps.value.firstOrNull()?.let { open(it) }
     }
 
-    fun previous() = controller?.transportControls?.skipToPrevious()
+    fun previous() = controller?.seekToPrevious()
 
     /** Standard shuffle when the player supports it, otherwise the player's own "shuffle" button. */
     fun toggleShuffle() {
         val c = controller ?: return
-        if (supports(c, PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE)) {
-            val on = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL
-            c.transportControls.setShuffleMode(
-                if (on) PlaybackStateCompat.SHUFFLE_MODE_NONE else PlaybackStateCompat.SHUFFLE_MODE_ALL
-            )
+        if (c.isCommandAvailable(Player.COMMAND_SET_SHUFFLE_MODE)) {
+            c.shuffleModeEnabled = !c.shuffleModeEnabled
         } else {
-            customActionNamed(c, "shuffle")?.let { c.transportControls.sendCustomAction(it, null) }
+            customButtonNamed(c, "shuffle")?.let { sendCustomCommand(c, it) }
         }
     }
 
     /** Standard repeat when the player supports it, otherwise the player's own "repeat" button. */
     fun toggleRepeat() {
         val c = controller ?: return
-        if (supports(c, PlaybackStateCompat.ACTION_SET_REPEAT_MODE)) {
-            val on = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE
-            c.transportControls.setRepeatMode(
-                if (on) PlaybackStateCompat.REPEAT_MODE_NONE else PlaybackStateCompat.REPEAT_MODE_ALL
-            )
+        if (c.isCommandAvailable(Player.COMMAND_SET_REPEAT_MODE)) {
+            c.repeatMode = if (c.repeatMode != Player.REPEAT_MODE_OFF) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ALL
         } else {
-            customActionNamed(c, "repeat")?.let { c.transportControls.sendCustomAction(it, null) }
+            customButtonNamed(c, "repeat")?.let { sendCustomCommand(c, it) }
         }
     }
 
-    fun skipToQueueItem(id: Long) = controller?.transportControls?.skipToQueueItem(id)
+    fun skipToQueueItem(id: Long) {
+        val c = controller ?: return
+        if (id in 0 until c.currentTimeline.windowCount) c.seekToDefaultPosition(id.toInt())
+    }
 
-    fun seekTo(positionMs: Long) = controller?.transportControls?.seekTo(positionMs)
+    fun sendCustomAction(action: String) {
+        val c = controller ?: return
+        c.mediaButtonPreferences.firstOrNull { it.sessionCommand?.customAction == action }?.let { sendCustomCommand(c, it) }
+    }
 
-    fun sendCustomAction(action: String) = controller?.transportControls?.sendCustomAction(action, null)
+    fun seekTo(positionMs: Long) = controller?.seekTo(positionMs)
 
-    private fun supports(c: MediaControllerCompat, action: Long) =
-        (c.playbackState?.actions ?: 0L) and action != 0L
+    private fun sendCustomCommand(c: MediaController, button: CommandButton) {
+        button.sessionCommand?.let { c.sendCustomCommand(it, Bundle.EMPTY) }
+    }
 
-    private fun customActionNamed(c: MediaControllerCompat, word: String) =
-        c.playbackState?.customActions?.firstOrNull { it.name.toString().contains(word, ignoreCase = true) }?.action
+    private fun customButtonNamed(c: MediaController, word: String) =
+        c.mediaButtonPreferences.firstOrNull { it.displayName.toString().contains(word, ignoreCase = true) }
 
     /** Switches to a media app: controls its session if active, otherwise asks it to start playing. */
     fun open(packageName: String) {
@@ -261,7 +268,7 @@ object NowPlaying {
         onSessionsChanged(activeSessions(msm))
     }
 
-    private fun activeSessions(msm: MediaSessionManager): List<MediaController> =
+    private fun activeSessions(msm: MediaSessionManager): List<PlatformController> =
         try {
             msm.getActiveSessions(listenerComponent())
         } catch (_: SecurityException) {
@@ -270,109 +277,136 @@ object NowPlaying {
 
     private fun listenerComponent() = ComponentName(appContext, MediaListenerService::class.java)
 
-    private fun onSessionsChanged(sessions: List<MediaController>?) {
+    private fun onSessionsChanged(sessions: List<PlatformController>?) {
         val list = sessions.orEmpty()
-        val best = list.firstOrNull { it.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING }
-            ?: list.firstOrNull()
-        if (best?.sessionToken == controller?.sessionToken?.token) {
+        val best = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list.firstOrNull()
+        if (best?.sessionToken == attachedToken) {
             publish()
             return
         }
         attach(best)
     }
 
-    private fun attach(session: MediaController?) {
-        controller?.unregisterCallback(callback)
-        controller = session?.let {
-            MediaControllerCompat(appContext, MediaSessionCompat.Token.fromToken(it.sessionToken))
+    /** Builds a controller for [session]; the screen keeps the previous track until it is connected. */
+    private fun attach(session: PlatformController?) {
+        generation++
+        controller?.let {
+            it.removeListener(playerListener)
+            it.release()
         }
-        controller?.registerCallback(callback, main)
-        metadata = controller?.metadata
-        state = controller?.playbackState
-        queue = controller?.queue.orEmpty()
-        publish()
+        controller = null
+        attachedToken = session?.sessionToken
+        if (session == null) {
+            publish()
+            return
+        }
+        val expected = generation
+        val tokenFuture = SessionToken.createSessionToken(appContext, session.sessionToken)
+        tokenFuture.addListener({
+            if (expected != generation) return@addListener
+            val token = runCatching { tokenFuture.get() }.getOrNull() ?: return@addListener
+            val controllerFuture = MediaController.Builder(appContext, token).setListener(controllerListener).buildAsync()
+            controllerFuture.addListener({
+                val built = runCatching { controllerFuture.get() }
+                    .onFailure { Log.i(TAG, "Media controller for ${session.packageName}: $it") }
+                    .getOrNull()
+                if (expected != generation || built == null) {
+                    built?.release()
+                    return@addListener
+                }
+                controller = built
+                built.addListener(playerListener)
+                val kind = if (token.type == SessionToken.TYPE_SESSION) "Media3 session" else "legacy session"
+                EventLog.log("Now playing: following ${session.packageName} ($kind)")
+                EventLog.log(
+                    "Now playing: legacy queue ${session.queue?.size ?: "none"}, timeline ${built.currentTimeline.windowCount}, " +
+                        "commands timeline=${built.isCommandAvailable(Player.COMMAND_GET_TIMELINE)} " +
+                        "seekItem=${built.isCommandAvailable(Player.COMMAND_SEEK_TO_MEDIA_ITEM)} " +
+                        "custom=${built.availableSessionCommands.commands.count { it.commandCode == SessionCommand.COMMAND_CODE_CUSTOM }} " +
+                        "buttons=${built.mediaButtonPreferences.size}"
+                )
+                publish()
+            }, appContext.mainExecutor)
+        }, appContext.mainExecutor)
     }
 
     private fun publish() {
         val c = controller
         if (c == null) {
-            _track.value = null
+            // Nothing to follow; while a controller is still connecting the previous track stays
+            if (attachedToken == null) _track.value = null
             return
         }
-        val metadata = this.metadata
-        val state = this.state
-        val playing = state?.state == PlaybackStateCompat.STATE_PLAYING
-        val art = updateArt(metadata)
-        updateAccent(art, metadata?.let { "${it.text(MediaMetadata.METADATA_KEY_ALBUM)}|${it.text(MediaMetadata.METADATA_KEY_TITLE)}" })
-        val app = MediaApps.info(appContext, c.packageName)
-        if (playing) LauncherSettings.get(appContext).markRecent(c.packageName)
+        val packageName = c.connectedToken?.packageName ?: return
+        val metadata = c.mediaMetadata
+        val playing = c.isPlaying
+        updateArt(metadata, "${metadata.albumTitle}|${metadata.title}")
+        val app = MediaApps.info(appContext, packageName)
+        if (playing) LauncherSettings.get(appContext).markRecent(packageName)
+        val timeline = c.currentTimeline
+        val active = if (timeline.isEmpty) -1 else c.currentMediaItemIndex
+        if (timeline.windowCount != loggedQueueSize) {
+            loggedQueueSize = timeline.windowCount
+            EventLog.log("Now playing: queue of ${timeline.windowCount} items, playing #${active + 1}")
+        }
 
         _track.value = Track(
-            packageName = c.packageName,
-            appLabel = app?.label ?: c.packageName,
+            packageName = packageName,
+            appLabel = app?.label ?: packageName,
             appIcon = app?.icon,
-            title = metadata?.text(MediaMetadata.METADATA_KEY_TITLE)
-                ?: metadata?.text(MediaMetadata.METADATA_KEY_DISPLAY_TITLE) ?: "",
-            artist = metadata?.text(MediaMetadata.METADATA_KEY_ARTIST)
-                ?: metadata?.text(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
-                ?: metadata?.text(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: "",
-            album = metadata?.text(MediaMetadata.METADATA_KEY_ALBUM) ?: "",
+            title = metadata.title.text() ?: metadata.displayTitle.text() ?: "",
+            artist = metadata.artist.text() ?: metadata.albumArtist.text() ?: metadata.subtitle.text() ?: "",
+            album = metadata.albumTitle.text() ?: "",
             art = artImage,
-            accent = if (art != null) accent else null,
-            durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.coerceAtLeast(0) ?: 0,
-            positionMs = state?.position ?: 0,
-            positionUpdatedAt = state?.lastPositionUpdateTime?.takeIf { it > 0 } ?: SystemClock.elapsedRealtime(),
-            speed = state?.playbackSpeed?.takeIf { it > 0f } ?: 1f,
+            accent = if (artKey != null) accent else null,
+            durationMs = c.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0L,
+            positionMs = c.currentPosition.coerceAtLeast(0),
+            positionUpdatedAt = SystemClock.elapsedRealtime(),
+            speed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
             playing = playing,
-            shuffle = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL,
-            repeat = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE && c.repeatMode >= 0,
-            repeatOne = c.repeatMode == PlaybackStateCompat.REPEAT_MODE_ONE,
-            playlist = c.queueTitle?.toString()?.takeIf { it.isNotBlank() },
-            upNext = nextInQueue(),
-            queue = queueEntries(state?.activeQueueItemId ?: -1L),
-            activeQueueId = state?.activeQueueItemId ?: -1L,
-            customActions = state?.customActions.orEmpty().map { action ->
-                MediaAction(action.action, action.name.toString(), actionIcon(c.packageName, action.icon))
+            shuffle = c.shuffleModeEnabled,
+            repeat = c.repeatMode != Player.REPEAT_MODE_OFF,
+            repeatOne = c.repeatMode == Player.REPEAT_MODE_ONE,
+            playlist = c.playlistMetadata.title.text(),
+            upNext = nextInQueue(timeline, active),
+            queue = queueEntries(timeline, active),
+            activeQueueId = active.toLong(),
+            customActions = c.mediaButtonPreferences.mapNotNull { button ->
+                val command = button.sessionCommand?.takeIf { it.commandCode == SessionCommand.COMMAND_CODE_CUSTOM }
+                    ?: return@mapNotNull null
+                MediaAction(command.customAction, button.displayName.toString(), actionIcon(packageName, button.iconResId))
             },
-            canSeek = (state?.actions ?: 0L) and PlaybackStateCompat.ACTION_SEEK_TO != 0L,
+            canSeek = c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
         )
     }
 
-    private fun queueEntries(activeId: Long): List<QueueEntry> {
-        val items = queue.take(MAX_QUEUE)
-        val active = items.indexOfFirst { it.queueId == activeId }.coerceAtLeast(0)
-        return items.mapIndexed { index, item ->
-            val d = item.description
-            // Most players send only an art URI; fetch the ones around the playing track
-            val uri = d.iconUri?.takeIf { index in active - ART_BEHIND..active + ART_AHEAD }
+    private fun queueEntries(timeline: Timeline, active: Int): List<QueueEntry> {
+        val window = Timeline.Window()
+        val count = minOf(timeline.windowCount, MAX_QUEUE)
+        return (0 until count).map { index ->
+            val item = timeline.getWindow(index, window).mediaItem
+            val m = item.mediaMetadata
+            // Art is decoded only around the playing track; players send bytes or a URI
+            val wantArt = index in active - ART_BEHIND..active + ART_AHEAD
             QueueEntry(
-                id = item.queueId,
-                title = d.title?.toString().orEmpty(),
-                subtitle = d.subtitle?.toString().orEmpty(),
-                icon = d.iconBitmap?.asImageBitmap() ?: uri?.let(::queueArt),
+                id = index.toLong(),
+                title = m.title.text().orEmpty(),
+                subtitle = m.subtitle.text() ?: m.artist.text().orEmpty(),
+                icon = if (wantArt) queueArt("${item.mediaId}|${m.artworkData?.size ?: m.artworkUri}", m.artworkData, m.artworkUri) else null,
             )
         }
     }
 
-    /** Cached art for [uri], or null while it loads in the background (then the queue is republished). */
-    private fun queueArt(uri: Uri): ImageBitmap? {
-        val key = uri.toString()
+    /** Cached art for [key], or null while it loads in the background (then the queue is republished). */
+    private fun queueArt(key: String, data: ByteArray?, uri: Uri?): ImageBitmap? {
+        if (data == null && uri == null) return null
         queueArtCache.get(key)?.let { return it }
         // Players may create the art on demand: retry a failed one after a while
         val failedAt = queueArtFailed[key]
         if (failedAt != null && SystemClock.elapsedRealtime() - failedAt < ART_RETRY_MS) return null
         if (!queueArtLoading.add(key)) return null
         scope.launch {
-            val art = withContext(artDispatcher) {
-                runCatching {
-                    val source = ImageDecoder.createSource(appContext.contentResolver, uri)
-                    ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                        val size = info.size
-                        decoder.setTargetSampleSize((minOf(size.width, size.height) / QUEUE_ART_PX).coerceAtLeast(1))
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    }.asImageBitmap()
-                }.onFailure { Log.i(TAG, "Queue art $uri: $it") }.getOrNull()
-            }
+            val art = withContext(artDispatcher) { Artwork.decode(appContext, data, uri, QUEUE_ART_PX)?.asImageBitmap() }
             queueArtLoading.remove(key)
             if (art == null) {
                 queueArtFailed[key] = SystemClock.elapsedRealtime()
@@ -401,68 +435,38 @@ object NowPlaying {
         }
     }
 
-    private fun nextInQueue(): String? {
-        val activeId = state?.activeQueueItemId ?: return null
-        val index = queue.indexOfFirst { it.queueId == activeId }
-        if (index < 0) return null
-        val next = queue.getOrNull(index + 1)?.description ?: return null
-        return listOfNotNull(next.title, next.subtitle).map { it.toString() }.filter { it.isNotBlank() }
-            .joinToString(" · ").ifEmpty { null }
+    private fun nextInQueue(timeline: Timeline, active: Int): String? {
+        if (active < 0 || active + 1 >= timeline.windowCount) return null
+        val next = timeline.getWindow(active + 1, Timeline.Window()).mediaItem.mediaMetadata
+        return listOfNotNull(next.title.text(), next.subtitle.text() ?: next.artist.text()).joinToString(" · ").ifEmpty { null }
     }
-
-    // The player's art and its screen-sized copy, kept as long as the player sends the same bitmap
-    private var artSource: Bitmap? = null
-    private var artImage: ImageBitmap? = null
 
     /**
-     * The album art as the screen uses it. Local players may embed covers of thousands of pixels:
-     * drawn as they are they cost tens of MB of texture per track, and Canvas refuses the largest.
+     * Album art and accent color, computed once per artwork the player sends, off the main thread.
+     * Covers of thousands of pixels from local players are brought down to a size the screen can use.
      */
-    private fun updateArt(metadata: MediaMetadataCompat?): Bitmap? {
-        val raw = metadata?.let {
-            it.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                ?: it.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: it.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        }
-        if (raw === artSource) return raw
-        artSource = raw
-        val longest = raw?.let { maxOf(it.width, it.height) } ?: 0
-        if (raw == null || longest <= ART_PX) {
-            artImage = raw?.asImageBitmap()
-            return raw
-        }
+    private fun updateArt(metadata: MediaMetadata, track: String) {
+        val data = metadata.artworkData
+        val uri = metadata.artworkUri
+        val key: Any? = data ?: uri
+        if (key === artKey || (key != null && key == artKey)) return
+        artKey = key
         artImage = null
-        scope.launch {
-            val scale = ART_PX.toFloat() / longest
-            val scaled = withContext(Dispatchers.Default) {
-                Bitmap.createScaledBitmap(raw, (raw.width * scale).toInt(), (raw.height * scale).toInt(), true)
-            }
-            if (artSource === raw) {
-                artImage = scaled.asImageBitmap()
-                publish()
-            }
-        }
-        return raw
-    }
-
-    /** Extracts the album color off the main thread, then republishes. */
-    private fun updateAccent(art: Bitmap?, track: String?) {
-        if (art == null) return
-        val key = "$track|${art.width}x${art.height}"
-        if (key == accentKey) return
-        accentKey = key
         accent = null
+        if (key == null) return
         scope.launch {
-            val color = withContext(Dispatchers.Default) {
-                val palette = Palette.from(art).maximumColorCount(16).generate()
-                (palette.vibrantSwatch ?: palette.dominantSwatch)?.rgb
+            val (image, color) = withContext(Dispatchers.Default) {
+                val bitmap = Artwork.decode(appContext, data, uri, ART_PX)
+                val swatch = bitmap?.let { Palette.from(it).maximumColorCount(16).generate() }
+                    ?.let { it.vibrantSwatch ?: it.dominantSwatch }
+                bitmap?.asImageBitmap() to swatch?.rgb?.let { Color(it) }
             }
-            if (accentKey == key) {
-                accent = color?.let { Color(it) }
-                publish()
-            }
+            if (artKey !== key) return@launch
+            artImage = image
+            accent = color
+            publish()
         }
     }
 
-    private fun MediaMetadataCompat.text(key: String): String? = getString(key)?.takeIf { it.isNotBlank() }
+    private fun CharSequence?.text(): String? = this?.toString()?.takeIf { it.isNotBlank() }
 }

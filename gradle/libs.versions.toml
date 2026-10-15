@@ -7,7 +7,7 @@ composeBom = "2026.09.00"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 coreKtx = "1.19.1"
-media = "1.8.0"
+media3 = "1.11.1"
 palette = "1.0.0"
 
 [libraries]
@@ -23,7 +23,7 @@ compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview"
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
-media = { module = "androidx.media:media", version.ref = "media" }
+media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
 
 [plugins]

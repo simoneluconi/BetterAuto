@@ -15,6 +15,7 @@ import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.S
 import aap_protobuf.service.media.sink.message.AudioStreamTypeOuterClass.AudioStreamType
 import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.os.Build
+import com.google.protobuf.ByteString
 import com.google.protobuf.MessageLite
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
@@ -37,6 +38,8 @@ class AapSession(
     private val transport: Transport,
     private val tls: AapTls,
     private val projection: Projection,
+    /** The app icon as PNG in [com.simoneluconi.betterauto.AppIcon.Sizes], for the head unit's source list. */
+    private val icons: () -> List<ByteArray> = { emptyList() },
 ) : Closeable {
     private val codec = FrameCodec(transport, tls)
     private val channels = ConcurrentHashMap<Int, ServiceChannel>()
@@ -113,8 +116,13 @@ class AapSession(
         val request = ServiceDiscoveryRequest.newBuilder()
             .setLabelText("BetterAuto")
             .setDeviceName(Build.MODEL)
-            .build()
-        send(ControlMessageType.MESSAGE_SERVICE_DISCOVERY_REQUEST_VALUE, request, encrypted = true)
+        icons().map(ByteString::copyFrom).let { png ->
+            png.getOrNull(0)?.let(request::setSmallIcon)
+            png.getOrNull(1)?.let(request::setMediumIcon)
+            png.getOrNull(2)?.let(request::setLargeIcon)
+            EventLog.log("Service discovery request with ${png.size} icons (${png.sumOf { it.size() }} bytes)")
+        }
+        send(ControlMessageType.MESSAGE_SERVICE_DISCOVERY_REQUEST_VALUE, request.build(), encrypted = true)
     }
 
     private fun onServiceDiscovery(response: ServiceDiscoveryResponse) {

@@ -44,7 +44,7 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.core.ktx)
-    implementation(libs.media)
+    implementation(libs.media3.session)
     implementation(libs.palette)
 
     testImplementation(libs.junit)

@@ -296,7 +296,8 @@ class AudioSinkChannel(
     override fun close() {
         running = false
         sender?.interrupt()
-        CarAudio.setSink(null)
+        // On the main thread, after the pause a disconnect posts there: the phone volume comes back only then
+        main.post { CarAudio.setSink(null) }
         CarState.audio.value = null
     }
 
