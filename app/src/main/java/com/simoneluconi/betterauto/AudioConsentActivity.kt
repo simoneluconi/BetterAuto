@@ -99,13 +99,13 @@ class AudioConsentActivity : Activity() {
         finish()
     }
 
-    private companion object {
-        const val REQUEST_RECORD_AUDIO = 1
-        const val REQUEST_CAPTURE = 2
-        const val PREFS = "car_audio"
-        const val KEY_EXPLAINED = "consent_explained"
-
+    companion object {
         /** AppOpsManager.OPSTR_PROJECT_MEDIA, not public in the SDK. */
         const val OPSTR_PROJECT_MEDIA = "android:project_media"
+
+        private const val REQUEST_RECORD_AUDIO = 1
+        private const val REQUEST_CAPTURE = 2
+        private const val PREFS = "car_audio"
+        private const val KEY_EXPLAINED = "consent_explained"
     }
 }

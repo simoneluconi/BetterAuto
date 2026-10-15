@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">BetterAuto</string>
-    <string name="status_idle">In attesa dell\'autoradio…</string>
-    <string name="status_connected">Connesso: %1$s</string>
     <string name="notification_channel">Connessione autoradio</string>
     <string name="notification_text">Sessione Android Auto attiva</string>
     <string name="action_preview">Anteprima UI auto</string>
-    <string name="action_notification_access">Consenti accesso alla musica</string>
-    <string name="notification_access_granted">Accesso alla musica consentito</string>
     <string name="nav_home">Home</string>
     <string name="nav_music">Musica</string>
     <string name="nav_map">Mappa</string>
@@ -71,4 +67,32 @@
     <string name="music_pick_app">Scegli un\'app musicale in Sorgenti</string>
     <string name="music_fullscreen">Player a schermo intero</string>
     <string name="music_show_panel">Mostra la libreria</string>
+    <string name="home_subtitle">Lo schermo dell\'auto, a modo tuo</string>
+    <string name="home_connected">Collegato</string>
+    <string name="home_not_connected">Non collegato</string>
+    <string name="home_plug_in">Collega il telefono all\'auto con il cavo USB</string>
+    <string name="setup_title">Configurazione</string>
+    <string name="setup_progress">%1$d di %2$d pronti</string>
+    <string name="step_ready">Pronto</string>
+    <string name="step_todo">Da fare</string>
+    <string name="step_optional">Facoltativo</string>
+    <string name="step_notifications_title">Notifiche</string>
+    <string name="step_notifications_text">Mostra quando BetterAuto è collegato all\'auto, con un pulsante per mandarci l\'audio.</string>
+    <string name="step_media_title">Accesso alla musica</string>
+    <string name="step_media_text">Mostra cosa stai ascoltando sullo schermo dell\'auto e sul cruscotto, e lo controlla. Attiva BetterAuto nell\'elenco.</string>
+    <string name="step_audio_title">Musica dalle casse dell\'auto</string>
+    <string name="step_audio_text_todo">Consenti l\'accesso all\'audio per sentire la musica in auto.</string>
+    <string name="step_audio_text_ask">Funziona già, ma Android chiede il permesso a ogni collegamento. Per saltarlo, esegui una volta da un computer:</string>
+    <string name="step_audio_text_done">Tutto pronto: la musica passa all\'auto da sola quando ti colleghi.</string>
+    <string name="step_android_auto_title">Android Auto disattivato</string>
+    <string name="step_android_auto_text_todo">Android Auto è attivo e si prende la connessione con l\'auto. Apri la sua pagina e tocca Disattiva. Se il telefono non lo permette, esegui da un computer:</string>
+    <string name="step_android_auto_text_done">L\'auto si collega a BetterAuto.</string>
+    <string name="action_allow">Consenti</string>
+    <string name="action_open_settings">Apri impostazioni</string>
+    <string name="action_copy">Copia</string>
+    <string name="copied">Copiato</string>
+    <string name="log_title">Log della connessione</string>
+    <string name="log_show">Mostra</string>
+    <string name="log_hide">Nascondi</string>
+    <string name="log_empty">Ancora niente</string>
 </resources>

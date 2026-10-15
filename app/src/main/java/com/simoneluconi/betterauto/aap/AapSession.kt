@@ -145,6 +145,7 @@ class AapSession(
             EventLog.log("    keys: ${keys.joinToString()}")
             InputChannel(this, service.id, touchscreen?.width ?: 0, touchscreen?.height ?: 0, keys, projection)
         }
+        service.hasMediaPlaybackService() -> MediaStatusChannel(this, service.id)
         service.hasSensorSourceService() -> {
             val sensors = service.sensorSourceService.sensorsList.map { it.sensorType }
             EventLog.log("    sensors: ${sensors.joinToString()}")

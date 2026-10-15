@@ -14,6 +14,8 @@ doesn't know the difference: it thinks it is talking to Android Auto.
 - 🎵 **Music player** for whatever plays on your phone (Spotify, YouTube Music, local FLAC
   players…), with cover art, colors taken from the album and big, easy controls.
 - 🔊 **Car audio over the USB cable**, uncompressed, in the best format your car supports.
+- 🚘 **Now playing on the car's own displays** (instrument cluster, driver info screen) when the car
+  supports it: title, artist, album, cover, time and progress.
 - 🧩 **Widget home screen** like Android Auto: one, two or three widgets side by side,
   remembered exactly as you left them.
 - 🌗 **Day and night themes** that follow the car's lights, with a smooth fade instead of a flash.
@@ -34,7 +36,8 @@ calls, voice commands, wireless connection.
 ## Getting started
 
 1. **Install the app** on your phone (build it with Android Studio, see
-   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)).
+   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)), open it and follow the setup checklist: it shows
+   what is ready and takes you to the right settings for the rest.
 
 2. **Disable the official Android Auto app**, otherwise it grabs the connection first:
    *Settings → Apps → Android Auto → Disable*. On phones where that button is greyed out, use the

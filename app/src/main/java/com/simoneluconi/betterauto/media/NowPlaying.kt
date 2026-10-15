@@ -55,6 +55,10 @@ data class Track(
     val playing: Boolean,
     val shuffle: Boolean,
     val repeat: Boolean,
+    /** Repeating the current track only (a kind of [repeat]). */
+    val repeatOne: Boolean,
+    /** Name of what is playing as a whole (playlist, album, station), when the player tells it. */
+    val playlist: String?,
     val upNext: String?,
     /** The player's queue, if the app shares it (many do, some don't). */
     val queue: List<QueueEntry>,
@@ -294,6 +298,8 @@ object NowPlaying {
             playing = playing,
             shuffle = c.shuffleMode == PlaybackStateCompat.SHUFFLE_MODE_ALL,
             repeat = c.repeatMode != PlaybackStateCompat.REPEAT_MODE_NONE && c.repeatMode >= 0,
+            repeatOne = c.repeatMode == PlaybackStateCompat.REPEAT_MODE_ONE,
+            playlist = c.queueTitle?.toString()?.takeIf { it.isNotBlank() },
             upNext = nextInQueue(c),
             queue = queueEntries(c, state?.activeQueueItemId ?: -1L),
             activeQueueId = state?.activeQueueItemId ?: -1L,
