@@ -111,6 +111,13 @@ object CarNotifications {
         _arrived.tryEmit(n)
     }
 
+    /** Development: removes the pretend notifications. */
+    fun clearSimulated() {
+        byKey.keys.removeAll { it.startsWith(DEBUG_KEY) }
+        EventLog.log("Notifications: pretend messages removed")
+        publish()
+    }
+
     internal fun onConnected(service: NotificationListenerService) {
         listener = service
         connected.value = true

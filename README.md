@@ -9,6 +9,17 @@ doesn't know the difference: it thinks it is talking to Android Auto.
 > ⚠️ Personal, experimental project, not affiliated with or endorsed by the makers of Android Auto.
 > Android Auto is a trademark of its owner.
 
+## Screenshots
+
+| Home | Notifications |
+|---|---|
+| ![Home with the music player](docs/screenshots/01_home_music.jpg) | ![Notifications](docs/screenshots/05_notifications.jpg) |
+| **Call in progress** | **Night theme** |
+| ![Call in progress](docs/screenshots/10_call_active.jpg) | ![Night theme](docs/screenshots/12_home_night.jpg) |
+
+More in [docs/screenshots](docs/screenshots), including portrait and wide screens. Messages and
+calls in the screenshots are made up.
+
 ## Features
 
 - 🎵 **Music player** for whatever plays on your phone (Spotify, YouTube Music, local FLAC
@@ -16,15 +27,21 @@ doesn't know the difference: it thinks it is talking to Android Auto.
 - 🔊 **Car audio over the USB cable**, uncompressed, in the best format your car supports.
 - 🚘 **Now playing on the car's own displays** (instrument cluster, driver info screen) when the car
   supports it: title, artist, album, cover, time and progress.
+- 📞 **Phone**: recents, favorites with photos, contacts with A–Z jump, keypad, and a call screen
+  to answer, hang up, mute and hold from the car (call audio goes through the car's Bluetooth).
+- 🔔 **Notifications** that don't get in the way: messages grouped by chat, filters per app and for
+  group chats, mute a single chat, quiet mode with no pop-ups.
 - 🧩 **Widget home screen** like Android Auto: one, two or three widgets side by side,
   remembered exactly as you left them.
 - 🌗 **Day and night themes** that follow the car's lights, with a smooth fade instead of a flash.
-- 🎛️ **Works without a touchscreen**: rotary knob, joystick and steering wheel buttons.
+- 🎛️ **Works without a touchscreen**: rotary knob, joystick and steering wheel buttons. Turn the
+  knob to go through the controls, nudge it to jump between the app bar and the screen.
+- ⚙️ **Settings on the car and on the phone**, the same ones in both places.
 - 📐 **Fits any screen**, from small 800×480 units to wide dashboards and portrait displays.
 - 🌍 English and Italian, following your phone's language.
 
-Coming next: maps with turn-by-turn directions (also on the instrument cluster), notifications,
-calls, voice commands, wireless connection.
+Coming next: maps with turn-by-turn directions (also on the instrument cluster), voice commands,
+Home Assistant, wireless connection.
 
 ## Requirements
 
@@ -105,7 +122,7 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [x] Full music screen: library, queue, up next
 - [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
       instrument cluster
-- [ ] Notifications and messages widgets
+- [x] Notifications: widget, section, filters, quiet mode
 - [ ] Home Assistant: widget and section for gates, garage, lights, scenes, alarm
 - [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
       (audio over Bluetooth)

@@ -27,6 +27,7 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *   ... --es call ringing    pretend call: ringing, dialing, active, holding, ended or off
  *   ... --es notify "Text"   pretend message (add --es from "Name" and --ez group true for a group chat)
  *   ... --ez demo true       show only pretend notifications (screenshots without personal data)
+ *   ... --ez clearDemo true  remove the pretend notifications
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -50,6 +51,7 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("call")?.let { name ->
             Calls.simulate(CallPhase.entries.firstOrNull { it.name.equals(name, ignoreCase = true) })
         }
+        if (intent.getBooleanExtra("clearDemo", false)) CarNotifications.clearSimulated()
         if (intent.hasExtra("demo")) CarNotifications.demoOnly = intent.getBooleanExtra("demo", false)
         intent.getStringExtra("notify")?.let { text ->
             CarNotifications.simulate(intent.getStringExtra("from") ?: "Giulia", text, intent.getBooleanExtra("group", false))
