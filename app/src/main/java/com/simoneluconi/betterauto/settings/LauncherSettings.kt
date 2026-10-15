@@ -36,8 +36,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _widgets = MutableStateFlow(loadWidgets())
     val widgets: StateFlow<List<WidgetType>> = _widgets
 
-    private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, true))
-    /** Music section: player plus library panel (true) or full-screen player (false). */
+    private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, false))
+    /** Music section: player plus library panel (true) or full-screen player (false, the default). */
     val musicPanel: StateFlow<Boolean> = _musicPanel
 
     private val _musicTab = MutableStateFlow(prefs.getString(KEY_MUSIC_TAB, null))
