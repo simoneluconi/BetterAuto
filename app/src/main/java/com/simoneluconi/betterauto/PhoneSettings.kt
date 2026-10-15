@@ -8,7 +8,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.simoneluconi.betterauto.ui.CarIcon
+import com.simoneluconi.betterauto.ui.CarIcons
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -38,14 +45,36 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
 /** The car screen's settings on the phone: the same [SettingsCatalog] the car shows, in the phone's style. */
 @Composable
-fun PhoneSettings() {
+fun PhoneSettingsPage(onBack: () -> Unit) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val settings = remember { LauncherSettings.get(context) }
-    Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        CarLabel(stringResource(R.string.phone_settings_title), 22.sp, colors.text, weight = FontWeight.Bold)
-        CarLabel(stringResource(R.string.phone_settings_hint), 15.sp, colors.text2, maxLines = 3)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.bg)
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                CarIcon(CarIcons.Back, colors.text, Modifier.size(24.dp))
+            }
+            CarLabel(stringResource(R.string.phone_settings_title), 26.sp, colors.text, weight = FontWeight.ExtraBold)
+        }
+        CarLabel(stringResource(R.string.phone_settings_hint), 15.sp, colors.text2, Modifier.padding(horizontal = 4.dp), maxLines = 3)
+        SettingsList(settings)
     }
+}
+
+@Composable
+private fun SettingsList(settings: LauncherSettings) {
+    val colors = LocalCarColors.current
     Column(
         Modifier
             .fillMaxWidth()

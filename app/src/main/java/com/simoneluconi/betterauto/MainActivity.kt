@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -44,6 +45,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,10 +73,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            CarTheme(night = isSystemInDarkTheme(), album = null) { PhoneHome() }
+            CarTheme(night = isSystemInDarkTheme(), album = null) {
+                var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
+                BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
+                when (page) {
+                    PhonePage.HOME -> PhoneHome(onOpenSettings = { page = PhonePage.SETTINGS })
+                    PhonePage.SETTINGS -> PhoneSettingsPage(onBack = { page = PhonePage.HOME })
+                }
+            }
         }
     }
 }
+
+private enum class PhonePage { HOME, SETTINGS }
 
 private enum class StepState { DONE, TODO, OPTIONAL }
 
@@ -90,7 +101,7 @@ private class Step(
 )
 
 @Composable
-private fun PhoneHome() {
+private fun PhoneHome(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
     // Permissions change in other screens: re-check whenever we come back
@@ -134,7 +145,7 @@ private fun PhoneHome() {
             CarLabel(stringResource(R.string.setup_progress, ready, steps.size), 15.sp, colors.text2)
         }
         steps.forEach { StepCard(it) }
-        PhoneSettings()
+        SettingsCard(onOpenSettings)
 
         PillButton(stringResource(R.string.action_preview), primary = true, modifier = Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, CarPreviewActivity::class.java))
@@ -237,6 +248,31 @@ private fun StateBadge(state: StepState) {
     ) {
         if (state == StepState.DONE) CarIcon(CarIcons.Check, content, Modifier.size(16.dp))
         CarLabel(stringResource(label), 13.sp, content, weight = FontWeight.Bold)
+    }
+}
+
+/** Opens the car screen settings page. */
+@Composable
+private fun SettingsCard(onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(colors.surface)
+            .clickable(onClick = onClick)
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(44.dp).background(colors.surface2, CircleShape), contentAlignment = Alignment.Center) {
+            CarIcon(CarIcons.Settings, colors.text2, Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            CarLabel(stringResource(R.string.phone_settings_title), 18.sp, colors.text, weight = FontWeight.Bold)
+            CarLabel(stringResource(R.string.phone_settings_card), 15.sp, colors.text2, maxLines = 2)
+        }
+        CarIcon(CarIcons.Chevron, colors.text2, Modifier.size(22.dp))
     }
 }
 

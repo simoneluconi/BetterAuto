@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -360,53 +361,38 @@ private fun ListRowBack(onClick: () -> Unit) {
     }
 }
 
-/** Number entry. Side by side with the keys on wide screens, stacked on tall ones. */
+/** Number entry: the number on top, the keys, then the call button at the bottom. */
 @Composable
 internal fun Keypad(onCall: ((String) -> Unit)?, onDigit: (Char) -> Unit = {}) {
+    val colors = LocalCarColors.current
     var number by rememberSaveable { mutableStateOf("") }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth > maxHeight
-        val keys = @Composable { mod: Modifier ->
-            KeyGrid(mod) { digit ->
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier.fillMaxHeight().widthIn(max = 620.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(Modifier.height(60.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CarLabel(number.ifEmpty { " " }, 40.sp, colors.text, Modifier.weight(1f, fill = false), weight = FontWeight.Bold, tabularNumbers = true)
+                if (number.isNotEmpty()) {
+                    Box(
+                        Modifier
+                            .carClickable(CircleShape, stringResource(R.string.phone_delete_digit)) { number = number.dropLast(1) }
+                            .size(56.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CarIcon(CarIcons.Backspace, colors.text2, Modifier.size(28.dp))
+                    }
+                }
+            }
+            KeyGrid(Modifier.weight(1f)) { digit ->
                 number += digit
                 onDigit(digit)
             }
-        }
-        val display = @Composable { mod: Modifier -> NumberDisplay(number, mod, onCall, onDelete = { number = number.dropLast(1) }) }
-        if (wide) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                display(Modifier.weight(1f).fillMaxHeight())
-                keys(Modifier.weight(1f).fillMaxHeight())
-            }
-        } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                display(Modifier.fillMaxWidth())
-                keys(Modifier.weight(1f).fillMaxWidth())
-            }
-        }
-    }
-}
-
-@Composable
-private fun NumberDisplay(number: String, modifier: Modifier, onCall: ((String) -> Unit)?, onDelete: () -> Unit) {
-    val colors = LocalCarColors.current
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            CarLabel(number.ifEmpty { " " }, 44.sp, colors.text, Modifier.weight(1f, fill = false), weight = FontWeight.Bold, tabularNumbers = true)
-            if (number.isNotEmpty()) {
-                Box(
-                    Modifier
-                        .carClickable(CircleShape, stringResource(R.string.phone_delete_digit), onClick = onDelete)
-                        .size(60.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CarIcon(CarIcons.Backspace, colors.text2, Modifier.size(28.dp))
+            if (onCall != null) {
+                RoundButton(CarIcons.CallAnswer, stringResource(R.string.phone_call), CallGreen, Color.White, 84.dp) {
+                    if (number.isNotBlank()) onCall(number)
                 }
-            }
-        }
-        if (onCall != null) {
-            RoundButton(CarIcons.CallAnswer, stringResource(R.string.phone_call), CallGreen, Color.White, 96.dp) {
-                if (number.isNotBlank()) onCall(number)
             }
         }
     }

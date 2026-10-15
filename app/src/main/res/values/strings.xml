@@ -134,4 +134,5 @@
     <string name="call_others">+%1$d call</string>
     <string name="step_phone_title">Phone and contacts</string>
     <string name="step_phone_text">Recent calls, favorites and contacts on the car screen, and calls answered and controlled from the car. The audio goes through the car\'s Bluetooth.</string>
+    <string name="phone_settings_card">Theme, layout, music, contacts and more</string>
 </resources>
