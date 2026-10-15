@@ -36,6 +36,9 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _widgets = MutableStateFlow(loadWidgets())
     val widgets: StateFlow<List<WidgetType>> = _widgets
 
+    private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
+    val autoPlay: StateFlow<Boolean> = _autoPlay
+
     private val _debugOverlay = MutableStateFlow(prefs.getBoolean(KEY_DEBUG, false))
     val debugOverlay: StateFlow<Boolean> = _debugOverlay
 
@@ -61,6 +64,11 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         val rotated = list.drop(1) + list.first()
         _widgets.value = rotated
         prefs.edit { putString(KEY_WIDGETS, rotated.joinToString(",") { it.name }) }
+    }
+
+    fun setAutoPlay(value: Boolean) {
+        _autoPlay.value = value
+        prefs.edit { putBoolean(KEY_AUTO_PLAY, value) }
     }
 
     fun setDebugOverlay(value: Boolean) {
@@ -111,6 +119,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_SECTION = "section"
         private const val KEY_WIDGETS = "widgets"
         private const val KEY_DEBUG = "debug_overlay"
+        private const val KEY_AUTO_PLAY = "auto_play"
         private const val KEY_PINNED = "pinned_apps"
         private const val KEY_RECENT = "recent_apps"
         private const val MAX_RECENT = 4

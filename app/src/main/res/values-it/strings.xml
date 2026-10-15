@@ -60,4 +60,5 @@
     <string name="audio_consent_later">Non ora</string>
     <string name="notification_audio_phone">La musica esce dal telefono</string>
     <string name="action_enable_car_audio">Manda l\'audio all\'auto</string>
+    <string name="settings_auto_play">Avvia la musica al collegamento</string>
 </resources>

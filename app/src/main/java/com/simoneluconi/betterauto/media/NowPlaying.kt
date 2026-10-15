@@ -112,6 +112,21 @@ object NowPlaying {
 
     fun next() = controller?.transportControls?.skipToNext()
 
+    fun pause() {
+        val c = controller ?: return
+        if (c.playbackState?.state == PlaybackStateCompat.STATE_PLAYING) c.transportControls.pause()
+    }
+
+    /** Resumes the current player, or starts the most recently used music app if none is active. */
+    fun resume() {
+        val c = controller
+        if (c != null) {
+            if (c.playbackState?.state != PlaybackStateCompat.STATE_PLAYING) c.transportControls.play()
+            return
+        }
+        LauncherSettings.get(appContext).recentApps.value.firstOrNull()?.let { open(it) }
+    }
+
     fun previous() = controller?.transportControls?.skipToPrevious()
 
     fun toggleShuffle() {

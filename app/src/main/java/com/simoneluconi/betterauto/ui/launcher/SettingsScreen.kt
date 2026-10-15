@@ -45,6 +45,7 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val bar by settings.barPosition.collectAsStateWithLifecycle()
     val layout by settings.layout.collectAsStateWithLifecycle()
     val debug by settings.debugOverlay.collectAsStateWithLifecycle()
+    val autoPlay by settings.autoPlay.collectAsStateWithLifecycle()
 
     Column(
         modifier
@@ -85,6 +86,9 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         Setting(R.string.settings_widget_order, listOf(Unit), null, { stringResource(R.string.rotate_widgets) }) {
             settings.rotateWidgets()
         }
+        Setting(R.string.settings_auto_play, listOf(false, true), autoPlay, {
+            stringResource(if (it) R.string.option_on else R.string.option_off)
+        }) { settings.setAutoPlay(it) }
         Setting(R.string.settings_debug, listOf(false, true), debug, {
             stringResource(if (it) R.string.option_on else R.string.option_off)
         }) { settings.setDebugOverlay(it) }

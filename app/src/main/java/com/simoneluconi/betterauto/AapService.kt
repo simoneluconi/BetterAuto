@@ -18,6 +18,7 @@ import android.os.Looper
 import com.simoneluconi.betterauto.aap.AapSession
 import com.simoneluconi.betterauto.aap.AapTls
 import com.simoneluconi.betterauto.audio.CarAudio
+import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
@@ -36,6 +37,8 @@ class AapService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Media sessions are needed by audio (auto-play, pause on disconnect) before the screen is up
+        NowPlaying.acquire(this)
         CarAudio.init(this)
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
     }
@@ -72,6 +75,8 @@ class AapService : Service() {
             } catch (e: Exception) {
                 EventLog.log("Session ended: $e")
             } finally {
+                // Like Android Auto: pause on disconnect, before the phone volume comes back
+                NowPlaying.pause()
                 newSession.close()
                 main.post { onSessionEnded(newSession) }
             }
@@ -116,6 +121,7 @@ class AapService : Service() {
     override fun onDestroy() {
         CarAudio.onProjectionChanged = null
         CarAudio.setProjection(null)
+        NowPlaying.release()
         session?.close()
         session = null
         EventLog.status = null

@@ -3,6 +3,8 @@ package com.simoneluconi.betterauto.audio
 import android.content.Context
 import android.media.projection.MediaProjection
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.media.NowPlaying
+import com.simoneluconi.betterauto.settings.LauncherSettings
 
 data class PcmFormat(val sampleRate: Int, val channels: Int, val bits: Int) {
     override fun toString() = "PCM $sampleRate Hz $bits-bit ${if (channels == 1) "mono" else "${channels}ch"}"
@@ -26,11 +28,18 @@ object CarAudio {
     private var projection: MediaProjection? = null
     private var sink: AudioSink? = null
     private var capture: AudioCapture? = null
+    private var autoPlayed = false
 
-    /** Call once before use; also puts back a phone volume left muted by a previous crash. */
+    /**
+     * Call once before use (after NowPlaying is acquired). If the app died while the phone was muted,
+     * the music may still be playing: pause it first, so restoring the volume never blasts the phone.
+     */
     fun init(context: Context) {
         appContext = context.applicationContext
-        if (capture == null) PhoneSpeakerMute.release(appContext)
+        if (capture == null && PhoneSpeakerMute.isMuted(appContext)) {
+            NowPlaying.pause()
+            PhoneSpeakerMute.release(appContext)
+        }
     }
 
     val hasProjection: Boolean
@@ -51,6 +60,8 @@ object CarAudio {
 
     @Synchronized
     fun setSink(value: AudioSink?) {
+        // A new car audio channel is a new connection: allow auto-play again
+        if (value == null) autoPlayed = false
         sink = value
         restart()
     }
@@ -70,6 +81,15 @@ object CarAudio {
             EventLog.log("Audio capture failed: $e")
             null
         }
-        if (capture != null) PhoneSpeakerMute.engage(appContext) else PhoneSpeakerMute.release(appContext)
+        if (capture == null) {
+            PhoneSpeakerMute.release(appContext)
+            return
+        }
+        PhoneSpeakerMute.engage(appContext)
+        // Like Android Auto: start the music once per connection, only when it really goes to the car
+        if (!autoPlayed) {
+            autoPlayed = true
+            if (LauncherSettings.get(appContext).autoPlay.value) NowPlaying.resume()
+        }
     }
 }

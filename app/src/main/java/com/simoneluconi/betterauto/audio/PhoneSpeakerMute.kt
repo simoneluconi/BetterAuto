@@ -49,6 +49,10 @@ object PhoneSpeakerMute {
         EventLog.log("Phone speaker muted while audio goes to the car")
     }
 
+    /** True when the phone is (or was left) muted by [engage] and not yet restored. */
+    fun isMuted(context: Context): Boolean =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).contains(KEY_SAVED)
+
     /** Puts back the volume saved by [engage]; safe to call when nothing was saved. */
     fun release(context: Context) {
         val app = context.applicationContext

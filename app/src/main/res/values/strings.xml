@@ -60,4 +60,5 @@
     <string name="audio_consent_later">Not now</string>
     <string name="notification_audio_phone">Music is playing from the phone</string>
     <string name="action_enable_car_audio">Send audio to the car</string>
+    <string name="settings_auto_play">Start music when connected</string>
 </resources>
