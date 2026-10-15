@@ -43,6 +43,7 @@ import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
+import com.simoneluconi.betterauto.ui.formatTime
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import kotlinx.coroutines.delay
 
@@ -142,11 +143,7 @@ internal fun callTimer(connectedAt: Long): String {
         }
     }
     if (connectedAt <= 0) return "0:00"
-    val seconds = ((now - connectedAt) / 1000).coerceAtLeast(0)
-    val h = seconds / 3600
-    val m = (seconds % 3600) / 60
-    val s = seconds % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    return formatTime((now - connectedAt).coerceAtLeast(0))
 }
 
 @Composable

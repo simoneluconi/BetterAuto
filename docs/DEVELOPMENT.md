@@ -85,7 +85,8 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   adb exec-out screencap -p -d <id> > car.png
   ```
 
-- Simulate the car's knob and keys (debug builds only):
+- Simulate the car's knob and keys (debug builds only; the receiver needs the DUMP permission, which
+  the adb shell holds and other apps don't):
 
   ```sh
   adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --ei rotary 1

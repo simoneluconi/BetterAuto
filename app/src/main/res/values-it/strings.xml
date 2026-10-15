@@ -28,8 +28,6 @@
     <string name="widget_map">Mappa</string>
     <string name="widget_slot_next">Spazio widget · in arrivo</string>
     <string name="widget_notifications">Notifiche</string>
-    <string name="widget_slot_later">Spazio widget · più avanti</string>
-    <string name="phone_coming_later">In arrivo più avanti</string>
     <string name="settings_title">Impostazioni</string>
     <string name="settings_theme">Tema</string>
     <string name="settings_app_bar">Barra delle app</string>

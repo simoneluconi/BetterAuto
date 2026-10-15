@@ -28,8 +28,6 @@
     <string name="widget_map">Map</string>
     <string name="widget_slot_next">Widget slot · coming next</string>
     <string name="widget_notifications">Notifications</string>
-    <string name="widget_slot_later">Widget slot · coming later</string>
-    <string name="phone_coming_later">Coming later</string>
     <string name="settings_title">Settings</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_app_bar">App bar</string>

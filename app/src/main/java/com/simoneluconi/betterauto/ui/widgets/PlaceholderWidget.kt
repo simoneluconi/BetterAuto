@@ -27,15 +27,16 @@ import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
-/** Reserved slot for a widget that is not built yet (map, notifications); null = phone. */
+/** Reserved slot for a widget that is not built yet: today only the map. */
 @Composable
-fun PlaceholderWidget(type: WidgetType?, modifier: Modifier = Modifier) {
+fun PlaceholderWidget(type: WidgetType, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
-    val (title, caption, icon) = when (type) {
-        WidgetType.MAP -> Triple(R.string.widget_map, R.string.widget_slot_next, CarIcons.Map)
-        WidgetType.NOTIFICATIONS -> Triple(R.string.widget_notifications, R.string.widget_slot_later, CarIcons.Bell)
-        else -> Triple(R.string.nav_phone, R.string.phone_coming_later, CarIcons.Phone)
+    val (title, icon) = when (type) {
+        WidgetType.MAP -> R.string.widget_map to CarIcons.Map
+        WidgetType.MUSIC -> R.string.nav_music to CarIcons.Music
+        WidgetType.NOTIFICATIONS -> R.string.widget_notifications to CarIcons.Bell
     }
+    val caption = R.string.widget_slot_next
     val grid = type == WidgetType.MAP
     Column(
         modifier

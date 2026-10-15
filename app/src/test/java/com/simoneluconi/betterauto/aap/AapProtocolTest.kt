@@ -8,6 +8,7 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
@@ -74,6 +75,20 @@ class AapProtocolTest {
         assertEquals(Aap.FLAG_BULK or Aap.FLAG_ENCRYPTED, raw[1].toInt())
         val record = raw.copyOfRange(4, 4 + u16(raw, 2))
         assertArrayEquals(byteArrayOf(0, 5, 1, 2, 3), unwrap(headUnit, record))
+    }
+
+    @Test(expected = IOException::class)
+    fun continuationFrameWithoutFirstIsRejected() {
+        val pipe = LoopbackTransport()
+        pipe.write(byteArrayOf(3, Aap.FLAG_LAST.toByte(), 0, 2, 0, 1))
+        FrameCodec(pipe, phoneTls()).read()
+    }
+
+    @Test(expected = IOException::class)
+    fun messageShorterThanItsIdIsRejected() {
+        val pipe = LoopbackTransport()
+        pipe.write(byteArrayOf(3, Aap.FLAG_BULK.toByte(), 0, 1, 7))
+        FrameCodec(pipe, phoneTls()).read()
     }
 
     private fun phoneTls() = AapTls(

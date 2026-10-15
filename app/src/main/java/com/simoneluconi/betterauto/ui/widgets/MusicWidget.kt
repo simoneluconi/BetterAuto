@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +41,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -58,6 +60,7 @@ import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
+import com.simoneluconi.betterauto.ui.formatTime
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import kotlinx.coroutines.delay
@@ -131,7 +134,6 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
 
 @Composable
 private fun WidePlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
-    val colors = LocalCarColors.current
     Row(
         Modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
@@ -150,7 +152,6 @@ private fun WidePlayer(track: Track, width: Dp, height: Dp, extended: Boolean, o
 
 @Composable
 private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
-    val colors = LocalCarColors.current
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Cover(track, size = minOf(height * 0.34f, width * 0.34f), badge = true)
@@ -367,7 +368,15 @@ private fun Progress(track: Track) {
     val position = track.positionAt(now)
     val fraction = if (track.durationMs > 0) position.toFloat() / track.durationMs else 0f
 
-    Column {
+    // Touchscreens: a tap along the bar, or on the times under it, seeks there
+    val seek = if (track.canSeek && track.durationMs > 0) {
+        Modifier.pointerInput(track.durationMs) {
+            detectTapGestures { offset -> NowPlaying.seekTo((offset.x / size.width * track.durationMs).toLong()) }
+        }
+    } else {
+        Modifier
+    }
+    Column(seek) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
             Box(Modifier.fillMaxWidth().height(8.dp).background(colors.text.copy(alpha = 0.16f), RoundedCornerShape(50)))
             if (track.durationMs > 0) {
@@ -433,12 +442,4 @@ private fun Transport(track: Track, playSize: Dp) {
             CarIcon(CarIcons.Next, colors.text, Modifier.size(skipSize * 0.5f))
         }
     }
-}
-
-private fun formatTime(ms: Long): String {
-    val total = ms / 1000
-    val h = total / 3600
-    val m = total % 3600 / 60
-    val s = total % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }

@@ -191,7 +191,7 @@ fun VideoConfiguration.viewport(): Viewport {
         val m = ui.margins
         Viewport(w, h, m.left, m.top, w - m.left - m.right, h - m.top - m.bottom)
     } else {
-        Viewport.centered(w, h, w - widthMargin, h - heightMargin)
+        Viewport(w, h, widthMargin / 2, heightMargin / 2, w - widthMargin, h - heightMargin)
     }
     if (area.width <= 0 || area.height <= 0 || area.left < 0 || area.top < 0) return Viewport.full(w, h)
     val insets = ui?.takeIf { it.hasContentInsets() }?.contentInsets

@@ -46,9 +46,6 @@ class AapSession(
     private var running = true
     private var closed = false
 
-    /** Head unit channels, available after service discovery. */
-    var services: List<Service> = emptyList()
-        private set
 
     /** Blocks until the connection ends. */
     fun run() {
@@ -121,7 +118,7 @@ class AapSession(
     }
 
     private fun onServiceDiscovery(response: ServiceDiscoveryResponse) {
-        services = response.channelsList
+        val services = response.channelsList
         val hu = response.headunitInfo
         EventLog.log("Head unit: ${hu.headUnitMake} ${hu.headUnitModel} (sw ${hu.headUnitSoftwareVersion}), car: ${hu.make} ${hu.model}")
         for (service in services) {

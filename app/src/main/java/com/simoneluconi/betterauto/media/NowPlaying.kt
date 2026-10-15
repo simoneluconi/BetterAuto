@@ -65,6 +65,8 @@ data class Track(
     val activeQueueId: Long,
     /** App-specific buttons (favorite, shuffle, ...) published by the player. */
     val customActions: List<MediaAction>,
+    /** The player accepts seeking to a position. */
+    val canSeek: Boolean,
 ) {
     fun positionAt(now: Long): Long {
         val elapsed = if (playing) ((now - positionUpdatedAt) * speed).toLong() else 0L
@@ -215,6 +217,8 @@ object NowPlaying {
 
     fun skipToQueueItem(id: Long) = controller?.transportControls?.skipToQueueItem(id)
 
+    fun seekTo(positionMs: Long) = controller?.transportControls?.seekTo(positionMs)
+
     fun sendCustomAction(action: String) = controller?.transportControls?.sendCustomAction(action, null)
 
     private fun supports(c: MediaControllerCompat, action: Long) =
@@ -330,6 +334,7 @@ object NowPlaying {
             customActions = state?.customActions.orEmpty().map { action ->
                 MediaAction(action.action, action.name.toString(), actionIcon(c.packageName, action.icon))
             },
+            canSeek = (state?.actions ?: 0L) and PlaybackStateCompat.ACTION_SEEK_TO != 0L,
         )
     }
 
