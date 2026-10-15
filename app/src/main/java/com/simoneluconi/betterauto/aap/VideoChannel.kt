@@ -38,6 +38,8 @@ class VideoChannel(
     override val name = "video"
 
     private var config: VideoConfiguration? = null
+
+    @Volatile
     private var focused = false
     private var encoder: VideoEncoder? = null
 
@@ -92,8 +94,17 @@ class VideoChannel(
 
     private fun onFocus(notification: VideoFocusNotification) {
         EventLog.log("Video focus: ${notification.focus}")
-        focused = notification.focus == VideoFocusMode.VIDEO_FOCUS_PROJECTED
-        if (focused) maybeStartStreaming()
+        val wasFocused = focused
+        // The car still shows our video while one of its own popups has the input (mode 4)
+        focused = notification.focus == VideoFocusMode.VIDEO_FOCUS_PROJECTED ||
+            notification.focus == VideoFocusMode.VIDEO_FOCUS_PROJECTED_NO_INPUT_FOCUS
+        if (focused == wasFocused) return
+        val running = encoder
+        when {
+            !focused -> running?.setPaused(true)
+            running == null -> maybeStartStreaming()
+            else -> running.setPaused(false)
+        }
     }
 
     private fun maybeStartStreaming() {
@@ -121,6 +132,8 @@ class VideoChannel(
     }
 
     private fun sendFrame(data: ByteArray, timestampUs: Long) {
+        // The car is showing its own screen (reversing camera, its menus): nothing to decode there
+        if (!focused) return
         // Wait for the head unit to catch up instead of flooding its decoder
         window.tryAcquire(WINDOW_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 

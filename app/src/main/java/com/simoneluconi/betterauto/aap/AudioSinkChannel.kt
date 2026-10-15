@@ -1,6 +1,7 @@
 package com.simoneluconi.betterauto.aap
 
 import aap_protobuf.service.control.message.AudioFocusRequestTypeOuterClass.AudioFocusRequestType
+import aap_protobuf.service.control.message.AudioFocusStateTypeOuterClass.AudioFocusStateType
 import aap_protobuf.service.media.shared.message.AudioConfigurationOuterClass.AudioConfiguration
 import aap_protobuf.service.media.shared.message.ConfigOuterClass.Config
 import aap_protobuf.service.media.shared.message.MediaCodecTypeOuterClass.MediaCodecType
@@ -14,6 +15,9 @@ import com.simoneluconi.betterauto.audio.AudioSink
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.PcmFormat
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.media.NowPlaying
+import android.os.Handler
+import android.os.Looper
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.Semaphore
@@ -30,6 +34,10 @@ import kotlin.concurrent.thread
  * everything queued in one message each time the car acknowledges. Head units may allow a single
  * unacknowledged message and ack slowly; batching keeps the throughput equal to real time instead of
  * losing the audio captured while waiting. The queue is capped so latency cannot grow without bound.
+ *
+ * Audio focus works like Android Auto: the stream starts once the car grants it, and when the car
+ * takes it back (radio, a call, a navigation prompt) the phone player is paused, to come back by
+ * itself after a transient loss.
  */
 class AudioSinkChannel(
     private val session: AapSession,
@@ -43,10 +51,11 @@ class AudioSinkChannel(
 
     private sealed interface Outgoing
     private data object StartStream : Outgoing
-    private data object StopStream : Outgoing
+    private class StopStream(val releaseFocus: Boolean) : Outgoing
     private class Pcm(val timestampUs: Long, val data: ByteArray) : Outgoing
 
     private val queue = LinkedBlockingDeque<Outgoing>()
+    private val main = Handler(Looper.getMainLooper())
     private var configIndex = 0
     private var nextSessionId = 0
     private var maxBatchBytes = 0
@@ -58,6 +67,12 @@ class AudioSinkChannel(
     @Volatile
     private var running = false
     private var sender: Thread? = null
+
+    // Audio focus granted by the car; the sender waits on it before starting a stream
+    @Volatile
+    private var hasFocus = false
+    private val focusGranted = Semaphore(0)
+    private var pausedByCar = false
 
     // Capture thread state
     private var streaming = false
@@ -114,6 +129,35 @@ class AudioSinkChannel(
         CarAudio.setSink(this)
     }
 
+    /** Session thread: the answer to our focus requests, or an unsolicited change from the car. */
+    fun onFocus(state: AudioFocusStateType) {
+        when (state) {
+            AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN,
+            AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN_TRANSIENT,
+            AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN_MEDIA_ONLY -> {
+                hasFocus = true
+                focusGranted.release()
+                if (pausedByCar) {
+                    pausedByCar = false
+                    EventLog.log("Media audio: focus is back, resuming the player")
+                    main.post { NowPlaying.resume() }
+                }
+            }
+            AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS -> {
+                hasFocus = false
+                pausedByCar = false
+                NowPlaying.pause()
+            }
+            AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS_TRANSIENT -> {
+                hasFocus = false
+                if (NowPlaying.track.value?.playing == true) pausedByCar = true
+                NowPlaying.pause()
+            }
+            // Ducking: the car mixes its prompt over our audio at a lower level, keep playing
+            else -> Unit
+        }
+    }
+
     /** Capture thread: never blocks, only decides start/stop and queues PCM. */
     override fun onPcm(data: ByteArray, timestampUs: Long, silent: Boolean) {
         val now = timestampUs / 1000
@@ -122,9 +166,14 @@ class AudioSinkChannel(
             if (silent) return
             streaming = true
             queue.add(StartStream)
-        } else if (now - lastSoundAt > IDLE_STOP_MS) {
+        } else if (!hasFocus) {
+            // The car took the sound back: stop at once, the focus is not ours to release
             streaming = false
-            queue.add(StopStream)
+            queue.add(StopStream(releaseFocus = false))
+            return
+        } else if (now - lastSoundAt > idleStopMs()) {
+            streaming = false
+            queue.add(StopStream(releaseFocus = true))
             return
         }
         queue.add(Pcm(timestampUs, data))
@@ -145,7 +194,7 @@ class AudioSinkChannel(
             while (running) {
                 when (val item = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue) {
                     StartStream -> startStream()
-                    StopStream -> stopStream()
+                    is StopStream -> stopStream(item.releaseFocus)
                     is Pcm -> sendBatch(item)
                 }
             }
@@ -181,8 +230,21 @@ class AudioSinkChannel(
         recordStats(pcm.size, waitedMs)
     }
 
+    /**
+     * A quiet passage while the player runs is still part of the music: only a paused player gives
+     * the car back its speakers quickly, so its own sources never cut into a track.
+     */
+    private fun idleStopMs() =
+        if (NowPlaying.track.value?.playing == true) IDLE_STOP_PLAYING_MS else IDLE_STOP_MS
+
     private fun startStream() {
-        session.requestAudioFocus(AudioFocusRequestType.AUDIO_FOCUS_GAIN)
+        if (!hasFocus) {
+            focusGranted.drainPermits()
+            session.requestAudioFocus(AudioFocusRequestType.AUDIO_FOCUS_GAIN)
+            if (!focusGranted.tryAcquire(FOCUS_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                EventLog.log("Media audio: no focus answer from the car for $FOCUS_TIMEOUT_MS ms, starting anyway")
+            }
+        }
         val sessionId = nextSessionId++
         send(
             MediaMessageId.MEDIA_MESSAGE_START_VALUE,
@@ -192,11 +254,14 @@ class AudioSinkChannel(
         EventLog.log("Media audio: streaming (session $sessionId)")
     }
 
-    private fun stopStream() {
+    private fun stopStream(releaseFocus: Boolean) {
         send(MediaMessageId.MEDIA_MESSAGE_STOP_VALUE, Stop.getDefaultInstance())
-        session.requestAudioFocus(AudioFocusRequestType.AUDIO_FOCUS_RELEASE)
+        if (releaseFocus) {
+            hasFocus = false
+            session.requestAudioFocus(AudioFocusRequestType.AUDIO_FOCUS_RELEASE)
+        }
         CarState.audio.value = "$format · idle"
-        EventLog.log("Media audio: idle, stream stopped")
+        EventLog.log("Media audio: stream stopped (${if (releaseFocus) "idle" else "focus lost"})")
     }
 
     private fun recordStats(bytes: Int, waitMs: Long) {
@@ -230,7 +295,9 @@ class AudioSinkChannel(
 
     private companion object {
         const val IDLE_STOP_MS = 3_000L
+        const val IDLE_STOP_PLAYING_MS = 30_000L
         const val ACK_TIMEOUT_MS = 1_000L
+        const val FOCUS_TIMEOUT_MS = 1_000L
 
         /** Upper bound for one message: enough to catch up after a slow ack. */
         const val MAX_BATCH_MS = 400

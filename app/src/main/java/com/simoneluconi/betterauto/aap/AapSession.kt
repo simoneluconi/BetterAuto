@@ -38,6 +38,7 @@ class AapSession(
 ) : Closeable {
     private val codec = FrameCodec(transport, tls)
     private val channels = HashMap<Int, ServiceChannel>()
+    private var audioSink: AudioSinkChannel? = null
 
     @Volatile
     private var running = true
@@ -76,6 +77,7 @@ class AapSession(
             ControlMessageType.MESSAGE_AUDIO_FOCUS_NOTIFICATION_VALUE -> {
                 val focus = AudioFocusNotification.parseFrom(msg.payload)
                 EventLog.log("Audio focus from car: ${focus.focusState}${if (focus.unsolicited) " (unsolicited)" else ""}")
+                audioSink?.onFocus(focus.focusState)
             }
             else -> EventLog.log("Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes)")
         }
@@ -136,7 +138,7 @@ class AapSession(
             service.mediaSinkService.audioConfigsList.forEachIndexed { i, cfg ->
                 EventLog.log("    audio config $i: ${cfg.samplingRate} Hz ${cfg.numberOfBits}-bit ${cfg.numberOfChannels}ch")
             }
-            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList)
+            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList).also { audioSink = it }
         }
         service.hasInputSourceService() -> {
             val touchscreen = service.inputSourceService.touchscreenList.firstOrNull()
@@ -185,6 +187,7 @@ class AapSession(
         running = false
         channels.values.forEach { runCatching { it.close() } }
         channels.clear()
+        audioSink = null
         transport.close()
     }
 

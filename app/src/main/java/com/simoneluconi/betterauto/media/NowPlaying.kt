@@ -80,6 +80,7 @@ data class MediaAction(val action: String, val name: String, val icon: ImageBitm
 /**
  * Follows the phone's active media session (any app: Spotify, YouTube Music, ...) and controls it.
  * Needs notification access for [MediaListenerService]; [hasAccess] reports whether we have it.
+ * Main thread only, except [pause].
  */
 object NowPlaying {
     private val _track = MutableStateFlow<Track?>(null)
@@ -93,6 +94,9 @@ object NowPlaying {
     private lateinit var appContext: Context
     private var users = 0
     private var sessionManager: MediaSessionManager? = null
+
+    // Read by pause() from the session threads; written on the main thread only
+    @Volatile
     private var controller: MediaControllerCompat? = null
     // Each metadata read hands out a new Bitmap copy, so the art is identified by track + size, not by instance
     private var accentKey: String? = null
@@ -145,6 +149,7 @@ object NowPlaying {
 
     fun next() = controller?.transportControls?.skipToNext()
 
+    /** The one control safe from any thread: a disconnect must pause before the phone volume comes back. */
     fun pause() {
         val c = controller ?: return
         if (c.playbackState?.state == PlaybackStateCompat.STATE_PLAYING) c.transportControls.pause()

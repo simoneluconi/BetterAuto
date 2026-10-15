@@ -59,8 +59,10 @@ class Projection(private val context: Context) {
     /** Converts a head unit touch report into a MotionEvent for the launcher UI. */
     fun dispatchTouch(touch: TouchEvent, touchWidth: Int, touchHeight: Int) = main.post {
         val target = presentation ?: return@post
+        val pointers = touch.pointerDataList
+        if (pointers.isEmpty()) return@post // MotionEvent needs at least one pointer
         val viewport = CarState.viewportFor(width, height)
-        val pointerIndex = touch.actionIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
+        val pointerIndex = touch.actionIndex.coerceIn(0, pointers.lastIndex) shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
         val action = when (touch.action) {
             PointerAction.ACTION_DOWN -> MotionEvent.ACTION_DOWN
             PointerAction.ACTION_UP -> MotionEvent.ACTION_UP
@@ -71,7 +73,6 @@ class Projection(private val context: Context) {
         val now = SystemClock.uptimeMillis()
         if (action == MotionEvent.ACTION_DOWN) touchDownTime = now
 
-        val pointers = touch.pointerDataList
         val properties = Array(pointers.size) { i ->
             MotionEvent.PointerProperties().apply {
                 id = pointers[i].pointerId

@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo.CodecCapabilities
 import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaFormat
+import android.os.Bundle
 import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
 import kotlin.concurrent.thread
@@ -79,6 +80,18 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
                 onFrame(data, info.presentationTimeUs)
             }
         }
+    }
+
+    /** No frames while paused; resuming starts with a keyframe, so the car's decoder can pick up at once. */
+    fun setPaused(paused: Boolean) {
+        runCatching {
+            codec.setParameters(
+                Bundle().apply {
+                    putInt(MediaCodec.PARAMETER_KEY_SUSPEND, if (paused) 1 else 0)
+                    if (!paused) putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                }
+            )
+        }.onFailure { EventLog.log("Encoder: cannot ${if (paused) "pause" else "resume"}: $it") }
     }
 
     fun stop() {

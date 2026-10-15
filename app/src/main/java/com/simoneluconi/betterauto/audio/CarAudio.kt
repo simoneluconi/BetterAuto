@@ -2,6 +2,8 @@ package com.simoneluconi.betterauto.audio
 
 import android.content.Context
 import android.media.projection.MediaProjection
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.media.NowPlaying
@@ -30,6 +32,7 @@ object CarAudio {
     private var sink: AudioSink? = null
     private var capture: AudioCapture? = null
     private var autoPlayed = false
+    private val main = Handler(Looper.getMainLooper())
 
     /**
      * Call once before use (after NowPlaying is acquired). If the app died while the phone was muted,
@@ -124,7 +127,7 @@ object CarAudio {
             autoPlayed = true
             if (shouldAutoPlay()) {
                 EventLog.log("Car audio: auto-play on connect")
-                NowPlaying.resume()
+                main.post { NowPlaying.resume() }
             }
         }
     }

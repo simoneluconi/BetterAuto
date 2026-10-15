@@ -92,7 +92,18 @@ class AapService : Service() {
         } else {
             @Suppress("DEPRECATION")
             intent.getParcelableExtra(EXTRA_RESULT_DATA)
-        } ?: return
+        }
+        if (data == null) {
+            if (session == null) stopSelf()
+            return
+        }
+        if (session == null) {
+            // The car went away while the consent dialog was up: a projection with nothing to feed
+            // would only keep the capture indicator on and this service alive
+            EventLog.log("Audio capture consent arrived after the car disconnected, ignored")
+            stopSelf()
+            return
+        }
         // The service must already run as a media projection service when the projection is created
         foregroundTypes = foregroundTypes or
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
