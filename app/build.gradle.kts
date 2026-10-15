@@ -1,0 +1,67 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.protobuf)
+}
+
+android {
+    namespace = "com.simoneluconi.betterauto"
+    compileSdk = 37
+
+    defaultConfig {
+        applicationId = "com.simoneluconi.betterauto"
+        minSdk = 29
+        targetSdk = 37
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation(libs.protobuf.javalite)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.animation)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.core.ktx)
+    implementation(libs.media)
+    implementation(libs.palette)
+
+    testImplementation(libs.junit)
+}
+
+// .proto files in src/main/proto/aap_protobuf come from opencardev/aasdk (GPLv3), see AASDK_VERSION.txt
+protobuf {
+    protoc {
+        artifact = libs.protoc.get().toString()
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}

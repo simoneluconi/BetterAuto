@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BetterAuto</string>
+    <string name="status_idle">Waiting for the head unit…</string>
+    <string name="status_connected">Connected: %1$s</string>
+    <string name="notification_channel">Head unit connection</string>
+    <string name="notification_text">Android Auto session active</string>
+    <string name="action_preview">Car UI preview</string>
+    <string name="action_notification_access">Allow music access</string>
+    <string name="notification_access_granted">Music access granted</string>
+</resources>

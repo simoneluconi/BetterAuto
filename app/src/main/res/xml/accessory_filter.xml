@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings sent by the head unit during AOA negotiation (see aasdk AccessoryModeQueryFactory.cpp) -->
+<resources>
+    <usb-accessory
+        manufacturer="Android"
+        model="Android Auto" />
+</resources>
