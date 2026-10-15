@@ -74,6 +74,10 @@ class AudioSinkChannel(
     private val focusGranted = Semaphore(0)
     private var pausedByCar = false
 
+    // Set when the car takes the sound back while we hold the focus; the capture thread then ends the stream
+    @Volatile
+    private var focusLost = false
+
     // Capture thread state
     private var streaming = false
     private var lastSoundAt = 0L
@@ -136,6 +140,7 @@ class AudioSinkChannel(
             AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN_TRANSIENT,
             AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN_MEDIA_ONLY -> {
                 hasFocus = true
+                focusLost = false
                 focusGranted.release()
                 if (pausedByCar) {
                     pausedByCar = false
@@ -143,14 +148,15 @@ class AudioSinkChannel(
                     main.post { NowPlaying.resume() }
                 }
             }
-            AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS -> {
-                hasFocus = false
-                pausedByCar = false
-                NowPlaying.pause()
-            }
+            AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS,
             AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS_TRANSIENT -> {
+                // The reply to our own release is a loss too: only losing a focus we hold means the car took the sound
+                if (!hasFocus) return
                 hasFocus = false
-                if (NowPlaying.track.value?.playing == true) pausedByCar = true
+                focusLost = true
+                pausedByCar = state == AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS_TRANSIENT &&
+                    NowPlaying.track.value?.playing == true
+                EventLog.log("Media audio: the car took the sound, pausing the player")
                 NowPlaying.pause()
             }
             // Ducking: the car mixes its prompt over our audio at a lower level, keep playing
@@ -165,8 +171,9 @@ class AudioSinkChannel(
         if (!streaming) {
             if (silent) return
             streaming = true
+            focusLost = false
             queue.add(StartStream)
-        } else if (!hasFocus) {
+        } else if (focusLost) {
             // The car took the sound back: stop at once, the focus is not ours to release
             streaming = false
             queue.add(StopStream(releaseFocus = false))
