@@ -106,6 +106,7 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
       instrument cluster
 - [ ] Notifications and messages widgets
+- [ ] Home Assistant: widget and section for gates, garage, lights, scenes, alarm
 - [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
       (audio over Bluetooth)
 - [ ] Voice commands through the car's microphone
