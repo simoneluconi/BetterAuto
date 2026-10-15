@@ -12,7 +12,7 @@ enum class BarPosition { AUTO, LEFT, BOTTOM }
 
 enum class HomeLayout(val slots: Int) { SINGLE(1), SPLIT(2), TRIO(3) }
 
-enum class Section { HOME, MUSIC, MAP, PHONE, SETTINGS }
+enum class Section { HOME, MUSIC, MAP, PHONE, NOTIFICATIONS, SETTINGS }
 
 enum class WidgetType { MUSIC, MAP, NOTIFICATIONS }
 
@@ -51,6 +51,25 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _phoneTab = MutableStateFlow(prefs.getString(KEY_PHONE_TAB, null))
     val phoneTab: StateFlow<String?> = _phoneTab
+
+    private val _quietMode = MutableStateFlow(prefs.getBoolean(KEY_QUIET, false))
+    /** No notification banners; notifications still collect in the widget. */
+    val quietMode: StateFlow<Boolean> = _quietMode
+
+    private val _notificationGroups = MutableStateFlow(prefs.getBoolean(KEY_NOTIF_GROUPS, true))
+    /** Show notifications from group chats. */
+    val notificationGroups: StateFlow<Boolean> = _notificationGroups
+
+    private val _notificationApps = MutableStateFlow(loadList(KEY_NOTIF_APPS))
+    /** Apps that sent notifications, so they can be filtered. */
+    val notificationApps: StateFlow<List<String>> = _notificationApps
+
+    private val _notificationHiddenApps = MutableStateFlow(loadList(KEY_NOTIF_HIDDEN))
+    val notificationHiddenApps: StateFlow<List<String>> = _notificationHiddenApps
+
+    private val _mutedChats = MutableStateFlow(loadList(KEY_MUTED_CHATS, separator = "\n"))
+    /** Muted chats, as "package|chat name". */
+    val mutedChats: StateFlow<List<String>> = _mutedChats
 
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
@@ -99,6 +118,35 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         prefs.edit { putString(KEY_PHONE_TAB, value) }
     }
 
+    fun setQuietMode(value: Boolean) {
+        _quietMode.value = value
+        prefs.edit { putBoolean(KEY_QUIET, value) }
+    }
+
+    fun setNotificationGroups(value: Boolean) {
+        _notificationGroups.value = value
+        prefs.edit { putBoolean(KEY_NOTIF_GROUPS, value) }
+    }
+
+    fun markNotificationApp(packageName: String) {
+        val list = notificationApps.value
+        if (packageName in list) return
+        saveList(KEY_NOTIF_APPS, (list + packageName).takeLast(MAX_NOTIF_APPS), _notificationApps)
+    }
+
+    fun toggleNotificationApp(packageName: String) {
+        val list = notificationHiddenApps.value
+        saveList(KEY_NOTIF_HIDDEN, if (packageName in list) list - packageName else list + packageName, _notificationHiddenApps)
+    }
+
+    fun toggleMutedChat(conversationKey: String) {
+        val list = mutedChats.value
+        saveList(
+            KEY_MUTED_CHATS, if (conversationKey in list) list - conversationKey else list + conversationKey,
+            _mutedChats, separator = "\n",
+        )
+    }
+
     fun setAutoPlay(value: Boolean) {
         _autoPlay.value = value
         prefs.edit { putBoolean(KEY_AUTO_PLAY, value) }
@@ -137,12 +185,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         return ((saved ?: emptyList()) + WidgetType.entries).distinct()
     }
 
-    private fun loadList(key: String): List<String> =
-        prefs.getString(key, null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    private fun loadList(key: String, separator: String = ","): List<String> =
+        prefs.getString(key, null)?.split(separator)?.filter { it.isNotBlank() } ?: emptyList()
 
-    private fun saveList(key: String, value: List<String>, flow: MutableStateFlow<List<String>>) {
+    private fun saveList(key: String, value: List<String>, flow: MutableStateFlow<List<String>>, separator: String = ",") {
         flow.value = value
-        prefs.edit { putString(key, value.joinToString(",")) }
+        prefs.edit { putString(key, value.joinToString(separator)) }
     }
 
     companion object {
@@ -156,6 +204,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MUSIC_PANEL = "music_panel"
         private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_NAME_ORDER = "name_order"
+        private const val KEY_QUIET = "quiet_mode"
+        private const val KEY_NOTIF_GROUPS = "notification_groups"
+        private const val KEY_NOTIF_APPS = "notification_apps"
+        private const val KEY_NOTIF_HIDDEN = "notification_hidden_apps"
+        private const val KEY_MUTED_CHATS = "muted_chats"
+        private const val MAX_NOTIF_APPS = 40
         private const val KEY_PHONE_TAB = "phone_tab"
         private const val KEY_PINNED = "pinned_apps"
         private const val KEY_RECENT = "recent_apps"

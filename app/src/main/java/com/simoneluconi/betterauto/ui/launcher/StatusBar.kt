@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.settings.Section
+import com.simoneluconi.betterauto.ui.notifications.rememberVisibleNotifications
 import com.simoneluconi.betterauto.ui.phone.CallPill
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,6 +45,7 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val phone = rememberPhoneStatus()
     val call by Calls.current.collectAsStateWithLifecycle()
     val callMinimized by Calls.minimized.collectAsStateWithLifecycle()
+    val section by settings.section.collectAsStateWithLifecycle()
 
     Row(
         Modifier
@@ -56,6 +59,8 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         Spacer(Modifier.weight(1f))
 
         call?.takeIf { callMinimized }?.let { CallPill(it) }
+        // On the notifications screen its own header already has the bell
+        if (section != Section.NOTIFICATIONS) NotificationsButton(settings)
         if (showLayoutButton) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(
@@ -76,6 +81,35 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
 }
 
 private val LowBattery = Color(0xFFE5484D)
+
+/** Bell with the number of notifications; opens the notifications section. */
+@Composable
+private fun NotificationsButton(settings: LauncherSettings) {
+    val colors = LocalCarColors.current
+    val count = rememberVisibleNotifications(settings).size
+    val quiet by settings.quietMode.collectAsStateWithLifecycle()
+    val label = stringResource(R.string.notif_badge, count)
+    Box(
+        Modifier
+            .carClickable(CircleShape, label) { settings.setSection(Section.NOTIFICATIONS) }
+            .background(colors.surface, CircleShape)
+            .size(52.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarIcon(if (quiet) CarIcons.BellOff else CarIcons.Bell, colors.text, Modifier.size(24.dp))
+        if (count > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .background(colors.focus, CircleShape)
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CarLabel(if (count > 9) "9+" else count.toString(), 13.sp, colors.bg, weight = FontWeight.Bold)
+            }
+        }
+    }
+}
 
 @Composable
 private fun SignalBars(level: Int) {

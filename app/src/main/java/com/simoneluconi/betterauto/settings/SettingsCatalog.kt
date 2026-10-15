@@ -2,7 +2,9 @@ package com.simoneluconi.betterauto.settings
 
 import androidx.annotation.StringRes
 import com.simoneluconi.betterauto.EventLog
+import android.content.Context
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.media.MediaApps
 import kotlinx.coroutines.flow.StateFlow
 
 /** Where a setting is being changed from, for the log. */
@@ -52,15 +54,46 @@ class ActionSetting(
     }
 }
 
-/** The media apps pinned to the app bar: each surface draws its own app picker. */
-class PinnedAppsSetting(
+/** Pick apps from a list (pinned to the bar, allowed to notify...): each surface draws its own app chips. */
+class AppsSetting(
+    override val key: String,
+    @param:StringRes override val title: Int,
+    /** Shown when there are no apps to pick yet. */
+    @param:StringRes val empty: Int,
+    private val candidates: (Context, LauncherSettings) -> List<String>,
+    /** The stored list; [listedMeansSelected] says whether being in it means on or off. */
+    private val stored: (LauncherSettings) -> StateFlow<List<String>>,
+    private val listedMeansSelected: Boolean,
+    private val toggleStored: (LauncherSettings, String) -> Unit,
+) : SettingItem {
+    fun apps(context: Context, settings: LauncherSettings): List<String> = candidates(context, settings)
+
+    fun state(settings: LauncherSettings): StateFlow<List<String>> = stored(settings)
+
+    fun isSelected(storedList: List<String>, packageName: String) = (packageName in storedList) == listedMeansSelected
+
+    fun toggle(settings: LauncherSettings, packageName: String, from: SettingsSurface) {
+        val selected = !isSelected(stored(settings).value, packageName)
+        EventLog.log("Setting $key: $packageName ${if (selected) "on" else "off"} (from ${from.name.lowercase()})")
+        toggleStored(settings, packageName)
+    }
+}
+
+/** Chats muted from the notifications widget, to bring them back. */
+class MutedChatsSetting(
     override val key: String,
     @param:StringRes override val title: Int,
 ) : SettingItem {
-    fun toggle(settings: LauncherSettings, packageName: String, from: SettingsSurface) {
-        val pinned = packageName !in settings.pinnedApps.value
-        EventLog.log("Setting $key: ${if (pinned) "pin" else "unpin"} $packageName (from ${from.name.lowercase()})")
-        settings.togglePinned(packageName)
+    fun unmute(settings: LauncherSettings, conversationKey: String, from: SettingsSurface) {
+        EventLog.log("Setting $key: unmute a chat of ${conversationKey.substringBefore('|')} (from ${from.name.lowercase()})")
+        settings.toggleMutedChat(conversationKey)
+    }
+
+    companion object {
+        /** "package|chat" to the chat name. */
+        fun chatName(conversationKey: String) = conversationKey.substringAfter('|')
+
+        fun packageOf(conversationKey: String) = conversationKey.substringBefore('|')
     }
 }
 
@@ -114,6 +147,22 @@ object SettingsCatalog {
         ),
         ChoiceSetting("auto_play", R.string.settings_auto_play, onOff, { it.autoPlay }, LauncherSettings::setAutoPlay),
         ChoiceSetting("debug_overlay", R.string.settings_debug, onOff, { it.debugOverlay }, LauncherSettings::setDebugOverlay),
-        PinnedAppsSetting("bar_apps", R.string.settings_bar_apps),
+        AppsSetting(
+            "bar_apps", R.string.settings_bar_apps, R.string.settings_no_apps,
+            { context, _ -> MediaApps.installed(context) },
+            { it.pinnedApps }, listedMeansSelected = true, LauncherSettings::togglePinned,
+        ),
+        ChoiceSetting("quiet_mode", R.string.settings_quiet_mode, onOff, { it.quietMode }, LauncherSettings::setQuietMode),
+        ChoiceSetting(
+            "notification_groups", R.string.settings_notification_groups,
+            listOf(SettingOption(true, R.string.option_show), SettingOption(false, R.string.option_hide)),
+            { it.notificationGroups }, LauncherSettings::setNotificationGroups,
+        ),
+        AppsSetting(
+            "notification_apps", R.string.settings_notification_apps, R.string.settings_no_notification_apps,
+            { _, settings -> settings.notificationApps.value },
+            { it.notificationHiddenApps }, listedMeansSelected = false, LauncherSettings::toggleNotificationApp,
+        ),
+        MutedChatsSetting("muted_chats", R.string.settings_muted_chats),
     )
 }

@@ -52,6 +52,12 @@ import com.simoneluconi.betterauto.media.MediaLibrary
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.media.Track
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.ui.AlphabetButton
+import com.simoneluconi.betterauto.ui.AlphabetJumpEffect
+import com.simoneluconi.betterauto.ui.AlphabetPicker
+import com.simoneluconi.betterauto.ui.indexLetter
+import com.simoneluconi.betterauto.ui.rememberAlphabetJump
+import androidx.compose.foundation.lazy.itemsIndexed
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -191,22 +197,43 @@ private fun LibraryList(packageName: String?) {
             },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (current.canGoBack) {
-                ListRow(
-                    icon = null,
-                    fallback = CarIcons.Back,
-                    title = current.title ?: stringResource(R.string.music_back),
-                    subtitle = stringResource(R.string.music_back),
-                    highlighted = false,
-                ) { library.back() }
+            // A–Z only where it helps: long folders
+            val jump = rememberAlphabetJump()
+            val listState = rememberLazyListState()
+            AlphabetJumpEffect(jump, listState)
+            val firstOfLetter = remember(current.items) {
+                val map = LinkedHashMap<Char, Int>()
+                current.items.forEachIndexed { i, item -> map.putIfAbsent(indexLetter(item.title), i) }
+                map.entries.sortedBy { it.key }.associate { it.key to it.value }
+            }
+            val showJump = current.items.size >= AZ_MIN_ITEMS && firstOfLetter.size > 1
+            if (current.canGoBack || showJump) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (current.canGoBack) {
+                        ListRow(
+                            icon = null,
+                            modifier = Modifier.weight(1f),
+                            fallback = CarIcons.Back,
+                            title = current.title ?: stringResource(R.string.music_back),
+                            subtitle = stringResource(R.string.music_back),
+                            highlighted = false,
+                        ) { library.back() }
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    if (showJump && !jump.open) AlphabetButton(jump)
+                }
             }
             if (current.items.isEmpty()) {
                 PanelMessage(stringResource(R.string.music_library_empty))
+            } else if (jump.open) {
+                AlphabetPicker(firstOfLetter.keys.toList(), onPick = { jump.jumpTo(firstOfLetter.getValue(it)) }, onClose = { jump.open = false })
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(current.items, key = { it.id }) { item ->
+                LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(current.items, key = { _, it -> it.id }) { index, item ->
                         ListRow(
                             icon = item.icon,
+                            modifier = jump.focusTarget(index),
                             fallback = if (item.browsable) CarIcons.Album else CarIcons.Music,
                             tintIcon = item.glyph,
                             title = item.title,
@@ -242,6 +269,7 @@ private fun AppsList(current: String?) {
 @Composable
 internal fun ListRow(
     icon: ImageBitmap?,
+    modifier: Modifier = Modifier,
     fallback: ImageVector,
     title: String,
     subtitle: String,
@@ -254,7 +282,7 @@ internal fun ListRow(
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(20.dp)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .carClickable(shape, if (subtitle.isEmpty()) title else "$title, $subtitle", onClick = onClick)
             .background(if (highlighted) colors.album.copy(alpha = 0.22f) else colors.surface2, shape)
@@ -291,3 +319,6 @@ internal fun PanelMessage(text: String) {
         CarLabel(text, 22.sp, colors.text2, maxLines = 3, textAlign = TextAlign.Center)
     }
 }
+
+/** Folders shorter than this are quick enough to scroll with the knob. */
+private const val AZ_MIN_ITEMS = 20

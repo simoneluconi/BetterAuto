@@ -37,7 +37,8 @@ import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.settings.ActionSetting
 import com.simoneluconi.betterauto.settings.ChoiceSetting
 import com.simoneluconi.betterauto.settings.LauncherSettings
-import com.simoneluconi.betterauto.settings.PinnedAppsSetting
+import com.simoneluconi.betterauto.settings.AppsSetting
+import com.simoneluconi.betterauto.settings.MutedChatsSetting
 import com.simoneluconi.betterauto.settings.SettingsCatalog
 import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -91,7 +92,8 @@ private fun SettingsList(settings: LauncherSettings) {
                     is ActionSetting -> Chip(stringResource(item.label), selected = false) {
                         item.run(settings, SettingsSurface.PHONE)
                     }
-                    is PinnedAppsSetting -> PhonePinnedApps(item, settings)
+                    is AppsSetting -> PhoneApps(item, settings)
+                    is MutedChatsSetting -> PhoneMutedChats(item, settings)
                 }
             }
         }
@@ -113,14 +115,33 @@ private fun <T> PhoneChoice(item: ChoiceSetting<T>, settings: LauncherSettings) 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PhonePinnedApps(item: PinnedAppsSetting, settings: LauncherSettings) {
+private fun PhoneApps(item: AppsSetting, settings: LauncherSettings) {
     val context = LocalContext.current
-    val pinned by settings.pinnedApps.collectAsStateWithLifecycle()
-    val apps = remember { MediaApps.installed(context).mapNotNull { MediaApps.info(context, it) } }
+    val colors = LocalCarColors.current
+    val stored by item.state(settings).collectAsStateWithLifecycle()
+    val apps = remember(stored) { item.apps(context, settings).mapNotNull { MediaApps.info(context, it) } }
+    if (apps.isEmpty()) CarLabel(stringResource(item.empty), 15.sp, colors.text2, maxLines = 2)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (app in apps) {
-            Chip(app.label, selected = app.packageName in pinned, icon = app.icon) {
+            Chip(app.label, selected = item.isSelected(stored, app.packageName), icon = app.icon) {
                 item.toggle(settings, app.packageName, SettingsSurface.PHONE)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PhoneMutedChats(item: MutedChatsSetting, settings: LauncherSettings) {
+    val context = LocalContext.current
+    val colors = LocalCarColors.current
+    val muted by settings.mutedChats.collectAsStateWithLifecycle()
+    if (muted.isEmpty()) CarLabel(stringResource(R.string.settings_no_muted_chats), 15.sp, colors.text2)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (chat in muted) {
+            val app = remember(chat) { MediaApps.info(context, MutedChatsSetting.packageOf(chat)) }
+            Chip(MutedChatsSetting.chatName(chat) + "  ×", selected = false, icon = app?.icon) {
+                item.unmute(settings, chat, SettingsSurface.PHONE)
             }
         }
     }

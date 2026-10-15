@@ -66,7 +66,13 @@ import com.simoneluconi.betterauto.phone.PhoneBook
 import com.simoneluconi.betterauto.phone.PhoneNumber
 import com.simoneluconi.betterauto.phone.RecentCall
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.simoneluconi.betterauto.ui.AlphabetButton
+import com.simoneluconi.betterauto.ui.AlphabetJumpEffect
+import com.simoneluconi.betterauto.ui.AlphabetPicker
 import com.simoneluconi.betterauto.ui.CarIcon
+import com.simoneluconi.betterauto.ui.indexLetter
+import com.simoneluconi.betterauto.ui.rememberAlphabetJump
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
@@ -254,18 +260,52 @@ private fun ContactsList(settings: LauncherSettings, onPick: (Contact) -> Unit) 
     when {
         list == null -> PanelMessage(stringResource(R.string.music_loading))
         list.isEmpty() -> PanelMessage(stringResource(if (PhoneBook.canRead(context)) R.string.phone_no_contacts else R.string.phone_no_access))
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            var letter: String? = null
-            for (contact in list) {
-                val initial = contact.name.firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() }?.toString() ?: "#"
-                if (initial != letter) {
-                    letter = initial
-                    item(key = "letter-$initial") {
-                        CarLabel(initial, 22.sp, colors.focus, Modifier.padding(start = 18.dp, top = 6.dp), weight = FontWeight.ExtraBold)
+        else -> {
+            // Lazy-list index of the first contact of each letter (right after the letter's header)
+            val firstOfLetter = remember(list) {
+                val map = LinkedHashMap<Char, Int>()
+                var index = 0
+                var letter: Char? = null
+                for (contact in list) {
+                    val initial = indexLetter(contact.name)
+                    if (initial != letter) {
+                        letter = initial
+                        index++
+                        map[initial] = index
                     }
+                    index++
                 }
-                item(key = contact.id) {
-                    ContactRow(contact) { onPick(contact) }
+                map
+            }
+            val jump = rememberAlphabetJump()
+            val listState = rememberLazyListState()
+            AlphabetJumpEffect(jump, listState)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CarLabel(stringResource(R.string.phone_contacts_count, list.size), 20.sp, colors.text2, Modifier.weight(1f).padding(start = 8.dp))
+                    if (firstOfLetter.size > 1 && !jump.open) AlphabetButton(jump)
+                }
+                if (jump.open) {
+                    AlphabetPicker(firstOfLetter.keys.toList(), onPick = { jump.jumpTo(firstOfLetter.getValue(it)) }, onClose = { jump.open = false })
+                } else {
+                    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        var letter: Char? = null
+                        var index = 0
+                        for (contact in list) {
+                            val initial = indexLetter(contact.name)
+                            if (initial != letter) {
+                                letter = initial
+                                index++
+                                item(key = "letter-$initial") {
+                                    CarLabel(initial.toString(), 22.sp, colors.focus, Modifier.padding(start = 18.dp, top = 6.dp), weight = FontWeight.ExtraBold)
+                                }
+                            }
+                            val position = index++
+                            item(key = contact.id) {
+                                ContactRow(contact, jump.focusTarget(position)) { onPick(contact) }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -273,11 +313,11 @@ private fun ContactsList(settings: LauncherSettings, onPick: (Contact) -> Unit) 
 }
 
 @Composable
-private fun ContactRow(contact: Contact, onClick: () -> Unit) {
+private fun ContactRow(contact: Contact, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(20.dp)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .carClickable(shape, stringResource(R.string.phone_call_name, contact.name), onClick = onClick)
             .background(colors.surface2, shape)

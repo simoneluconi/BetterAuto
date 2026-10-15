@@ -45,6 +45,8 @@ import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.ui.phone.CallScreen
+import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
+import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
 import com.simoneluconi.betterauto.settings.BarPosition
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -188,6 +190,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     AppRail(settings, section, vertical = false, firstFocus = railFocus)
                 }
             }
+            // No banner over a call, nor on the notifications screen itself
+            if (shownCall == null && section != Section.NOTIFICATIONS) {
+                // At the very top, over the status bar, where it hides the least
+                NotificationBanner(settings, Modifier.align(Alignment.TopCenter).padding(top = 10.dp, start = 24.dp, end = 24.dp))
+            }
             if (debug) DebugOverlay(Modifier.align(Alignment.TopEnd).padding(top = 88.dp, end = 28.dp))
         }
     }
@@ -216,6 +223,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
                 Section.PHONE -> PhoneScreen(settings, Modifier.fillMaxSize())
+                Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize())
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
             }
         }

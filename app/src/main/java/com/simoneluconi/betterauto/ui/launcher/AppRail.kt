@@ -63,7 +63,12 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
                 icon = icon,
                 label = stringResource(label),
                 selected = selected,
-                modifier = if (selected) Modifier.focusRequester(firstFocus) else Modifier,
+                // The knob starts from the current section, or from Home when it has no button here
+                modifier = if (selected || (target == Section.HOME && Destinations.none { it.section == section } && section != Section.SETTINGS)) {
+                    Modifier.focusRequester(firstFocus)
+                } else {
+                    Modifier
+                },
             ) { settings.setSection(target) }
         }
         RailDivider(vertical)
@@ -95,7 +100,10 @@ fun AppRail(settings: LauncherSettings, section: Section, vertical: Boolean, fir
             }
         }
         Spacer(spacerModifier)
-        RailButton(CarIcons.Settings, stringResource(R.string.nav_settings), section == Section.SETTINGS) { settings.setSection(Section.SETTINGS) }
+        RailButton(
+            CarIcons.Settings, stringResource(R.string.nav_settings), section == Section.SETTINGS,
+            modifier = if (section == Section.SETTINGS) Modifier.focusRequester(firstFocus) else Modifier,
+        ) { settings.setSection(Section.SETTINGS) }
     }
 
     val surface = Modifier

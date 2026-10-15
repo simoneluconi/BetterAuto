@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -22,6 +25,8 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.WidgetType
 
 private val Gap = 20.dp
+
+private val LocalSettings = staticCompositionLocalOf<LauncherSettings?> { null }
 
 /**
  * Home screen: one big widget, two side by side, or one big plus two stacked (AA-style).
@@ -41,7 +46,9 @@ fun WidgetArea(settings: LauncherSettings, modifier: Modifier = Modifier) {
             label = "homeLayout",
         ) { (currentLayout, order) ->
             val slots = order.take(currentLayout.slots)
-            if (portrait) PortraitLayout(currentLayout, slots) else LandscapeLayout(currentLayout, slots)
+            CompositionLocalProvider(LocalSettings provides settings) {
+                if (portrait) PortraitLayout(currentLayout, slots) else LandscapeLayout(currentLayout, slots)
+            }
         }
     }
 }
@@ -86,6 +93,7 @@ private fun LandscapeLayout(layout: HomeLayout, slots: List<WidgetType>) {
 private fun Widget(type: WidgetType, modifier: Modifier) {
     when (type) {
         WidgetType.MUSIC -> MusicWidget(modifier)
-        WidgetType.MAP, WidgetType.NOTIFICATIONS -> PlaceholderWidget(type, modifier)
+        WidgetType.NOTIFICATIONS -> NotificationsWidget(LocalSettings.current ?: return, modifier)
+        WidgetType.MAP -> PlaceholderWidget(type, modifier)
     }
 }

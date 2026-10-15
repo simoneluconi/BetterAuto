@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
@@ -24,6 +25,7 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *   ... --es layout trio     home layout: single, split or trio
  *   ... --ez musicPanel true music section with the library panel (false = full-screen player)
  *   ... --es call ringing    pretend call: ringing, dialing, active, holding, ended or off
+ *   ... --es notify "Text"   pretend message (add --es from "Name" and --ez group true for a group chat)
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -46,6 +48,9 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         intent.getStringExtra("call")?.let { name ->
             Calls.simulate(CallPhase.entries.firstOrNull { it.name.equals(name, ignoreCase = true) })
+        }
+        intent.getStringExtra("notify")?.let { text ->
+            CarNotifications.simulate(intent.getStringExtra("from") ?: "Giulia", text, intent.getBooleanExtra("group", false))
         }
         intent.getStringExtra("screen")?.let { CarState.simulatedScreen.value = it.takeUnless { s -> s == "off" } }
 
