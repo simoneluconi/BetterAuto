@@ -85,6 +85,13 @@ class AapProtocolTest {
     }
 
     @Test(expected = IOException::class)
+    fun absurdAnnouncedSizeIsRejectedBeforeAnyAllocation() {
+        val pipe = LoopbackTransport()
+        pipe.write(byteArrayOf(3, Aap.FLAG_FIRST.toByte(), 0, 2, 0x7f, -1, -1, -1, 0, 1))
+        FrameCodec(pipe, phoneTls()).read()
+    }
+
+    @Test(expected = IOException::class)
     fun messageShorterThanItsIdIsRejected() {
         val pipe = LoopbackTransport()
         pipe.write(byteArrayOf(3, Aap.FLAG_BULK.toByte(), 0, 1, 7))

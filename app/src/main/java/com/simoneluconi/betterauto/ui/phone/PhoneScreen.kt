@@ -71,6 +71,7 @@ import com.simoneluconi.betterauto.ui.AlphabetButton
 import com.simoneluconi.betterauto.ui.AlphabetJumpEffect
 import com.simoneluconi.betterauto.ui.AlphabetPicker
 import com.simoneluconi.betterauto.ui.CarIcon
+import com.simoneluconi.betterauto.ui.firstOfLetterWithHeaders
 import com.simoneluconi.betterauto.ui.indexLetter
 import com.simoneluconi.betterauto.ui.rememberAlphabetJump
 import com.simoneluconi.betterauto.ui.CarIcons
@@ -264,21 +265,7 @@ private fun ContactsList(settings: LauncherSettings, onPick: (Contact) -> Unit) 
         list.isEmpty() -> PanelMessage(stringResource(if (PhoneBook.canRead(context)) R.string.phone_no_contacts else R.string.phone_no_access))
         else -> {
             // Lazy-list index of the first contact of each letter (right after the letter's header)
-            val firstOfLetter = remember(list) {
-                val map = LinkedHashMap<Char, Int>()
-                var index = 0
-                var letter: Char? = null
-                for (contact in list) {
-                    val initial = indexLetter(contact.name)
-                    if (initial != letter) {
-                        letter = initial
-                        index++
-                        map[initial] = index
-                    }
-                    index++
-                }
-                map
-            }
+            val firstOfLetter = remember(list) { firstOfLetterWithHeaders(list) { it.name } }
             val jump = rememberAlphabetJump()
             val listState = rememberLazyListState()
             AlphabetJumpEffect(jump, listState)

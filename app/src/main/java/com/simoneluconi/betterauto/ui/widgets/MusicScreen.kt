@@ -52,7 +52,7 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.ui.AlphabetButton
 import com.simoneluconi.betterauto.ui.AlphabetJumpEffect
 import com.simoneluconi.betterauto.ui.AlphabetPicker
-import com.simoneluconi.betterauto.ui.indexLetter
+import com.simoneluconi.betterauto.ui.firstOfLetter
 import com.simoneluconi.betterauto.ui.rememberAlphabetJump
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -198,11 +198,7 @@ private fun LibraryList(packageName: String?) {
             val jump = rememberAlphabetJump()
             val listState = rememberLazyListState()
             AlphabetJumpEffect(jump, listState)
-            val firstOfLetter = remember(current.items) {
-                val map = LinkedHashMap<Char, Int>()
-                current.items.forEachIndexed { i, item -> map.putIfAbsent(indexLetter(item.title), i) }
-                map.entries.sortedBy { it.key }.associate { it.key to it.value }
-            }
+            val firstOfLetter = remember(current.items) { firstOfLetter(current.items) { it.title } }
             val showJump = current.items.size >= AZ_MIN_ITEMS && firstOfLetter.size > 1
             if (current.canGoBack || showJump) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

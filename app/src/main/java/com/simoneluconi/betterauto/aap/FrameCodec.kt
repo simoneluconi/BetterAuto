@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.aap
 
+import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.transport.Transport
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -13,6 +14,7 @@ import java.io.IOException
  */
 class FrameCodec(private val transport: Transport, private val tls: AapTls) {
     private val partial = HashMap<Int, ByteArrayOutputStream>()
+    private val announced = HashMap<Int, Long>()
     private val header = ByteArray(4)
     private val totalSize = ByteArray(4)
 
@@ -24,7 +26,12 @@ class FrameCodec(private val transport: Transport, private val tls: AapTls) {
             val flags = header[1].toInt() and 0xff
             val frameType = flags and Aap.FLAG_BULK
             val frameSize = u16(header, 2)
-            if (frameType == Aap.FLAG_FIRST) transport.readFully(totalSize)
+            if (frameType == Aap.FLAG_FIRST) {
+                transport.readFully(totalSize)
+                val total = u32(totalSize, 0)
+                if (total > MAX_MESSAGE_SIZE) throw IOException("Message of $total bytes announced on channel $channel")
+                announced[channel] = total
+            }
 
             val data = ByteArray(frameSize)
             transport.readFully(data)
@@ -38,8 +45,13 @@ class FrameCodec(private val transport: Transport, private val tls: AapTls) {
                 partial[channel] ?: throw IOException("Continuation frame without FIRST on channel $channel")
             }
             buf.write(plain)
+            if (buf.size() > MAX_MESSAGE_SIZE) throw IOException("Message on channel $channel exceeds $MAX_MESSAGE_SIZE bytes")
             if (frameType == Aap.FLAG_LAST) {
                 partial.remove(channel)
+                val total = announced.remove(channel)
+                if (total != null && total != buf.size().toLong()) {
+                    EventLog.log("Channel $channel: message of ${buf.size()} bytes, $total announced")
+                }
                 return toMessage(channel, flags, buf.toByteArray())
             }
         }
@@ -96,7 +108,14 @@ class FrameCodec(private val transport: Transport, private val tls: AapTls) {
             controlType = flags and Aap.FLAG_CONTROL != 0,
         )
     }
+
+    private companion object {
+        /** Far above anything the protocol carries (a cover is a few hundred KB): a corrupt header must not allocate. */
+        const val MAX_MESSAGE_SIZE = 16L shl 20
+    }
 }
+
+internal fun u32(b: ByteArray, off: Int): Long = (u16(b, off).toLong() shl 16) or u16(b, off + 2).toLong()
 
 internal fun u16(b: ByteArray, off: Int) = ((b[off].toInt() and 0xff) shl 8) or (b[off + 1].toInt() and 0xff)
 

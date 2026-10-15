@@ -46,6 +46,33 @@ fun indexLetter(text: String): Char {
     return if (base.isLetter()) base.uppercaseChar() else '#'
 }
 
+/** Position of the first item of each letter, letters in alphabetical order: the A–Z targets of a plain list. */
+fun <T> firstOfLetter(items: List<T>, name: (T) -> String): Map<Char, Int> {
+    val map = LinkedHashMap<Char, Int>()
+    items.forEachIndexed { i, item -> map.putIfAbsent(indexLetter(name(item)), i) }
+    return map.entries.sortedBy { it.key }.associate { it.key to it.value }
+}
+
+/**
+ * The same for a sorted list drawn with a header row before each letter: positions count the headers,
+ * and each letter maps to its first item, right after its header.
+ */
+fun <T> firstOfLetterWithHeaders(items: List<T>, name: (T) -> String): Map<Char, Int> {
+    val map = LinkedHashMap<Char, Int>()
+    var position = 0
+    var letter: Char? = null
+    for (item in items) {
+        val initial = indexLetter(name(item))
+        if (initial != letter) {
+            letter = initial
+            position++ // the header row
+            map.putIfAbsent(initial, position)
+        }
+        position++
+    }
+    return map
+}
+
 /**
  * A–Z jump for long lists, made for the knob: the A–Z button opens the letters present in the list,
  * and picking one scrolls there and puts the focus on the first item of that letter.

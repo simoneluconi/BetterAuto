@@ -13,10 +13,15 @@ import androidx.core.graphics.drawable.toBitmap
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 data class NotificationMessage(val sender: String?, val text: String, val time: Long)
 
@@ -57,6 +62,10 @@ object CarNotifications {
     val connected = MutableStateFlow(false)
 
     private var listener: NotificationListenerService? = null
+
+    // Parsing loads icons and avatars: one worker, in order, off the main thread. [byKey] lives there only.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val worker = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val byKey = LinkedHashMap<String, CarNotification>()
 
     /** Development: show only pretend notifications, e.g. for screenshots without personal data. */
@@ -64,7 +73,7 @@ object CarNotifications {
     var demoOnly = false
         set(value) {
             field = value
-            publish()
+            worker.launch { publish() }
         }
 
     /** Visible notifications, newest first, with the driver's filters applied. */
@@ -81,13 +90,16 @@ object CarNotifications {
     fun dismiss(notification: CarNotification) {
         EventLog.log("Notifications: dismiss from ${notification.packageName}")
         runCatching { listener?.cancelNotification(notification.key) }
-        remove(notification.key)
+        worker.launch { remove(notification.key) }
     }
 
     fun dismissAll(list: List<CarNotification>) {
         EventLog.log("Notifications: dismiss ${list.size}")
-        list.forEach { n -> runCatching { listener?.cancelNotification(n.key) }; byKey.remove(n.key) }
-        publish()
+        list.forEach { n -> runCatching { listener?.cancelNotification(n.key) } }
+        worker.launch {
+            list.forEach { byKey.remove(it.key) }
+            publish()
+        }
     }
 
     /** Development: a pretend message, to try the widget and the banner. */
@@ -105,27 +117,33 @@ object CarNotifications {
             avatar = null,
         )
         EventLog.log("Notifications: simulated ${if (group) "group " else ""}message")
-        byKey[n.key] = n
         connected.value = true
-        publish()
-        _arrived.tryEmit(n)
+        worker.launch {
+            byKey[n.key] = n
+            publish()
+            _arrived.tryEmit(n)
+        }
     }
 
     /** Development: removes the pretend notifications. */
     fun clearSimulated() {
-        byKey.keys.removeAll { it.startsWith(DEBUG_KEY) }
         EventLog.log("Notifications: pretend messages removed")
-        publish()
+        worker.launch {
+            byKey.keys.removeAll { it.startsWith(DEBUG_KEY) }
+            publish()
+        }
     }
 
     internal fun onConnected(service: NotificationListenerService) {
         listener = service
         connected.value = true
-        byKey.clear()
-        val active = runCatching { service.activeNotifications }.getOrNull().orEmpty()
-        for (sbn in active) parse(service, sbn)?.let { byKey[it.key] = it }
-        EventLog.log("Notifications: listener connected, ${byKey.size} of ${active.size} kept")
-        publish()
+        worker.launch {
+            byKey.clear()
+            val active = runCatching { service.activeNotifications }.getOrNull().orEmpty()
+            for (sbn in active) parse(service, sbn)?.let { byKey[it.key] = it }
+            EventLog.log("Notifications: listener connected, ${byKey.size} of ${active.size} kept")
+            publish()
+        }
     }
 
     internal fun onDisconnected() {
@@ -135,21 +153,23 @@ object CarNotifications {
     }
 
     internal fun onPosted(service: NotificationListenerService, sbn: StatusBarNotification) {
-        val parsed = parse(service, sbn) ?: return
-        val previous = byKey[parsed.key]
-        byKey.remove(parsed.key)
-        byKey[parsed.key] = parsed
-        publish()
-        // Apps re-post the same notification for every update: announce only something new
-        if (previous == null || previous.last != parsed.last) {
-            EventLog.log("Notifications: new from ${parsed.packageName}${if (parsed.isGroup) " (group)" else ""}")
-            LauncherSettings.get(service).markNotificationApp(parsed.packageName)
-            _arrived.tryEmit(parsed)
+        worker.launch {
+            val parsed = parse(service, sbn) ?: return@launch
+            val previous = byKey[parsed.key]
+            byKey.remove(parsed.key)
+            byKey[parsed.key] = parsed
+            publish()
+            // Apps re-post the same notification for every update: announce only something new
+            if (previous == null || previous.last != parsed.last) {
+                EventLog.log("Notifications: new from ${parsed.packageName}${if (parsed.isGroup) " (group)" else ""}")
+                LauncherSettings.get(service).markNotificationApp(parsed.packageName)
+                _arrived.tryEmit(parsed)
+            }
         }
     }
 
     internal fun onRemoved(sbn: StatusBarNotification) {
-        if (byKey.containsKey(sbn.key)) remove(sbn.key)
+        worker.launch { if (byKey.containsKey(sbn.key)) remove(sbn.key) }
     }
 
     private fun remove(key: String) {

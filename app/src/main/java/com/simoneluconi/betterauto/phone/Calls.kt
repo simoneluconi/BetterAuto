@@ -8,7 +8,9 @@ import android.os.Handler
 import android.os.Looper
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.CallEndpoint
 import android.telecom.TelecomManager
+import androidx.annotation.RequiresApi
 import android.telecom.VideoProfile
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -104,6 +106,25 @@ object Calls {
     internal fun onAudioState(state: CallAudioState?) {
         muted = state?.isMuted == true
         EventLog.log("Calls: audio route ${state?.route?.let(CallAudioState::audioRouteToString)}, muted $muted")
+        publish()
+    }
+
+    @RequiresApi(34)
+    internal fun onEndpoint(endpoint: CallEndpoint) {
+        val type = when (endpoint.endpointType) {
+            CallEndpoint.TYPE_EARPIECE -> "earpiece"
+            CallEndpoint.TYPE_BLUETOOTH -> "bluetooth"
+            CallEndpoint.TYPE_WIRED_HEADSET -> "wired headset"
+            CallEndpoint.TYPE_SPEAKER -> "speaker"
+            CallEndpoint.TYPE_STREAMING -> "streaming"
+            else -> "unknown"
+        }
+        EventLog.log("Calls: audio endpoint $type")
+    }
+
+    internal fun onMuted(value: Boolean) {
+        muted = value
+        EventLog.log("Calls: muted $muted")
         publish()
     }
 
