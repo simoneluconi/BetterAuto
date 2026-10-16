@@ -36,6 +36,11 @@ Android Studio with AGP 9, Kotlin 2.4 (lifted by the Compose compiler plugin), C
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+On Windows, `scripts\deploy.cmd` does the same in one go: it finds Java (Android Studio's own if none is
+set) and adb (from `local.properties`), builds the debug APK, installs it on the connected phone and opens
+the app. `-Tests` runs the unit tests first, `-NoLaunch` skips opening the app, `-Serial <id>` picks a
+phone when more than one is connected (a phone on both USB and wireless adb is taken by USB).
+
 The protobuf files under `app/src/main/proto/aap_protobuf` are from opencardev/aasdk
 (commit in `app/src/main/proto/AASDK_VERSION.txt`).
 
@@ -121,5 +126,14 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
 
 ## TLS certificate
 
-`app/src/main/assets/phone_cert.pem` and `phone_key.pem` are a throwaway self-signed development
-certificate. aasdk-based head units do not verify the phone's certificate; factory head units may.
+The phone identity is read from the PEM files (`.pem`, `.crt`, `.cer`, `.key`) at the root of
+`app/src/main/assets/`, whatever their names: the private key (`BEGIN PRIVATE KEY`, PKCS#8, unencrypted)
+and the certificates are told apart by content, the key is paired with the certificate it signs for, and
+any other certificates complete the chain. One file may hold everything. If no usable pair is found the
+phone shows a "no usable certificate" notification and the log says what is missing.
+
+The files in the repository are a throwaway self-signed development certificate. aasdk-based head units
+do not verify the phone's certificate; factory head units expect one issued by Google, so BetterAuto only
+works with head units that skip the check (see the README). When a car refuses the connection, the phone shows a
+notification explaining the reason (`ConnectionProblem`); `--es problem <name>` on the debug broadcast
+shows any of them without a car.

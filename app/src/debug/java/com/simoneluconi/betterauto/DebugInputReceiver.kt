@@ -3,6 +3,7 @@ package com.simoneluconi.betterauto
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.simoneluconi.betterauto.aap.ConnectionProblem
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.Timed
 import com.simoneluconi.betterauto.car.VehicleData
@@ -39,10 +40,23 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
  *   ... --es rail "MAP:GROUP_1,VEHICLE:GROUP_1"  arrange the app bar (missing items keep their default;
  *                            "default" resets it)
+ *   ... --es problem certificate_rejected  the phone notification for a car that refused the connection
+ *                            (any ConnectionProblem name; --ei code -3 and --es carMaker Volkswagen fill the
+ *                            details, "off" removes it)
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.hasExtra("night")) CarState.nightMode.value = intent.getBooleanExtra("night", false)
+        intent.getStringExtra("problem")?.let { name ->
+            if (name == "off") {
+                AapService.cancelProblem(context)
+            } else {
+                ConnectionProblem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
+                    val code = if (intent.hasExtra("code")) intent.getIntExtra("code", 0) else null
+                    AapService.showProblem(context, it, code, intent.getStringExtra("carMaker"))
+                }
+            }
+        }
         intent.getStringExtra("theme")?.let { name ->
             ThemeMode.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setThemeMode(it) }

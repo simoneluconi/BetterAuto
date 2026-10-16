@@ -24,6 +24,7 @@ import com.simoneluconi.betterauto.car.VehicleInfo
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.Transport
 import java.io.Closeable
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -40,6 +41,10 @@ class AapSession(
     private val transport: Transport,
     private val tls: AapTls,
     private val projection: Projection,
+    /** The car accepted the phone and listed its channels. Called on the session thread. */
+    private val onEstablished: () -> Unit = {},
+    /** Something the driver should know, with the car's status code when it sent one. Called on the session thread. */
+    private val onProblem: (ConnectionProblem, code: Int?) -> Unit = { _, _ -> },
     /** The app icon as PNG in [com.simoneluconi.betterauto.AppIcon.Sizes], for the head unit's source list. */
     private val icons: () -> List<ByteArray> = { emptyList() },
 ) : Closeable {
@@ -51,14 +56,31 @@ class AapSession(
     private var running = true
     private var closed = false
 
+    @Volatile
+    private var established = false
+
+    @Volatile
+    private var problemReported = false
 
     /** Blocks until the connection ends. */
     fun run() {
         EventLog.log("Session started, waiting for VERSION_REQUEST")
-        while (running) {
-            val msg = codec.read()
-            if (msg.channel == Aap.CONTROL_CHANNEL) onControlMessage(msg) else onChannelMessage(msg)
+        try {
+            while (running) {
+                val msg = codec.read()
+                if (msg.channel == Aap.CONTROL_CHANNEL) onControlMessage(msg) else onChannelMessage(msg)
+            }
+        } catch (e: IOException) {
+            // A drop during setup that we did not cause and the car did not explain
+            val closedByPhone = synchronized(this) { closed }
+            if (!established && !closedByPhone && !problemReported) report(ConnectionProblem.DROPPED_DURING_SETUP)
+            throw e
         }
+    }
+
+    private fun report(problem: ConnectionProblem, code: Int? = null) {
+        problemReported = true
+        onProblem(problem, code)
     }
 
     private fun onControlMessage(msg: AapMessage) {
@@ -74,7 +96,9 @@ class AapSession(
             }
             ControlMessageType.MESSAGE_PING_RESPONSE_VALUE -> Unit
             ControlMessageType.MESSAGE_BYEBYE_REQUEST_VALUE -> {
-                EventLog.log("Head unit is closing the session: ${ByeByeRequest.parseFrom(msg.payload).reason}")
+                val reason = ByeByeRequest.parseFrom(msg.payload).reason
+                EventLog.log("Head unit is closing the session: $reason")
+                ConnectionProblem.ofByeBye(reason)?.let(::report)
                 send(ControlMessageType.MESSAGE_BYEBYE_RESPONSE_VALUE, ByeByeResponse.getDefaultInstance(), msg.encrypted)
                 running = false
             }
@@ -112,8 +136,10 @@ class AapSession(
     private fun onAuthComplete(auth: AuthResponse) {
         EventLog.log("AUTH_COMPLETE, status ${auth.status}")
         // A head unit that checks the phone certificate says so here, before anything else
-        if (auth.status != MessageStatus.STATUS_SUCCESS_VALUE) {
-            EventLog.log("The head unit rejected the authentication (status ${auth.status}): it may require a certificate signed for Android Auto")
+        ConnectionProblem.ofAuthStatus(auth.status)?.let { problem ->
+            val name = MessageStatus.forNumber(auth.status)?.name ?: "unknown status"
+            EventLog.log("The head unit rejected the authentication: $name (${auth.status}), $problem")
+            report(problem, auth.status)
         }
         val request = ServiceDiscoveryRequest.newBuilder()
             .setLabelText("BetterAuto")
@@ -131,6 +157,8 @@ class AapSession(
         val services = response.channelsList
         val hu = response.headunitInfo
         EventLog.log("Head unit: ${hu.headUnitMake} ${hu.headUnitModel} (sw ${hu.headUnitSoftwareVersion}), car: ${hu.make} ${hu.model}")
+        established = true
+        onEstablished()
         val sensors = services.firstOrNull { it.hasSensorSourceService() }?.sensorSourceService
         VehicleData.onConnected(
             VehicleInfo(

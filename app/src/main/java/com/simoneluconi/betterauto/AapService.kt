@@ -20,6 +20,7 @@ import android.os.IBinder
 import android.os.Looper
 import com.simoneluconi.betterauto.aap.AapSession
 import com.simoneluconi.betterauto.aap.AapTls
+import com.simoneluconi.betterauto.aap.ConnectionProblem
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
@@ -77,16 +78,33 @@ class AapService : Service() {
         val fd = accessory?.let { getSystemService(UsbManager::class.java).openAccessory(it) }
         if (fd == null) {
             EventLog.log("Cannot open the USB accessory")
+            if (accessory != null) showProblem(this, ConnectionProblem.USB_NOT_OPENED, null, null)
             if (session == null) stopSelf()
             return START_NOT_STICKY
         }
 
+        val tls = try {
+            AapTls.fromAssets(this)
+        } catch (e: Exception) {
+            EventLog.log("Phone certificate: ${e.message ?: e}")
+            showProblem(this, ConnectionProblem.PHONE_CERTIFICATE, null, null)
+            runCatching { fd.close() }
+            if (session == null) stopSelf()
+            return START_NOT_STICKY
+        }
         session?.let {
             EventLog.log("Replacing the previous session")
             endSession(it)
         }
         EventLog.status = "${accessory.manufacturer} ${accessory.model}"
-        val newSession = AapSession(UsbAccessoryTransport(fd), AapTls.fromAssets(this), Projection(this)) {
+        val newSession = AapSession(
+            UsbAccessoryTransport(fd), tls, Projection(this),
+            onEstablished = { main.post { cancelProblem(this) } },
+            onProblem = { problem, code ->
+                val carMaker = tls.peerOrganization
+                main.post { showProblem(this, problem, code, carMaker) }
+            },
+        ) {
             AppIcon.Sizes.mapNotNull { AppIcon.png(this, it) }.takeIf { it.size == AppIcon.Sizes.size }.orEmpty()
         }
         session = newSession
@@ -196,6 +214,48 @@ class AapService : Service() {
         const val EXTRA_RESULT_DATA = "result_data"
         private const val CHANNEL_ID = "aap"
         private const val NOTIFICATION_ID = 1
+        private const val PROBLEM_CHANNEL_ID = "problems"
+        private const val PROBLEM_NOTIFICATION_ID = 2
+
+        /**
+         * Tells the driver, in plain words, why the car did not connect. It outlives the session notification,
+         * which goes away with the connection, and a newer problem replaces it.
+         */
+        fun showProblem(context: Context, problem: ConnectionProblem, code: Int?, carMaker: String?) {
+            val (title, text) = when (problem) {
+                ConnectionProblem.NO_COMPATIBLE_VERSION -> R.string.problem_version_title to R.string.problem_version_text
+                ConnectionProblem.CERTIFICATE_REJECTED -> R.string.problem_certificate_title to R.string.problem_certificate_text
+                ConnectionProblem.CERTIFICATE_DATES -> R.string.problem_dates_title to R.string.problem_dates_text
+                ConnectionProblem.AUTH_FAILED -> R.string.problem_auth_title to R.string.problem_auth_text
+                ConnectionProblem.NOT_SUPPORTED -> R.string.problem_not_supported_title to R.string.problem_not_supported_text
+                ConnectionProblem.DEVICE_SWITCH -> R.string.problem_device_switch_title to R.string.problem_device_switch_text
+                ConnectionProblem.DROPPED_DURING_SETUP -> R.string.problem_dropped_title to R.string.problem_dropped_text
+                ConnectionProblem.USB_NOT_OPENED -> R.string.problem_usb_title to R.string.problem_usb_text
+                ConnectionProblem.PHONE_CERTIFICATE -> R.string.problem_phone_certificate_title to R.string.problem_phone_certificate_text
+            }
+            val manager = context.getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(
+                NotificationChannel(PROBLEM_CHANNEL_ID, context.getString(R.string.problem_channel), NotificationManager.IMPORTANCE_DEFAULT)
+            )
+            val body = context.getString(text, code ?: 0)
+            val builder = Notification.Builder(context, PROBLEM_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle(context.getString(title))
+                .setContentText(body)
+                .setStyle(Notification.BigTextStyle().bigText(body))
+                .setOnlyAlertOnce(true)
+                .setAutoCancel(true)
+                .setContentIntent(
+                    PendingIntent.getActivity(context, 2, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+                )
+            carMaker?.let(builder::setSubText)
+            manager.notify(PROBLEM_NOTIFICATION_ID, builder.build())
+        }
+
+        /** The car connected after all: an old explanation would only confuse. */
+        fun cancelProblem(context: Context) {
+            context.getSystemService(NotificationManager::class.java).cancel(PROBLEM_NOTIFICATION_ID)
+        }
     }
 }
 
