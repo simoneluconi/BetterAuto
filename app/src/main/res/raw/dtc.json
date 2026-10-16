@@ -1,0 +1,286 @@
+{
+ "P0010": {
+  "severity": "check",
+  "title": "Intake camshaft position actuator circuit (bank 1)"
+ },
+ "P0011": {
+  "severity": "check",
+  "title": "Intake camshaft timing over-advanced (bank 1)"
+ },
+ "P0016": {
+  "severity": "check",
+  "title": "Crankshaft and camshaft position don't match (bank 1)"
+ },
+ "P0087": {
+  "severity": "check",
+  "title": "Fuel rail pressure too low"
+ },
+ "P0088": {
+  "severity": "check",
+  "title": "Fuel rail pressure too high"
+ },
+ "P0101": {
+  "severity": "check",
+  "title": "Mass air flow sensor out of range"
+ },
+ "P0102": {
+  "severity": "check",
+  "title": "Mass air flow sensor circuit low"
+ },
+ "P0106": {
+  "severity": "check",
+  "title": "Manifold pressure sensor out of range"
+ },
+ "P0113": {
+  "severity": "minor",
+  "title": "Intake air temperature sensor circuit high"
+ },
+ "P0117": {
+  "severity": "check",
+  "title": "Coolant temperature sensor circuit low"
+ },
+ "P0118": {
+  "severity": "check",
+  "title": "Coolant temperature sensor circuit high"
+ },
+ "P0121": {
+  "severity": "check",
+  "title": "Throttle position sensor out of range"
+ },
+ "P0128": {
+  "severity": "minor",
+  "title": "Coolant stays below operating temperature (thermostat)"
+ },
+ "P0130": {
+  "severity": "check",
+  "title": "Oxygen sensor circuit (bank 1, sensor 1)"
+ },
+ "P0133": {
+  "severity": "minor",
+  "title": "Oxygen sensor slow response (bank 1, sensor 1)"
+ },
+ "P0135": {
+  "severity": "minor",
+  "title": "Oxygen sensor heater circuit (bank 1, sensor 1)"
+ },
+ "P0141": {
+  "severity": "minor",
+  "title": "Oxygen sensor heater circuit (bank 1, sensor 2)"
+ },
+ "P0171": {
+  "severity": "check",
+  "title": "Fuel mixture too lean (bank 1)"
+ },
+ "P0172": {
+  "severity": "check",
+  "title": "Fuel mixture too rich (bank 1)"
+ },
+ "P0174": {
+  "severity": "check",
+  "title": "Fuel mixture too lean (bank 2)"
+ },
+ "P0175": {
+  "severity": "check",
+  "title": "Fuel mixture too rich (bank 2)"
+ },
+ "P0217": {
+  "severity": "stop",
+  "title": "Engine overheating"
+ },
+ "P0219": {
+  "severity": "check",
+  "title": "Engine overspeed"
+ },
+ "P0234": {
+  "severity": "check",
+  "title": "Turbo overboost"
+ },
+ "P0299": {
+  "severity": "check",
+  "title": "Turbo underboost"
+ },
+ "P0300": {
+  "severity": "stop",
+  "title": "Random or multiple cylinder misfire"
+ },
+ "P0301": {
+  "severity": "stop",
+  "title": "Cylinder 1 misfire"
+ },
+ "P0302": {
+  "severity": "stop",
+  "title": "Cylinder 2 misfire"
+ },
+ "P0303": {
+  "severity": "stop",
+  "title": "Cylinder 3 misfire"
+ },
+ "P0304": {
+  "severity": "stop",
+  "title": "Cylinder 4 misfire"
+ },
+ "P0305": {
+  "severity": "stop",
+  "title": "Cylinder 5 misfire"
+ },
+ "P0306": {
+  "severity": "stop",
+  "title": "Cylinder 6 misfire"
+ },
+ "P0325": {
+  "severity": "check",
+  "title": "Knock sensor circuit (bank 1)"
+ },
+ "P0335": {
+  "severity": "check",
+  "title": "Crankshaft position sensor circuit"
+ },
+ "P0340": {
+  "severity": "check",
+  "title": "Camshaft position sensor circuit (bank 1)"
+ },
+ "P0380": {
+  "severity": "minor",
+  "title": "Glow plug circuit"
+ },
+ "P0401": {
+  "severity": "check",
+  "title": "EGR flow insufficient"
+ },
+ "P0402": {
+  "severity": "check",
+  "title": "EGR flow excessive"
+ },
+ "P0403": {
+  "severity": "check",
+  "title": "EGR circuit"
+ },
+ "P0420": {
+  "severity": "check",
+  "title": "Catalytic converter efficiency below threshold (bank 1)"
+ },
+ "P0430": {
+  "severity": "check",
+  "title": "Catalytic converter efficiency below threshold (bank 2)"
+ },
+ "P0440": {
+  "severity": "minor",
+  "title": "Fuel vapor (EVAP) system malfunction"
+ },
+ "P0442": {
+  "severity": "minor",
+  "title": "Fuel vapor (EVAP) small leak"
+ },
+ "P0455": {
+  "severity": "minor",
+  "title": "Fuel vapor (EVAP) large leak, check the fuel cap"
+ },
+ "P0456": {
+  "severity": "minor",
+  "title": "Fuel vapor (EVAP) very small leak"
+ },
+ "P0457": {
+  "severity": "minor",
+  "title": "Fuel cap loose or missing"
+ },
+ "P0500": {
+  "severity": "check",
+  "title": "Vehicle speed sensor"
+ },
+ "P0505": {
+  "severity": "check",
+  "title": "Idle control system"
+ },
+ "P0507": {
+  "severity": "minor",
+  "title": "Idle speed higher than expected"
+ },
+ "P0520": {
+  "severity": "check",
+  "title": "Engine oil pressure sensor circuit"
+ },
+ "P0524": {
+  "severity": "stop",
+  "title": "Engine oil pressure too low"
+ },
+ "P0562": {
+  "severity": "check",
+  "title": "System voltage low"
+ },
+ "P0563": {
+  "severity": "check",
+  "title": "System voltage high"
+ },
+ "P0601": {
+  "severity": "check",
+  "title": "Engine control module memory error"
+ },
+ "P0606": {
+  "severity": "check",
+  "title": "Engine control module processor fault"
+ },
+ "P0700": {
+  "severity": "check",
+  "title": "Transmission control system fault"
+ },
+ "P0715": {
+  "severity": "check",
+  "title": "Transmission input speed sensor"
+ },
+ "P0741": {
+  "severity": "check",
+  "title": "Torque converter clutch stuck off"
+ },
+ "P2002": {
+  "severity": "check",
+  "title": "Diesel particulate filter efficiency below threshold"
+ },
+ "P2015": {
+  "severity": "minor",
+  "title": "Intake manifold runner position sensor (bank 1)"
+ },
+ "P20EE": {
+  "severity": "check",
+  "title": "SCR NOx catalyst efficiency below threshold"
+ },
+ "P2096": {
+  "severity": "minor",
+  "title": "Post-catalyst fuel trim too lean (bank 1)"
+ },
+ "P2097": {
+  "severity": "minor",
+  "title": "Post-catalyst fuel trim too rich (bank 1)"
+ },
+ "P2187": {
+  "severity": "check",
+  "title": "Fuel mixture too lean at idle (bank 1)"
+ },
+ "P242F": {
+  "severity": "check",
+  "title": "Diesel particulate filter restriction, ash build-up"
+ },
+ "P2463": {
+  "severity": "check",
+  "title": "Diesel particulate filter soot build-up"
+ },
+ "C0035": {
+  "severity": "check",
+  "title": "Front left wheel speed sensor circuit"
+ },
+ "C0040": {
+  "severity": "check",
+  "title": "Front right wheel speed sensor circuit"
+ },
+ "U0100": {
+  "severity": "check",
+  "title": "Lost communication with the engine control module"
+ },
+ "U0101": {
+  "severity": "check",
+  "title": "Lost communication with the transmission control module"
+ },
+ "U0121": {
+  "severity": "check",
+  "title": "Lost communication with the ABS module"
+ }
+}

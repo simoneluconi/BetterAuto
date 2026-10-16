@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.car.Timed
+import com.simoneluconi.betterauto.car.VehicleData
+import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
@@ -28,6 +31,8 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *   ... --es notify "Text"   pretend message (add --es from "Name" and --ez group true for a group chat)
  *   ... --ez demo true       show only pretend notifications (screenshots without personal data)
  *   ... --ez clearDemo true  remove the pretend notifications
+ *   ... --es vehicle demo    pretend car data on the vehicle screen ("off" clears it, "diagnostics" opens the codes);
+ *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -50,6 +55,15 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         intent.getStringExtra("call")?.let { name ->
             Calls.simulate(CallPhase.entries.firstOrNull { it.name.equals(name, ignoreCase = true) })
+        }
+        when (intent.getStringExtra("vehicle")) {
+            "demo" -> VehicleData.simulate()
+            "off" -> VehicleData.clear()
+            "diagnostics" -> VehicleScreenState.showDiagnostics.value = true
+        }
+        intent.getStringExtra("dtc")?.let { codes ->
+            val list = codes.split(',', ' ').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+            VehicleData.update { it.copy(diagnostics = Timed(list)) }
         }
         if (intent.getBooleanExtra("clearDemo", false)) CarNotifications.clearSimulated()
         if (intent.hasExtra("demo")) CarNotifications.demoOnly = intent.getBooleanExtra("demo", false)

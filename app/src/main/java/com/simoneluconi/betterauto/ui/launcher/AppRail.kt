@@ -136,6 +136,7 @@ private val Destinations = listOf(
     Destination(Section.MUSIC, CarIcons.Music, R.string.nav_music),
     Destination(Section.MAP, CarIcons.Map, R.string.nav_map),
     Destination(Section.PHONE, CarIcons.Phone, R.string.nav_phone),
+    Destination(Section.VEHICLE, CarIcons.Car, R.string.nav_vehicle),
 )
 
 @Composable

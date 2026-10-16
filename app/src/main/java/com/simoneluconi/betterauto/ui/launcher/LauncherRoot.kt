@@ -49,6 +49,7 @@ import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.ui.phone.CallScreen
+import com.simoneluconi.betterauto.ui.vehicle.VehicleScreen
 import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
 import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
@@ -266,6 +267,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
                 Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
                 Section.PHONE -> PhoneScreen(settings, Modifier.fillMaxSize())
+                Section.VEHICLE -> VehicleScreen(Modifier.fillMaxSize())
                 Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize(), primary = true)
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
             }

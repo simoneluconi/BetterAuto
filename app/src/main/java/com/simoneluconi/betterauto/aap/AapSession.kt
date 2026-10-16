@@ -19,6 +19,8 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.MessageLite
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.car.VehicleData
+import com.simoneluconi.betterauto.car.VehicleInfo
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.Transport
 import java.io.Closeable
@@ -129,8 +131,26 @@ class AapSession(
         val services = response.channelsList
         val hu = response.headunitInfo
         EventLog.log("Head unit: ${hu.headUnitMake} ${hu.headUnitModel} (sw ${hu.headUnitSoftwareVersion}), car: ${hu.make} ${hu.model}")
+        val sensors = services.firstOrNull { it.hasSensorSourceService() }?.sensorSourceService
+        VehicleData.onConnected(
+            VehicleInfo(
+                make = hu.make.ifBlank { null },
+                model = hu.model.ifBlank { null },
+                year = hu.year.ifBlank { null },
+                headUnit = listOf(hu.headUnitMake, hu.headUnitModel).filter { it.isNotBlank() }.joinToString(" ").ifBlank { null },
+                headUnitSoftware = hu.headUnitSoftwareVersion.ifBlank { null },
+                fuelTypes = sensors?.supportedFuelTypesList.orEmpty().map { it.name.removePrefix("FUEL_TYPE_") },
+                evConnectors = sensors?.supportedEvConnectorTypesList.orEmpty().map { it.name.removePrefix("EV_CONNECTOR_TYPE_") },
+            ),
+            sensors?.sensorsList.orEmpty().map { it.sensorType.name.removePrefix("SENSOR_") },
+        )
         for (service in services) {
             EventLog.log("  channel ${service.id}: ${service.kind()}")
+            // Car makers' own channels (e.g. VW's Exlap): logged to find out what a car offers
+            if (service.hasVendorExtensionService()) {
+                val vendor = service.vendorExtensionService
+                EventLog.log("    vendor extension \"${vendor.name}\", allowed apps: ${vendor.packageWhiteListList.joinToString().ifEmpty { "any" }}, ${vendor.data.size()} bytes of data")
+            }
             val channel = createChannel(service) ?: continue
             synchronized(this) {
                 if (closed) return

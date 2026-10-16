@@ -123,6 +123,10 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
       instrument cluster
 - [x] Notifications: widget, section, filters, quiet mode
+- [x] Vehicle: everything the car shares, fault codes explained, engine light shortcut
+- [ ] Trip log: every drive with start, end, distance and time, exportable from the phone
+- [ ] Notifications while stopped: show non-urgent ones only at a standstill and hide them when
+      driving off, with exceptions for important people and calls (all configurable)
 - [ ] Home Assistant: widget and section for gates, garage, lights, scenes, alarm
 - [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
       (audio over Bluetooth)

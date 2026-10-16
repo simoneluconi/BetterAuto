@@ -75,6 +75,17 @@ object CarIcons {
     val BellOff = icon("M8.7 3.9A6 6 0 0 1 18 8c0 3.2.6 5.3 1.4 6.7", "M17 17H3s3-2 3-9c0-.6.1-1.2.3-1.7", "M10.3 21a1.94 1.94 0 0 0 3.4 0", "M3 3l18 18")
     val Close = icon("M6 6l12 12", "M18 6L6 18")
     val Check2 = icon("M4 12.5l5 5L20 6.5")
+    /** The check-engine symbol of instrument clusters. */
+    val Engine = icon(
+        "M8 7h6", "M11 7v2",
+        "M5 11h1.5V9H16l2 2h1.5v-1H21v6h-1.5v-1H18v2h-2.5L14 18.5H8.5L6.5 16.5V15H5v1.5H3v-5h2z",
+    )
+    val Fuel = icon("M4 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15", "M3 20h11", "M4 10h9", "M13 8h2l2 2v7a1.5 1.5 0 0 0 3 0V9l-2.5-2.5")
+    val Gauge = icon("M4.5 17a8 8 0 1 1 15 0", "M12 13l3.5-4", circle(12f, 13f, 1.2f))
+    val Tire = icon(circle(12f, 12f, 8.5f), circle(12f, 12f, 4f), "M12 3.5v4", "M12 16.5v4", "M3.5 12h4", "M16.5 12h4")
+    val Thermometer = icon("M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z", "M12 10v7")
+    val Door = icon("M5 20V6l9-3v17", "M5 20h14", "M14 6h4v14", "M11 12h.01")
+    val Light = icon("M9 18h6", "M10 21h4", "M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z")
     val List = icon("M9 6h12M9 12h12M9 18h12", circle(4f, 6f, 1.2f), circle(4f, 12f, 1.2f), circle(4f, 18f, 1.2f))
     val Shuffle = icon("M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6 6", "M4 4l5 5")
     val Repeat = icon("M17 2l4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "M7 22l-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3")

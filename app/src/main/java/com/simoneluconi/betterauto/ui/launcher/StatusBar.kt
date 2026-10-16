@@ -25,7 +25,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
+import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
+import com.simoneluconi.betterauto.ui.vehicle.hasFaults
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.ui.notifications.rememberVisibleNotifications
 import com.simoneluconi.betterauto.ui.phone.CallPill
@@ -59,6 +63,7 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         Spacer(Modifier.weight(1f))
 
         call?.takeIf { callMinimized }?.let { CallPill(it) }
+        EngineLight(settings)
         // On the notifications screen its own header already has the bell
         if (section != Section.NOTIFICATIONS) NotificationsButton(settings)
         if (showLayoutButton) {
@@ -81,6 +86,29 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
 }
 
 private val LowBattery = Color(0xFFE5484D)
+
+/**
+ * The engine warning light, only while the car reports fault codes: the cluster lights its own, this
+ * one opens the codes with their meaning.
+ */
+@Composable
+private fun EngineLight(settings: LauncherSettings) {
+    val vehicle by VehicleData.snapshot.collectAsStateWithLifecycle()
+    if (!hasFaults(vehicle)) return
+    val count = vehicle.diagnostics?.value?.size ?: 0
+    Box(
+        Modifier
+            .carClickable(CircleShape, stringResource(R.string.vehicle_faults_open, count)) {
+                VehicleScreenState.showDiagnostics.value = true
+                settings.setSection(Section.VEHICLE)
+            }
+            .background(WarningAmber.copy(alpha = 0.22f), CircleShape)
+            .size(52.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarIcon(CarIcons.Engine, WarningAmber, Modifier.size(28.dp))
+    }
+}
 
 /** Bell with the number of notifications; opens the notifications section. */
 @Composable

@@ -108,6 +108,8 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   Pretend messages: `--es notify "Text" --es from "Name"` (add `--ez group true` for a group chat);
   `--ez demo true` shows only pretend notifications, for screenshots without personal data
   (see `docs/screenshots`).
+  Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
+  `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes.
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 

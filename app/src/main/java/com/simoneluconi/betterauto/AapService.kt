@@ -23,6 +23,7 @@ import com.simoneluconi.betterauto.aap.AapTls
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
 import kotlin.concurrent.thread
@@ -147,6 +148,7 @@ class AapService : Service() {
         session = null
         EventLog.status = null
         CarState.reset()
+        VehicleData.onDisconnected()
         stopSelf()
     }
 

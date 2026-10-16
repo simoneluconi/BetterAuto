@@ -12,7 +12,7 @@ enum class BarPosition { AUTO, LEFT, BOTTOM }
 
 enum class HomeLayout(val slots: Int) { SINGLE(1), SPLIT(2), TRIO(3) }
 
-enum class Section { HOME, MUSIC, MAP, PHONE, NOTIFICATIONS, SETTINGS }
+enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS }
 
 enum class WidgetType { MUSIC, MAP, NOTIFICATIONS }
 
