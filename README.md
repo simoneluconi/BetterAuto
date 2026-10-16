@@ -1,149 +1,136 @@
 # BetterAuto
 
-**Your car's Android Auto screen, with a launcher of your own.**
+**A custom launcher for the car's Android Auto screen, with the Android Auto protocol written from
+scratch.**
 
-BetterAuto is an Android app that plugs into any car with Android Auto and shows its own
-interface instead of the stock one: a clean, widget-based home screen designed for the road. The car
-doesn't know the difference: it thinks it is talking to Android Auto.
+BetterAuto is an Android app that takes the place of Android Auto on the phone. When the phone is
+plugged into a head unit, BetterAuto answers instead of Google's app, speaks the Android Auto
+protocol itself and shows its own interface on the car screen: a widget-based home designed for the
+road, with music, phone, notifications, vehicle data and voice commands.
 
-> ⚠️ Personal, experimental project, not affiliated with or endorsed by the makers of Android Auto.
-> Android Auto is a trademark of its owner.
+It runs on head units that don't check the phone's certificate, such as the open-source Android Auto
+receivers [Crankshaft](https://github.com/opencardev/crankshaft) and OpenAuto. Factory head units
+built into cars want a certificate issued by Google: see [Where it works](#where-it-works). The
+project is also a fairly complete map of what it takes to replace Android Auto on the phone side.
+
+> ⚠️ Personal, experimental project, not affiliated with or endorsed by Google. Android Auto is a
+> trademark of Google LLC.
 
 ## Screenshots
 
-| Home | Notifications |
+All taken from the head unit's video stream on the test bench. Messages, calls and car data are
+made up (the app has a demo mode for this).
+
+| Home | Vehicle |
 |---|---|
-| ![Home with the music player](docs/screenshots/01_home_music.jpg) | ![Notifications](docs/screenshots/05_notifications.jpg) |
+| ![Home with the music player](docs/screenshots/01_home_music.jpg) | ![Vehicle overview](docs/screenshots/17_vehicle.jpg) |
+| **Fault codes, explained** | **Voice commands** |
+| ![Fault codes](docs/screenshots/18_vehicle_diagnostics.jpg) | ![Voice: calling a contact](docs/screenshots/21_voice_calling.jpg) |
 | **Call in progress** | **Night theme** |
 | ![Call in progress](docs/screenshots/10_call_active.jpg) | ![Night theme](docs/screenshots/12_home_night.jpg) |
 
-More in [docs/screenshots](docs/screenshots), including portrait and wide screens. Messages and
-calls in the screenshots are made up.
+More in [docs/screenshots](docs/screenshots): notifications, music library, keypad, settings,
+portrait and wide screens.
 
-## Features
+## Where it works
 
-- 🎵 **Music player** for whatever plays on your phone (Spotify, YouTube Music, local FLAC
-  players…), with cover art, colors taken from the album and big, easy controls.
-- 🔊 **Car audio over the USB cable**, uncompressed, in the best format your car supports.
+Android Auto opens every session with a TLS handshake inside the protocol. The head unit is the TLS
+client and the phone is the server, so the phone presents a certificate, and what matters is whether
+the head unit checks it.
+
+- **Head units that don't verify the phone.** Open-source Android Auto receivers built on
+  [aasdk](https://github.com/opencardev/aasdk), such as
+  [Crankshaft](https://github.com/opencardev/crankshaft) and OpenAuto, skip the check
+  (`SSL_VERIFY_NONE`), and so can other DIY receivers: BetterAuto works with them. Aftermarket radios
+  with their own Android Auto receiver might too; none has been tried yet.
+- **Factory head units**, the ones built into cars, accept phones whose certificate is issued by
+  Google's Android Auto certificate authority. BetterAuto ships with a self-signed development
+  certificate, so they refuse the connection, and the phone shows a notification explaining why.
+
+How the phone's certificate is loaded is described in
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#tls-certificate).
+
+## What it does
+
+Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
+
+- 🔌 **The Android Auto protocol, from scratch in Kotlin**: USB accessory (AOA) negotiation,
+  framing, TLS, service discovery, audio and video focus, and one class per service channel.
+- 🖥️ **The car screen is a Jetpack Compose app**, drawn on a private virtual display, encoded as
+  H.264 in hardware and streamed to the car; touch, rotary knob, joystick and steering wheel buttons
+  come back the other way.
+- 🎵 **Music player** for whatever plays on the phone (Spotify, YouTube Music, local FLAC
+  players…), with cover art, colors taken from the album, library browsing and big controls.
+- 🔊 **Car audio over the USB cable**, uncompressed PCM, captured from the phone and reduced to the
+  car's format only at the very end, with dithering.
 - 🚘 **Now playing on the car's own displays** (instrument cluster, driver info screen) when the car
-  supports it: title, artist, album, cover, time and progress.
-- 📞 **Phone**: recents, favorites with photos, contacts with A–Z jump, keypad, and a call screen
-  to answer, hang up, mute and hold from the car (call audio goes through the car's Bluetooth).
-- 🔔 **Notifications** that don't get in the way: messages grouped by chat, filters per app and for
-  group chats, mute a single chat, quiet mode with no pop-ups.
-- 🧩 **Widget home screen** like Android Auto: one, two or three widgets side by side,
-  remembered exactly as you left them.
-- 🌗 **Day and night themes** that follow the car's lights, with a smooth fade instead of a flash.
-- 🎛️ **Works without a touchscreen**: rotary knob, joystick and steering wheel buttons. Turn the
-  knob to go through the controls, nudge it to jump between the app bar and the screen.
-- ⚙️ **Settings on the car and on the phone**, the same ones in both places.
-- 📐 **Fits any screen**, from small 800×480 units to wide dashboards and portrait displays.
-- 🌍 English and Italian, following your phone's language.
+  supports it.
+- 📞 **Phone**: recents, favorites, contacts with A–Z jump, keypad, and a call screen to answer,
+  hang up, mute and hold (call audio goes through the car's Bluetooth, as with Android Auto).
+- 🔔 **Notifications** grouped by chat, with filters per app and for group chats, and a quiet mode.
+- 🚗 **Vehicle**: everything the car shares (tyre pressure, range, odometer, climate, gear, doors…),
+  fault codes explained in plain words, and an engine-light shortcut in the top bar.
+- 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
+  calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
+- 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the
+  settings.
+- 🌗 **Day and night themes** following the car's lights.
+- 📐 **Any screen shape**, from 800×480 to wide dashboards and portrait displays.
+- 🌍 English and Italian, following the phone's language.
 
-Coming next: maps with turn-by-turn directions (also on the instrument cluster), voice commands,
-Home Assistant, wireless connection.
+Ideas for what could come next: maps with turn-by-turn directions, Home Assistant, a trip log,
+wireless Android Auto.
 
-## Requirements
+## Trying it
 
-- An Android phone (Android 10 or newer).
-- A car or head unit with **wired** Android Auto.
-- A computer with [ADB](https://developer.android.com/tools/releases/platform-tools) for the
-  one-time setup below.
+You need an Android phone (Android 10 or newer), a head unit that doesn't verify the phone (see
+[Where it works](#where-it-works); a Raspberry Pi with
+[Crankshaft](https://github.com/opencardev/crankshaft) is the easy route) and a computer with
+[ADB](https://developer.android.com/tools/releases/platform-tools).
 
-## Getting started
-
-1. **Install the app** on your phone (build it with Android Studio, see
-   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)), open it and follow the setup checklist: it shows
-   what is ready and takes you to the right settings for the rest.
-
-2. **Disable the official Android Auto app**, otherwise it grabs the connection first:
-   *Settings → Apps → Android Auto → Disable*. On phones where that button is greyed out, use the
-   `adb` command in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#disabling-android-auto). Enable it
-   again the same way whenever you want it back.
-
-3. **Optional, recommended: skip the audio prompt.** Without this, Android asks for permission to
-   capture audio every time you connect (see [Car audio](#car-audio-what-to-know)):
+1. **Build and install** with Android Studio, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Open
+   the app and follow its setup checklist.
+2. **Disable the official Android Auto app**, otherwise it grabs the USB connection first. The
+   `adb` commands to disable and re-enable it are in
+   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#disabling-android-auto).
+3. **Optional: skip the audio prompt** on every connection:
 
    ```sh
    adb shell appops set com.simoneluconi.betterauto PROJECT_MEDIA allow
    ```
 
-4. **Open BetterAuto once** and tap *Allow music access*, so it can show what is playing.
+4. **Plug the phone into the head unit** and pick BetterAuto when Android asks which app to open.
 
-5. **Plug the phone into the car.** When Android asks which app to open, pick BetterAuto and
-   choose *Always*.
+## Car audio: how it works
 
-## Car audio: what to know
+The official Android Auto is a system app, with permissions that let it *move* all of the phone's
+sound to the car. BetterAuto is a regular app, so it *copies* other apps' sound instead, through the
+screen-capture permission. It works well, with a few side effects:
 
-The official Android Auto is a **system app**, preinstalled with special permissions that let it
-silently *move* all of the phone's sound to the car. BetterAuto is a regular app, and Android
-does not give those permissions to regular apps. So BetterAuto takes another route, which works
-well but has a few side effects:
+- Android shows a permission prompt on every connection (an `adb` command removes it) and a
+  screen-sharing indicator while audio goes to the car;
+- the phone's own speaker is muted while connected, since the sound is copied, not moved;
+- DRM-protected apps refuse to be captured, and navigation prompts from other apps can't be;
+- calls go over Bluetooth, which is what Android Auto does too.
 
-- **A permission prompt when you connect.** Android only lets an app pick up other apps' sound
-  through its *screen capture* permission. BetterAuto only uses the audio; nothing on the screen
-  is recorded. The prompt disappears for good with the one-time `adb` command in step 3. If you
-  skip it or say *Not now*, the music stays on the phone and the BetterAuto notification offers
-  *Send audio to the car* whenever you want.
-- **A screen-sharing indicator** is shown by Android while audio goes to the car. Apps cannot
-  hide it.
-- **The phone's own speaker is muted** while you are connected (BetterAuto copies the sound rather
-  than moving it, so it turns the phone's media volume down and puts it back when you unplug).
-  Use the car's volume knob as usual.
-- **Some apps may refuse** to let their sound be captured (typically DRM-protected video apps).
-- **Navigation voice prompts** from other apps cannot be captured; they play from the phone or
-  over Bluetooth.
-- **Phone calls go over Bluetooth**, with the car's microphones and speakers. This is how the
-  official Android Auto handles calls too, even on a cable: pair the phone with the car once.
-
-**Sound quality.** Android Auto carries uncompressed audio (PCM), usually 48 kHz / 16-bit stereo
-depending on the car: CD quality, and better than Bluetooth, which compresses. High-resolution
-files (for example 24-bit / 96 kHz FLAC) are converted to the car's format; the official app has
-the same limit. BetterAuto keeps that conversion as clean as possible: it takes the phone's sound
-in full precision and reduces it to the car's format only at the very end, with dithering, the
-technique used in music mastering to avoid conversion artifacts.
-
-**Planned:** support for [Shizuku](https://shizuku.rikka.app/) (no root needed), which lets
-BetterAuto move the audio exactly like Android Auto does: no prompt, no indicator, no muting.
+Sound quality is great: Android Auto carries uncompressed PCM (typically 48 kHz / 16-bit), better
+than Bluetooth. [Shizuku](https://shizuku.rikka.app/) support would let BetterAuto move the audio the
+way the system app does, with no prompt and no indicator.
 
 ## Status
 
-Early development. Tested on a Samsung Galaxy S25 Ultra (Android 17) with a Raspberry Pi 4
-running [Crankshaft](https://github.com/opencardev/crankshaft) as the head unit. Factory car head
-units may check the phone's certificate and refuse the connection; that is not tested yet.
-
-## Roadmap
-
-- [x] Android Auto connection over USB, video and touch/knob/buttons
-- [x] Widget home, music widget, day/night themes, settings
-- [x] Car audio over USB (playback capture, uncompressed PCM)
-- [ ] **Shizuku support** for car audio: audio moved like the official app, no prompt, no
-      screen-sharing indicator, no muting; playback capture stays as the fallback
-- [x] Full music screen: library, queue, up next
-- [ ] Map widget with turn-by-turn directions from the phone's navigation app, also on the
-      instrument cluster
-- [x] Notifications: widget, section, filters, quiet mode
-- [x] Vehicle: everything the car shares, fault codes explained, engine light shortcut
-- [ ] Trip log: every drive with start, end, distance and time, exportable from the phone
-- [ ] Notifications while stopped: show non-urgent ones only at a standstill and hide them when
-      driving off, with exceptions for important people and calls (all configurable)
-- [ ] Home Assistant: widget and section for gates, garage, lights, scenes, alarm
-- [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
-      (audio over Bluetooth)
-- [x] Voice commands through the car's microphone, with the phone's own offline recognition
-      (calls, music, sections, quiet mode, reading messages)
-- [ ] Wireless connection
-- [ ] Steering wheel and knob shortcuts, driving restrictions
+Tested on a Samsung Galaxy S25 Ultra (Android 17) with a Raspberry Pi 4 running Crankshaft.
 
 ## How it works, in short
 
-When the phone is plugged in, the car asks it to start Android Auto. BetterAuto answers instead,
-speaks the Android Auto protocol, draws its interface on a virtual screen, encodes it as video and
-streams it to the car, along with the audio. Touches, knob turns and button presses travel back
-the other way. More in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+When the phone is plugged in, the head unit asks it to start Android Auto. BetterAuto answers
+instead, speaks the protocol, draws its interface on a virtual screen, encodes it as video and
+streams it to the head unit, along with the audio. Touches, knob turns, button presses, sensor data
+and the microphone travel back the other way. Architecture, build, test bench and debugging tools
+are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License and credits
 
 The Android Auto protocol definitions come from
 [opencardev/aasdk](https://github.com/opencardev/aasdk), licensed under GPLv3, so BetterAuto is
-distributed under the GPLv3 as well.
+distributed under the GPLv3 as well: see [LICENSE](LICENSE).
