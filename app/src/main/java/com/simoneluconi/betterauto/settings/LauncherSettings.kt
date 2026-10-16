@@ -96,6 +96,27 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     /** Muted chats, as "package|chat name". */
     val mutedChats: StateFlow<List<String>> = _mutedChats
 
+    private val _voiceEnabled = boolFlow(KEY_VOICE, true)
+    val voiceEnabled: StateFlow<Boolean> = _voiceEnabled
+
+    private val _voiceReplies = boolFlow(KEY_VOICE_REPLIES, true)
+    /** Spoken confirmations ("Calling Mario Rossi") through the car's speakers. */
+    val voiceReplies: StateFlow<Boolean> = _voiceReplies
+
+    private val _showMicButton = boolFlow(KEY_SHOW_MIC, true)
+    val showMicButton: StateFlow<Boolean> = _showMicButton
+
+    private val _voiceMicrophone = MutableStateFlow(enumOf(KEY_VOICE_MIC, MicSource.CAR))
+    val voiceMicrophone: StateFlow<MicSource> = _voiceMicrophone
+
+    fun setVoiceMicrophone(value: MicSource) = saveEnum(KEY_VOICE_MIC, value, _voiceMicrophone)
+
+    fun setVoiceEnabled(value: Boolean) = saveBool(KEY_VOICE, value, _voiceEnabled)
+
+    fun setVoiceReplies(value: Boolean) = saveBool(KEY_VOICE_REPLIES, value, _voiceReplies)
+
+    fun setShowMicButton(value: Boolean) = saveBool(KEY_SHOW_MIC, value, _showMicButton)
+
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
 
@@ -258,6 +279,10 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_WIDGETS = "widgets"
         private const val KEY_DEBUG = "debug_overlay"
         private const val KEY_AUTO_PLAY = "auto_play"
+        private const val KEY_VOICE = "voice_enabled"
+        private const val KEY_VOICE_MIC = "voice_microphone"
+        private const val KEY_VOICE_REPLIES = "voice_replies"
+        private const val KEY_SHOW_MIC = "show_mic_button"
         private const val KEY_MUSIC_PANEL = "music_panel"
         private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_NAME_ORDER = "name_order"

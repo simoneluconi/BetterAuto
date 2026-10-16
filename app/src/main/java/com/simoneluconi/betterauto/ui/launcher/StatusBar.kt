@@ -5,6 +5,8 @@ import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.platform.LocalContext
 import com.simoneluconi.betterauto.settings.ClockStyle
+import com.simoneluconi.betterauto.voice.VoiceAssistant
+import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.settings.DateStyle
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -65,6 +67,8 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val showSignal by settings.showSignal.collectAsStateWithLifecycle()
     val showBattery by settings.showBattery.collectAsStateWithLifecycle()
     val showLayout by settings.showLayoutButton.collectAsStateWithLifecycle()
+    val voiceEnabled by settings.voiceEnabled.collectAsStateWithLifecycle()
+    val showMic by settings.showMicButton.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     Row(
@@ -80,6 +84,7 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
 
         call?.takeIf { callMinimized }?.let { CallPill(it) }
         if (showEngine) EngineLight(settings)
+        if (voiceEnabled && showMic) MicButton()
         // On the notifications screen its own header already has the bell
         if (showBell && section != Section.NOTIFICATIONS) NotificationsButton(settings)
         if (showLayoutButton && showLayout) {
@@ -146,6 +151,24 @@ private fun EngineLight(settings: LauncherSettings) {
         contentAlignment = Alignment.Center,
     ) {
         CarIcon(CarIcons.Engine, WarningAmber, Modifier.size(28.dp))
+    }
+}
+
+/** Starts (or stops) voice commands; the steering wheel's voice button does the same. */
+@Composable
+private fun MicButton() {
+    val colors = LocalCarColors.current
+    val context = LocalContext.current
+    val voice by VoiceAssistant.state.collectAsStateWithLifecycle()
+    val active = voice is VoiceState.Listening
+    Box(
+        Modifier
+            .carClickable(CircleShape, stringResource(R.string.voice_start)) { VoiceAssistant.toggle(context) }
+            .background(if (active) colors.album else colors.surface, CircleShape)
+            .size(52.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarIcon(CarIcons.Mic, if (active) colors.onAlbum else colors.text, Modifier.size(24.dp))
     }
 }
 

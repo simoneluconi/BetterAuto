@@ -13,6 +13,7 @@ import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.settings.MicSource
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
@@ -48,6 +49,10 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("section")?.let { name ->
             Section.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setSection(it) }
+        }
+        intent.getStringExtra("mic")?.let { name ->
+            MicSource.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { LauncherSettings.get(context).setVoiceMicrophone(it) }
         }
         intent.getStringExtra("voice")?.let { mode ->
             VoiceProbe.run(context, mode, intent.getStringExtra("phrase") ?: "chiama Mario Rossi", intent.getStringExtra("lang") ?: "it-IT")

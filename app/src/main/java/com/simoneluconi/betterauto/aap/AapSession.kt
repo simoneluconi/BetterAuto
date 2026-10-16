@@ -183,6 +183,11 @@ class AapSession(
             InputChannel(this, service.id, touchscreen?.width ?: 0, touchscreen?.height ?: 0, keys, projection)
         }
         service.hasMediaPlaybackService() -> MediaStatusChannel(this, service.id)
+        service.hasMediaSourceService() -> {
+            val mic = service.mediaSourceService
+            EventLog.log("    microphone: ${if (mic.hasAudioConfig()) "${mic.audioConfig.samplingRate} Hz ${mic.audioConfig.numberOfBits}-bit ${mic.audioConfig.numberOfChannels}ch" else "no config"}")
+            MicrophoneChannel(this, service.id, if (mic.hasAudioConfig()) mic.audioConfig else null)
+        }
         service.hasSensorSourceService() -> {
             val sensors = service.sensorSourceService.sensorsList.map { it.sensorType }
             EventLog.log("    sensors: ${sensors.joinToString()}")

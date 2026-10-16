@@ -206,6 +206,16 @@ object SettingsCatalog {
             { it.nameOrder }, LauncherSettings::setNameOrder,
         ),
 
+        SettingHeader("voice", R.string.settings_section_voice),
+        ChoiceSetting("voice_enabled", R.string.settings_voice, onOff, { it.voiceEnabled }, LauncherSettings::setVoiceEnabled),
+        ChoiceSetting(
+            "voice_microphone", R.string.settings_voice_microphone,
+            listOf(SettingOption(MicSource.CAR, R.string.option_mic_car), SettingOption(MicSource.PHONE, R.string.option_mic_phone)),
+            { it.voiceMicrophone }, LauncherSettings::setVoiceMicrophone,
+        ),
+        ChoiceSetting("voice_replies", R.string.settings_voice_replies, onOff, { it.voiceReplies }, LauncherSettings::setVoiceReplies),
+        ChoiceSetting("mic_button", R.string.settings_mic_button, shownHidden, { it.showMicButton }, LauncherSettings::setShowMicButton),
+
         SettingHeader("notifications", R.string.settings_section_notifications),
         ChoiceSetting("quiet_mode", R.string.settings_quiet_mode, onOff, { it.quietMode }, LauncherSettings::setQuietMode),
         ChoiceSetting(

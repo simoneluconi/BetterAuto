@@ -123,6 +123,7 @@ private fun PhoneHome(onOpenSettings: () -> Unit) {
             mediaStep(context),
             audioStep(context) { askMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
             phoneStep(context) { askPhone.launch(PhonePermissions) },
+            voiceStep(context),
             androidAutoStep(context),
         )
     }
@@ -398,6 +399,17 @@ private fun audioStep(context: Context, request: () -> Unit): Step {
 private val PhonePermissions = arrayOf(
     Manifest.permission.READ_CONTACTS, Manifest.permission.READ_CALL_LOG, Manifest.permission.CALL_PHONE,
 )
+
+/** Voice commands use the phone's own offline recognizer: there or not, nothing to grant. */
+private fun voiceStep(context: Context): Step {
+    val available = Build.VERSION.SDK_INT >= 31 && android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+    return Step(
+        icon = CarIcons.Mic,
+        title = context.getString(R.string.step_voice_title),
+        text = context.getString(if (available) R.string.step_voice_ready else R.string.step_voice_missing),
+        state = if (available) StepState.DONE else StepState.OPTIONAL,
+    )
+}
 
 private fun phoneStep(context: Context, request: () -> Unit): Step {
     val granted = PhonePermissions.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }

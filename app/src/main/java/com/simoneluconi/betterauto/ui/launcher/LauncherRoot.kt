@@ -53,6 +53,9 @@ import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.ui.phone.CallScreen
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreen
+import com.simoneluconi.betterauto.ui.voice.VoiceOverlay
+import com.simoneluconi.betterauto.voice.VoiceAssistant
+import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
 import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
@@ -169,6 +172,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 .onFocusChanged { hasFocus = it.hasFocus }
                 .onPreviewKeyEvent { event ->
                     val down = event.type == KeyEventType.KeyDown
+                    // Back stops listening before anything else
+                    if ((event.key == Key.Back || event.key == Key.Escape) && VoiceAssistant.state.value is VoiceState.Listening) {
+                        if (!down) VoiceAssistant.cancel()
+                        return@onPreviewKeyEvent true
+                    }
                     // Knob nudges: from the app bar straight to the screen's main control, and back
                     val toScreen = if (railVertical) Key.DirectionRight else Key.DirectionUp
                     val toBar = if (railVertical) Key.DirectionLeft else Key.DirectionDown
@@ -249,6 +257,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     else Modifier.align(Alignment.BottomCenter).padding(bottom = 116.dp),
                 )
             }
+            VoiceOverlay(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
             // No banner over a call, nor on the notifications screen itself
             if (shownCall == null && section != Section.NOTIFICATIONS) {
                 // At the very top, over the status bar, where it hides the least

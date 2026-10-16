@@ -114,6 +114,8 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   Voice: `--es voice probe [--es phrase "chiama Mario Rossi"]` checks the phone's on-device speech
   recognizer with a synthesized phrase fed as raw audio, like the car's microphone; `--es voice mic`
   listens to the phone's microphone. Results and timings go to the log (`Voice probe:`).
+  Voice commands: `--ei key 84` is the steering wheel voice button; `--es mic phone` (or `car`) picks the
+  microphone. The bench Pi announces a microphone but sends no audio, so use `phone` there.
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 

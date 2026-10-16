@@ -130,7 +130,8 @@ units may check the phone's certificate and refuse the connection; that is not t
 - [ ] Home Assistant: widget and section for gates, garage, lights, scenes, alarm
 - [x] Phone: recents, favorites, contacts, keypad, call screen with answer/hang up/mute/hold
       (audio over Bluetooth)
-- [ ] Voice commands through the car's microphone
+- [x] Voice commands through the car's microphone, with the phone's own offline recognition
+      (calls, music, sections, quiet mode, reading messages)
 - [ ] Wireless connection
 - [ ] Steering wheel and knob shortcuts, driving restrictions
 

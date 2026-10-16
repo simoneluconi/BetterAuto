@@ -55,5 +55,8 @@ object RailLayout {
 /** How the clock in the status bar is shown. */
 enum class ClockStyle { HIDDEN, AUTO, H24, H12 }
 
+/** Which microphone voice commands listen to: the car's when it has one, or always the phone's. */
+enum class MicSource { CAR, PHONE }
+
 /** How the date in the status bar is shown. */
 enum class DateStyle { HIDDEN, SHORT, LONG, NUMERIC }

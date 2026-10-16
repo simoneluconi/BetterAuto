@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -226,6 +227,21 @@ object NowPlaying {
     }
 
     fun seekTo(positionMs: Long) = controller?.seekTo(positionMs)
+
+    val isPlaying: Boolean get() = controller?.isPlaying == true
+
+    /** Asks the current player to find and play [query] (an artist, a song, a playlist), like a voice request. */
+    fun playFromSearch(query: String): Boolean {
+        val c = controller ?: return false
+        c.setMediaItem(
+            MediaItem.Builder()
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
+                .build()
+        )
+        c.prepare()
+        c.play()
+        return true
+    }
 
     private fun sendCustomCommand(c: MediaController, button: CommandButton) {
         button.sessionCommand?.let { c.sendCustomCommand(it, Bundle.EMPTY) }

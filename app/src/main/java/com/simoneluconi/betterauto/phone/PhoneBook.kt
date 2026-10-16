@@ -31,7 +31,8 @@ data class Contact(
     val numberLabel: String? = null,
 )
 
-data class PhoneNumber(val number: String, val label: String, val primary: Boolean)
+/** [type] is one of ContactsContract's Phone.TYPE_* (mobile, home, work...). */
+data class PhoneNumber(val number: String, val label: String, val primary: Boolean, val type: Int = 0)
 
 /** Calls from/to the same number in a row are grouped, like every dialer does. */
 data class RecentCall(
@@ -131,7 +132,7 @@ object PhoneBook {
                     // The same number is often stored twice (formatted and not, or by two accounts)
                     if (!seen.add(c.getString(4) ?: PhoneNumberUtils.normalizeNumber(number))) continue
                     val label = Phone.getTypeLabel(context.resources, c.getInt(1), c.getString(2)).toString()
-                    result += PhoneNumber(number, label, c.getInt(3) == 1)
+                    result += PhoneNumber(number, label, c.getInt(3) == 1, c.getInt(1))
                 }
             }
         }.onFailure { EventLog.log("Phone: numbers query failed: $it") }
