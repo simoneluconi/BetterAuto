@@ -49,6 +49,9 @@ class DebugInputReceiver : BroadcastReceiver() {
             Section.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setSection(it) }
         }
+        intent.getStringExtra("voice")?.let { mode ->
+            VoiceProbe.run(context, mode, intent.getStringExtra("phrase") ?: "chiama Mario Rossi", intent.getStringExtra("lang") ?: "it-IT")
+        }
         intent.getStringExtra("rail")?.let { spec ->
             val settings = LauncherSettings.get(context)
             if (spec == "default") {

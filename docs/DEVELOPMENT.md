@@ -111,6 +111,9 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
   `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes.
   App bar: `--es rail "MAP:GROUP_1,VEHICLE:GROUP_1"` arranges it (`default` resets it).
+  Voice: `--es voice probe [--es phrase "chiama Mario Rossi"]` checks the phone's on-device speech
+  recognizer with a synthesized phrase fed as raw audio, like the car's microphone; `--es voice mic`
+  listens to the phone's microphone. Results and timings go to the log (`Voice probe:`).
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 
