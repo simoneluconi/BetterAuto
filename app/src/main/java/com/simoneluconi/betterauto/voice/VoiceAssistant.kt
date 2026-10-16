@@ -39,7 +39,7 @@ sealed interface VoiceState {
     data object Idle : VoiceState
 
     /** [text] is what the recognizer heard so far; [level] 0..1 follows the voice. */
-    data class Listening(val text: String, val level: Float, val carMicrophone: Boolean) : VoiceState
+    data class Listening(val text: String, val level: Float, val carMicrophone: Boolean, val hint: String = "") : VoiceState
 
     /** More contacts fit the name, or the one found is only similar: the driver picks or confirms. */
     data class Choosing(val names: List<String>, val numberType: String?, val confirm: Boolean = false) : VoiceState
@@ -139,7 +139,7 @@ object VoiceAssistant {
         val rec = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
         recognizer = rec
         rec.setRecognitionListener(listener)
-        show(VoiceState.Listening("", 0f, carMic), speak = false)
+        show(VoiceState.Listening("", 0f, carMic, hint()), speak = false)
         main.postDelayed(giveUp, MAX_LISTEN_MS)
         rec.startListening(intent)
     }
@@ -407,6 +407,15 @@ object VoiceAssistant {
         feed = null
     }
 
+    /** Examples from the driver's own world: an artist they listen to and a contact of theirs, picked at random. */
+    private fun hint(): String {
+        val examples = listOfNotNull(
+            NowPlaying.recentArtists.randomOrNull()?.let { appContext.getString(R.string.voice_example_play, it) },
+            contacts.randomOrNull()?.let { appContext.getString(R.string.voice_example_call, it.name) },
+        ).ifEmpty { listOf(appContext.getString(R.string.voice_example_pause)) }
+        return appContext.getString(R.string.voice_hint_examples, examples.joinToString(", "))
+    }
+
     private fun titleCase(name: String) = name.split(' ').joinToString(" ") { word -> word.replaceFirstChar { it.titlecase(Locale.getDefault()) } }
 
     private fun restoreMusic() {
@@ -418,8 +427,11 @@ object VoiceAssistant {
     private fun loadContacts() {
         parser = CommandParser(contacts.map { it.name })
         scope.launch {
+            val firstTime = contacts.isEmpty()
             contacts = PhoneBook.contacts(appContext, NameOrder.FIRST_LAST)
             parser = CommandParser(contacts.map { it.name })
+            // The very first time the hint had no contact yet
+            if (firstTime) (_state.value as? VoiceState.Listening)?.takeIf { it.text.isBlank() }?.let { _state.value = it.copy(hint = hint()) }
             // Text heard while the contacts were loading gets another look
             if (heard.isNotBlank()) {
                 val again = heard

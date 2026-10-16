@@ -114,7 +114,7 @@ private fun Listening(state: VoiceState.Listening) {
                 CarIcon(if (state.carMicrophone) CarIcons.Car else CarIcons.Phone, colors.text2, Modifier.size(20.dp))
             }
             if (state.text.isBlank()) {
-                CarLabel(stringResource(R.string.voice_hint), 24.sp, colors.text2, maxLines = 2)
+                CarLabel(state.hint, 24.sp, colors.text2, maxLines = 2)
             } else {
                 CarLabel(state.text, 34.sp, colors.text, weight = FontWeight.ExtraBold, maxLines = 2, lineHeight = 40.sp)
             }

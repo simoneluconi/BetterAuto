@@ -309,7 +309,6 @@
     <string name="settings_voice_replies">Spoken replies</string>
     <string name="settings_mic_button">Microphone button in the top bar</string>
     <string name="voice_start">Voice command</string>
-    <string name="voice_hint">Say: “call Mario”, “next”…</string>
     <string name="voice_which">Which one?</string>
     <string name="voice_unavailable">This phone has no offline speech recognition for voice commands</string>
     <string name="voice_nothing_heard">I didn\'t hear anything</string>
@@ -338,4 +337,8 @@
     <string name="voice_contact_not_found">I can\'t find “%1$s” in your contacts</string>
     <string name="voice_unknown_place">There is no “%1$s” section</string>
     <string name="voice_track_not_found">I didn\'t find “%1$s”</string>
+    <string name="voice_hint_examples">Say: %1$s</string>
+    <string name="voice_example_play">“play %1$s”</string>
+    <string name="voice_example_call">“call %1$s”</string>
+    <string name="voice_example_pause">“pause”</string>
 </resources>

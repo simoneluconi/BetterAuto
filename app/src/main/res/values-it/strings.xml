@@ -309,7 +309,6 @@
     <string name="settings_voice_replies">Risposte a voce</string>
     <string name="settings_mic_button">Pulsante microfono nella barra in alto</string>
     <string name="voice_start">Comando vocale</string>
-    <string name="voice_hint">Prova: «chiama Mario», «avanti»…</string>
     <string name="voice_which">Quale?</string>
     <string name="voice_unavailable">Questo telefono non ha il riconoscimento vocale offline per i comandi</string>
     <string name="voice_nothing_heard">Non ho sentito niente</string>
@@ -338,4 +337,8 @@
     <string name="voice_contact_not_found">Non trovo «%1$s» in rubrica</string>
     <string name="voice_unknown_place">Non conosco la sezione «%1$s»</string>
     <string name="voice_track_not_found">Non ho trovato «%1$s»</string>
+    <string name="voice_hint_examples">Prova: %1$s</string>
+    <string name="voice_example_play">«metti %1$s»</string>
+    <string name="voice_example_call">«chiama %1$s»</string>
+    <string name="voice_example_pause">«metti in pausa»</string>
 </resources>

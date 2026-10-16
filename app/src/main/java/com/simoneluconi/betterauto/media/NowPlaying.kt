@@ -230,9 +230,18 @@ object NowPlaying {
 
     val isPlaying: Boolean get() = controller?.isPlaying == true
 
-    /** Asks the current player to find and play [query] (an artist, a song, a playlist), like a voice request. */
+    /**
+     * Asks the current player to find and play [query] (an artist, a song, a playlist), like a voice request.
+     * Through the session's own "play from search": Media3's way (a search-only item set on our controller)
+     * leaves our controller holding that empty item, so the screen would lose the title and the cover.
+     */
     fun playFromSearch(query: String): Boolean {
         val c = controller ?: return false
+        val platform = sessionManager?.let { activeSessions(it) }?.firstOrNull { it.packageName == _track.value?.packageName }
+        if (platform != null && (platform.playbackState?.actions ?: 0L) and PlaybackState.ACTION_PLAY_FROM_SEARCH != 0L) {
+            platform.transportControls.playFromSearch(query, Bundle())
+            return true
+        }
         c.setMediaItem(
             MediaItem.Builder()
                 .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
@@ -394,7 +403,24 @@ object NowPlaying {
             },
             canSeek = c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
         )
+        rememberArtist(_track.value?.artist)
     }
+
+    private val artists = ArrayDeque<String>()
+
+    /** Artists heard since the app started, most recent first (the main one of each song). */
+    val recentArtists: List<String> get() = artists.toList()
+
+    private fun rememberArtist(artist: String?) {
+        val main = artist?.split(ArtistSeparators)?.firstOrNull()?.trim()?.takeIf { it.length > 1 } ?: return
+        if (artists.firstOrNull() == main) return
+        artists.remove(main)
+        artists.addFirst(main)
+        while (artists.size > MAX_ARTISTS) artists.removeLast()
+    }
+
+    private val ArtistSeparators = Regex("\\s*(,|/|&|;|\\bfeat\\.?|\\bft\\.?|\\bx\\b)\\s*", RegexOption.IGNORE_CASE)
+    private const val MAX_ARTISTS = 30
 
     private fun queueEntries(timeline: Timeline, active: Int): List<QueueEntry> {
         val window = Timeline.Window()
