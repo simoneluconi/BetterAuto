@@ -333,4 +333,9 @@
     <string name="settings_voice_microphone">Microphone</string>
     <string name="option_mic_car">Car (when it has one)</string>
     <string name="option_mic_phone">Phone</string>
+    <string name="voice_did_you_mean">Did you mean…?</string>
+    <string name="voice_call_cancel">Cancel</string>
+    <string name="voice_contact_not_found">I can\'t find “%1$s” in your contacts</string>
+    <string name="voice_unknown_place">There is no “%1$s” section</string>
+    <string name="voice_track_not_found">I didn\'t find “%1$s”</string>
 </resources>

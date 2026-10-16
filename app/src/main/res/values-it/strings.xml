@@ -333,4 +333,9 @@
     <string name="settings_voice_microphone">Microfono</string>
     <string name="option_mic_car">Auto (se presente)</string>
     <string name="option_mic_phone">Telefono</string>
+    <string name="voice_did_you_mean">Intendevi…?</string>
+    <string name="voice_call_cancel">Annulla</string>
+    <string name="voice_contact_not_found">Non trovo «%1$s» in rubrica</string>
+    <string name="voice_unknown_place">Non conosco la sezione «%1$s»</string>
+    <string name="voice_track_not_found">Non ho trovato «%1$s»</string>
 </resources>

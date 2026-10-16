@@ -41,8 +41,11 @@ sealed interface VoiceState {
     /** [text] is what the recognizer heard so far; [level] 0..1 follows the voice. */
     data class Listening(val text: String, val level: Float, val carMicrophone: Boolean) : VoiceState
 
-    /** More contacts fit the name: the driver picks one. */
-    data class Choosing(val names: List<String>, val numberType: String?) : VoiceState
+    /** More contacts fit the name, or the one found is only similar: the driver picks or confirms. */
+    data class Choosing(val names: List<String>, val numberType: String?, val confirm: Boolean = false) : VoiceState
+
+    /** About to call: a few seconds to cancel before anything is dialed. */
+    data class Calling(val name: String, val numberLabel: String, val until: Long) : VoiceState
 
     data class Done(val heard: String, val message: String, val understood: Boolean) : VoiceState
 }
@@ -69,12 +72,32 @@ object VoiceAssistant {
     private var startedAt = 0L
     private lateinit var appContext: Context
 
+    private val choiceTimeout = Runnable {
+        if (_state.value is VoiceState.Choosing) {
+            EventLog.log("Voice: no choice made, nobody called")
+            _state.value = VoiceState.Idle
+        }
+    }
+
     private val runPending = Runnable { pendingCommand?.let { execute(it) } }
     private val giveUp = Runnable { finish(understood = false) }
     private val backToIdle = Runnable { _state.value = VoiceState.Idle }
 
     fun toggle(context: Context) {
-        if (_state.value is VoiceState.Listening || _state.value is VoiceState.Choosing) cancel() else start(context)
+        if (isBusy) cancel() else start(context)
+    }
+
+    /** Listening, or waiting for the driver (a choice, a call about to start): Back and the voice key cancel. */
+    val isBusy: Boolean
+        get() = _state.value.let { it is VoiceState.Listening || it is VoiceState.Choosing || it is VoiceState.Calling }
+
+    private var callNumber: String? = null
+    private val placeCall = Runnable {
+        val number = callNumber ?: return@Runnable
+        if (_state.value !is VoiceState.Calling) return@Runnable
+        callNumber = null
+        Calls.place(appContext, number)
+        _state.value = VoiceState.Idle
     }
 
     fun start(context: Context) {
@@ -121,8 +144,17 @@ object VoiceAssistant {
         rec.startListening(intent)
     }
 
+    /** Development: shows a state on screen with nothing behind it (a call preview dials no one). */
+    fun preview(state: VoiceState) {
+        callNumber = null
+        _state.value = state
+    }
+
     fun cancel() {
         EventLog.log("Voice: cancelled")
+        main.removeCallbacks(placeCall)
+        main.removeCallbacks(choiceTimeout)
+        callNumber = null
         stopRecognition()
         Speech.cancelTone()
         restoreMusic()
@@ -132,6 +164,7 @@ object VoiceAssistant {
     /** From the list of contacts that fit the spoken name. */
     fun choose(name: String) {
         val choosing = _state.value as? VoiceState.Choosing ?: return
+        main.removeCallbacks(choiceTimeout)
         call(name, choosing.numberType)
     }
 
@@ -188,8 +221,11 @@ object VoiceAssistant {
         }
 
         override fun onEndOfSpeech() {
-            // The transcription is final enough: act now rather than wait for the recognizer
-            if (pendingCommand != null) main.post(runPending)
+            // The transcription is final enough: act now (after a last partial) rather than wait for the recognizer
+            if (pendingCommand != null) {
+                main.removeCallbacks(runPending)
+                main.postDelayed(runPending, END_GRACE_MS)
+            }
         }
 
         override fun onError(error: Int) {
@@ -206,8 +242,9 @@ object VoiceAssistant {
         val command = parser.parse(text)
         pendingCommand = command
         main.removeCallbacks(runPending)
-        // A command that holds still for a moment is what the driver meant
-        if (command != null) main.postDelayed(runPending, STABLE_MS)
+        // A command that holds still for a moment is what the driver meant. Not a call: a pause after
+        // "call Mario" may come before the surname, so calls wait for the end of the sentence.
+        if (command != null && command !is VoiceCommand.Call) main.postDelayed(runPending, STABLE_MS)
     }
 
     private fun finish(understood: Boolean) {
@@ -220,9 +257,17 @@ object VoiceAssistant {
         stopRecognition()
         restoreMusic()
         Speech.cancelTone()
-        val message = if (heard.isBlank()) appContext.getString(R.string.voice_nothing_heard) else appContext.getString(R.string.voice_not_understood, heard)
+        // Say what went wrong when we can tell: an unknown contact or place, not just "not understood"
+        val message = when {
+            heard.isBlank() -> appContext.getString(R.string.voice_nothing_heard)
+            else -> when (val miss = parser.miss(heard)) {
+                is CommandParser.Miss.ContactNotFound -> appContext.getString(R.string.voice_contact_not_found, titleCase(miss.name))
+                is CommandParser.Miss.UnknownPlace -> appContext.getString(R.string.voice_unknown_place, miss.name)
+                null -> appContext.getString(R.string.voice_not_understood, heard)
+            }
+        }
         EventLog.log("Voice: not understood after ${SystemClock.elapsedRealtime() - startedAt} ms")
-        show(VoiceState.Done(heard, message, understood = false), speak = false)
+        show(VoiceState.Done(heard, message, understood = false), speak = true)
     }
 
     private fun execute(command: VoiceCommand) {
@@ -233,14 +278,32 @@ object VoiceAssistant {
         when (command) {
             is VoiceCommand.Call -> {
                 resumeMusic = false
-                if (command.candidates.size == 1) call(command.candidates.first(), command.numberType)
-                else _state.value = VoiceState.Choosing(command.candidates, command.numberType)
+                EventLog.log("Voice: call, ${command.candidates.size} candidates, ${if (command.exact) "exact" else "similar"} name")
+                when {
+                    command.candidates.size == 1 && command.exact -> call(command.candidates.first(), command.numberType)
+                    // A similar name is a guess: dial only after the driver confirms it
+                    command.candidates.size == 1 -> _state.value = VoiceState.Choosing(command.candidates, command.numberType, confirm = true)
+                    else -> _state.value = VoiceState.Choosing(command.candidates, command.numberType)
+                }
+                // No answer: nobody is called
+                if (_state.value is VoiceState.Choosing) main.postDelayed(choiceTimeout, CHOICE_TIMEOUT_MS)
                 return
             }
             is VoiceCommand.Play -> {
                 resumeMusic = false
+                val before = NowPlaying.track.value?.title
                 val ok = NowPlaying.playFromSearch(command.query)
                 done(if (ok) appContext.getString(R.string.voice_playing, command.query) else appContext.getString(R.string.voice_no_player))
+                // The player says nothing when the search finds nothing: no music, or the same song, means not found
+                if (ok) {
+                    main.postDelayed({
+                        val now = NowPlaying.track.value
+                        if (!NowPlaying.isPlaying || now?.title == before) {
+                            EventLog.log("Voice: search gave nothing to play")
+                            show(VoiceState.Done(heard, appContext.getString(R.string.voice_track_not_found, command.query), understood = false), speak = true)
+                        }
+                    }, SEARCH_CHECK_MS)
+                }
             }
             VoiceCommand.Pause -> {
                 resumeMusic = false
@@ -308,9 +371,12 @@ object VoiceAssistant {
                 done(appContext.getString(R.string.voice_no_number, name))
                 return@launch
             }
-            done(appContext.getString(R.string.voice_calling, name, number.label))
-            // Let the reply finish before the call takes the audio
-            main.postDelayed({ Calls.place(appContext, number.number) }, CALL_DELAY_MS)
+            // Nothing is dialed yet: a few seconds to cancel with Back or the voice key
+            callNumber = number.number
+            _state.value = VoiceState.Calling(name, number.label, SystemClock.elapsedRealtime() + CALL_DELAY_MS)
+            if (LauncherSettings.get(appContext).voiceReplies.value) Speech.say(appContext, appContext.getString(R.string.voice_calling, name, number.label))
+            main.removeCallbacks(placeCall)
+            main.postDelayed(placeCall, CALL_DELAY_MS)
         }
     }
 
@@ -341,6 +407,8 @@ object VoiceAssistant {
         feed = null
     }
 
+    private fun titleCase(name: String) = name.split(' ').joinToString(" ") { word -> word.replaceFirstChar { it.titlecase(Locale.getDefault()) } }
+
     private fun restoreMusic() {
         if (resumeMusic) NowPlaying.resume()
         resumeMusic = false
@@ -367,5 +435,8 @@ object VoiceAssistant {
     private const val MAX_LISTEN_MS = 9_000L
     private const val DONE_SHOW_MS = 2_500L
     private const val FAILED_SHOW_MS = 3_500L
-    private const val CALL_DELAY_MS = 1_400L
+    private const val CALL_DELAY_MS = 3_000L
+    private const val END_GRACE_MS = 300L
+    private const val CHOICE_TIMEOUT_MS = 8_000L
+    private const val SEARCH_CHECK_MS = 2_500L
 }

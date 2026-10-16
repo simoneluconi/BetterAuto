@@ -14,6 +14,8 @@ import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
+import com.simoneluconi.betterauto.voice.VoiceAssistant
+import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
@@ -54,7 +56,13 @@ class DebugInputReceiver : BroadcastReceiver() {
             MicSource.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setVoiceMicrophone(it) }
         }
-        intent.getStringExtra("voice")?.let { mode ->
+        when (intent.getStringExtra("voice")) {
+            // Previews of the voice panel: nothing is dialed
+            "preview_call" -> VoiceAssistant.preview(VoiceState.Calling("Mario Rossi", "Cellulare", android.os.SystemClock.elapsedRealtime() + 3000))
+            "preview_confirm" -> VoiceAssistant.preview(VoiceState.Choosing(listOf("Mario Rossi"), null, confirm = true))
+            "preview_off" -> VoiceAssistant.preview(VoiceState.Idle)
+        }
+        intent.getStringExtra("voice")?.takeIf { !it.startsWith("preview") }?.let { mode ->
             VoiceProbe.run(context, mode, intent.getStringExtra("phrase") ?: "chiama Mario Rossi", intent.getStringExtra("lang") ?: "it-IT")
         }
         intent.getStringExtra("rail")?.let { spec ->

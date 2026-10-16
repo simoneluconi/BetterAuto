@@ -5,8 +5,11 @@ import java.text.Normalizer
 
 /** What a spoken phrase asks for. */
 sealed interface VoiceCommand {
-    /** Call [name]; [numberType] is "mobile", "home", "work" or null for the main number. */
-    data class Call(val candidates: List<String>, val numberType: String?) : VoiceCommand
+    /**
+     * Call one of [candidates]; [numberType] is "mobile", "home", "work" or null for the main number.
+     * [exact] when every spoken word is a word of the name: otherwise it's a guess to confirm.
+     */
+    data class Call(val candidates: List<String>, val numberType: String?, val exact: Boolean = true) : VoiceCommand
     data class Play(val query: String) : VoiceCommand
     data object Pause : VoiceCommand
     data object Resume : VoiceCommand
@@ -25,6 +28,19 @@ sealed interface VoiceCommand {
  */
 class CommandParser(private val contacts: List<String>) {
     private val index = contacts.map { it to normalize(it) }
+
+    /** Why [text] gave no command, when that can be told better than "not understood". */
+    sealed interface Miss {
+        data class ContactNotFound(val name: String) : Miss
+        data class UnknownPlace(val name: String) : Miss
+    }
+
+    fun miss(text: String): Miss? {
+        val t = normalize(text)
+        startAfter(t, CallWords)?.takeIf { it.isNotBlank() }?.let { return Miss.ContactNotFound(it) }
+        startAfter(t, OpenWords)?.takeIf { it.isNotBlank() }?.let { return Miss.UnknownPlace(it) }
+        return null
+    }
 
     /** The command in [text], or null if it isn't one (yet: a partial result may still grow). */
     fun parse(text: String): VoiceCommand? {
@@ -65,7 +81,10 @@ class CommandParser(private val contacts: List<String>) {
         // "sul", "al", "a" left between the name and the number type
         name = name.split(' ').dropLastWhile { it in Fillers }.dropWhile { it in Fillers }.joinToString(" ")
         val matches = matchContacts(name)
-        return if (matches.isEmpty()) null else VoiceCommand.Call(matches, type)
+        if (matches.isEmpty()) return null
+        val said = name.split(' ').filter { it.isNotBlank() }
+        val exact = matches.size == 1 && said.all { word -> normalize(matches.first()).split(' ').contains(word) }
+        return VoiceCommand.Call(matches, type, exact)
     }
 
     /** Contacts matching [spoken], best first: exact words, then close spellings. */
@@ -81,14 +100,16 @@ class CommandParser(private val contacts: List<String>) {
         val said = spoken.split(' ').filter { it.isNotBlank() }
         val words = name.split(' ').filter { it.isNotBlank() }
         if (said.isEmpty() || words.isEmpty()) return 0.0
-        // Each spoken word against its best word of the name; all spoken words must fit
+        // Each spoken word against its best word of the name; every spoken word must fit, not just on average
         val perWord = said.map { s -> words.maxOf { w -> similarity(s, w) } }
+        if (perWord.min() < MIN_WORD) return 0.0
         val coverage = said.size.toDouble() / words.size
         return perWord.average() * (0.85 + 0.15 * coverage.coerceAtMost(1.0))
     }
 
     companion object {
         private const val MIN_SCORE = 0.78
+        private const val MIN_WORD = 0.75
         private const val AMBIGUITY = 0.04
 
         fun normalize(text: String): String =

@@ -173,7 +173,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 .onPreviewKeyEvent { event ->
                     val down = event.type == KeyEventType.KeyDown
                     // Back stops listening before anything else
-                    if ((event.key == Key.Back || event.key == Key.Escape) && VoiceAssistant.state.value is VoiceState.Listening) {
+                    if ((event.key == Key.Back || event.key == Key.Escape) && VoiceAssistant.isBusy) {
                         if (!down) VoiceAssistant.cancel()
                         return@onPreviewKeyEvent true
                     }

@@ -17,9 +17,19 @@ class CommandParserTest {
     }
 
     @Test
-    fun callToleratesSlips() {
-        assertEquals(VoiceCommand.Call(listOf("Mario Rossi"), null), parser.parse("chiama Mario Rosi"))
-        assertEquals(VoiceCommand.Call(listOf("Officina Ferrari"), null), parser.parse("chiama officina ferari"))
+    fun slipsAreFoundButMarkedAsGuesses() {
+        // Found, but not exact: the driver must confirm before anything is dialed
+        assertEquals(VoiceCommand.Call(listOf("Mario Rossi"), null, exact = false), parser.parse("chiama Mario Rosi"))
+        assertEquals(VoiceCommand.Call(listOf("Officina Ferrari"), null, exact = false), parser.parse("chiama officina ferari"))
+    }
+
+    @Test
+    fun aWrongOrMissingSurnameIsNoMatch() {
+        val contacts = CommandParser(listOf("Mauro Carboni"))
+        // "Mario Rossi" is not "Mauro Carboni": the surname rules it out
+        assertNull(contacts.parse("chiama Mario Rossi"))
+        // "Mario" alone, close to "Mauro" but saying nothing of the surname, is not enough either
+        assertNull(contacts.parse("chiama Mario"))
     }
 
     @Test
@@ -51,6 +61,13 @@ class CommandParserTest {
         assertEquals(VoiceCommand.Quiet(true), parser.parse("modalità silenziosa"))
         assertEquals(VoiceCommand.ReadNotifications, parser.parse("leggi i messaggi"))
         assertEquals(VoiceCommand.Cancel, parser.parse("lascia stare"))
+    }
+
+    @Test
+    fun missesAreExplained() {
+        assertEquals(CommandParser.Miss.ContactNotFound("federico verdi"), parser.miss("chiama Federico Verdi"))
+        assertEquals(CommandParser.Miss.UnknownPlace("garage"), parser.miss("apri garage"))
+        assertNull(parser.miss("che tempo fa"))
     }
 
     @Test

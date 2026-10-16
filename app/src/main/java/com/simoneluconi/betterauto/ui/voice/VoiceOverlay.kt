@@ -1,6 +1,10 @@
 package com.simoneluconi.betterauto.ui.voice
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.layout.height
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -87,6 +91,7 @@ fun VoiceOverlay(modifier: Modifier = Modifier) {
             when (current) {
                 is VoiceState.Listening -> Listening(current)
                 is VoiceState.Choosing -> Choosing(current)
+                is VoiceState.Calling -> Calling(current)
                 is VoiceState.Done -> Done(current)
                 VoiceState.Idle -> Unit
             }
@@ -138,7 +143,8 @@ private fun Microphone(level: Float) {
 private fun Choosing(state: VoiceState.Choosing) {
     val colors = LocalCarColors.current
     val first = remember { FocusRequester() }
-    CarLabel(stringResource(R.string.voice_which), 24.sp, colors.text, weight = FontWeight.ExtraBold)
+    // A similar name is only a guess: it is asked, never dialed on its own
+    CarLabel(stringResource(if (state.confirm) R.string.voice_did_you_mean else R.string.voice_which), 24.sp, colors.text, weight = FontWeight.ExtraBold)
     FlowRow(
         Modifier
             .fillMaxWidth()
@@ -164,6 +170,41 @@ private fun Choosing(state: VoiceState.Choosing) {
         }
     }
     LaunchedEffect(state) { runCatching { first.requestFocus() } }
+}
+
+/** About to call: who, which number, a bar running out, and Cancel under the knob. */
+@Composable
+private fun Calling(state: VoiceState.Calling) {
+    val colors = LocalCarColors.current
+    val cancel = remember { FocusRequester() }
+    val total = remember(state) { (state.until - SystemClock.elapsedRealtime()).coerceAtLeast(1) }
+    val progress = remember(state) { Animatable(1f) }
+    LaunchedEffect(state) {
+        runCatching { cancel.requestFocus() }
+        progress.animateTo(0f, tween(total.toInt(), easing = LinearEasing))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        Box(Modifier.size(64.dp).background(Color(0xFF2E9E5B), CircleShape), contentAlignment = Alignment.Center) {
+            CarIcon(CarIcons.CallAnswer, Color.White, Modifier.size(30.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CarLabel(stringResource(R.string.voice_calling, state.name, state.numberLabel), 28.sp, colors.text, weight = FontWeight.ExtraBold, maxLines = 2)
+            Box(Modifier.fillMaxWidth().height(6.dp).background(colors.surface2, RoundedCornerShape(3.dp))) {
+                Box(Modifier.fillMaxWidth(progress.value).height(6.dp).background(Color(0xFF2E9E5B), RoundedCornerShape(3.dp)))
+            }
+        }
+        val shape = RoundedCornerShape(50)
+        Box(
+            Modifier
+                .focusRequester(cancel)
+                .carClickable(shape, stringResource(R.string.voice_call_cancel)) { VoiceAssistant.cancel() }
+                .background(colors.surface2, shape)
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CarLabel(stringResource(R.string.voice_call_cancel), 22.sp, colors.text, weight = FontWeight.Bold)
+        }
+    }
 }
 
 @Composable
