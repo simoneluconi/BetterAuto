@@ -52,6 +52,31 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _phoneTab = MutableStateFlow(prefs.getString(KEY_PHONE_TAB, null))
     val phoneTab: StateFlow<String?> = _phoneTab
 
+    private val _railLayout = MutableStateFlow(RailLayout.decode(prefs.getString(KEY_RAIL, null)))
+    /** Order and place (bar, group, hidden) of the app bar's items. */
+    val railLayout: StateFlow<List<RailEntry>> = _railLayout
+
+    private val _clockStyle = MutableStateFlow(enumOf(KEY_CLOCK, ClockStyle.AUTO))
+    val clockStyle: StateFlow<ClockStyle> = _clockStyle
+
+    private val _dateStyle = MutableStateFlow(enumOf(KEY_DATE, DateStyle.SHORT))
+    val dateStyle: StateFlow<DateStyle> = _dateStyle
+
+    private val _showEngineLight = boolFlow(KEY_SHOW_ENGINE, true)
+    val showEngineLight: StateFlow<Boolean> = _showEngineLight
+
+    private val _showBell = boolFlow(KEY_SHOW_BELL, true)
+    val showBell: StateFlow<Boolean> = _showBell
+
+    private val _showSignal = boolFlow(KEY_SHOW_SIGNAL, true)
+    val showSignal: StateFlow<Boolean> = _showSignal
+
+    private val _showBattery = boolFlow(KEY_SHOW_BATTERY, true)
+    val showBattery: StateFlow<Boolean> = _showBattery
+
+    private val _showLayoutButton = boolFlow(KEY_SHOW_LAYOUT_BUTTON, true)
+    val showLayoutButton: StateFlow<Boolean> = _showLayoutButton
+
     private val _quietMode = MutableStateFlow(prefs.getBoolean(KEY_QUIET, false))
     /** No notification banners; notifications still collect in the widget. */
     val quietMode: StateFlow<Boolean> = _quietMode
@@ -116,6 +141,38 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setPhoneTab(value: String) {
         _phoneTab.value = value
         prefs.edit { putString(KEY_PHONE_TAB, value) }
+    }
+
+    fun moveRailItem(item: RailItem, delta: Int) = saveRail(RailLayout.move(railLayout.value, item, delta))
+
+    fun placeRailItem(item: RailItem, slot: RailSlot) = saveRail(RailLayout.place(railLayout.value, item, slot))
+
+    fun setRailLayout(value: List<RailEntry>) = saveRail(value)
+
+    private fun saveRail(value: List<RailEntry>) {
+        _railLayout.value = value
+        prefs.edit { putString(KEY_RAIL, RailLayout.encode(value)) }
+    }
+
+    fun setClockStyle(value: ClockStyle) = saveEnum(KEY_CLOCK, value, _clockStyle)
+
+    fun setDateStyle(value: DateStyle) = saveEnum(KEY_DATE, value, _dateStyle)
+
+    fun setShowEngineLight(value: Boolean) = saveBool(KEY_SHOW_ENGINE, value, _showEngineLight)
+
+    fun setShowBell(value: Boolean) = saveBool(KEY_SHOW_BELL, value, _showBell)
+
+    fun setShowSignal(value: Boolean) = saveBool(KEY_SHOW_SIGNAL, value, _showSignal)
+
+    fun setShowBattery(value: Boolean) = saveBool(KEY_SHOW_BATTERY, value, _showBattery)
+
+    fun setShowLayoutButton(value: Boolean) = saveBool(KEY_SHOW_LAYOUT_BUTTON, value, _showLayoutButton)
+
+    private fun boolFlow(key: String, default: Boolean) = MutableStateFlow(prefs.getBoolean(key, default))
+
+    private fun saveBool(key: String, value: Boolean, flow: MutableStateFlow<Boolean>) {
+        flow.value = value
+        prefs.edit { putBoolean(key, value) }
     }
 
     fun setQuietMode(value: Boolean) {
@@ -205,6 +262,14 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_NAME_ORDER = "name_order"
         private const val KEY_QUIET = "quiet_mode"
+        private const val KEY_RAIL = "rail_layout"
+        private const val KEY_CLOCK = "clock_style"
+        private const val KEY_DATE = "date_style"
+        private const val KEY_SHOW_ENGINE = "show_engine_light"
+        private const val KEY_SHOW_BELL = "show_bell"
+        private const val KEY_SHOW_SIGNAL = "show_signal"
+        private const val KEY_SHOW_BATTERY = "show_battery"
+        private const val KEY_SHOW_LAYOUT_BUTTON = "show_layout_button"
         private const val KEY_NOTIF_GROUPS = "notification_groups"
         private const val KEY_NOTIF_APPS = "notification_apps"
         private const val KEY_NOTIF_HIDDEN = "notification_hidden_apps"

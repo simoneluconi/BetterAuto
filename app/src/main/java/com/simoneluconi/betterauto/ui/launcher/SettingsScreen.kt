@@ -35,6 +35,10 @@ import com.simoneluconi.betterauto.settings.ChoiceSetting
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.AppsSetting
 import com.simoneluconi.betterauto.settings.MutedChatsSetting
+import com.simoneluconi.betterauto.settings.RailLayoutSetting
+import com.simoneluconi.betterauto.settings.RailSlot
+import com.simoneluconi.betterauto.settings.SettingHeader
+import androidx.compose.ui.draw.rotate
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.settings.SettingsCatalog
@@ -56,9 +60,12 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {
         CarLabel(stringResource(R.string.settings_title), 36.sp, colors.text, weight = FontWeight.ExtraBold)
-        for ((index, item) in SettingsCatalog.all.withIndex()) {
+        val firstChoice = SettingsCatalog.all.first { it is ChoiceSetting<*> }
+        for (item in SettingsCatalog.all) {
             when (item) {
-                is ChoiceSetting<*> -> ChoiceRow(item, settings, primary = index == 0)
+                is SettingHeader -> CarLabel(stringResource(item.title), 30.sp, colors.text, Modifier.padding(top = 18.dp), weight = FontWeight.ExtraBold)
+                is RailLayoutSetting -> RailEditor(item, settings)
+                is ChoiceSetting<*> -> ChoiceRow(item, settings, primary = item === firstChoice)
                 is ActionSetting -> Setting(item.title, listOf(Unit), null, { stringResource(item.label) }) {
                     item.run(settings, SettingsSurface.CAR)
                 }
@@ -74,6 +81,69 @@ private fun <T> ChoiceRow(item: ChoiceSetting<T>, settings: LauncherSettings, pr
     val selected by item.state(settings).collectAsStateWithLifecycle()
     Setting(item.title, item.options, item.options.firstOrNull { it.value == selected }, { stringResource(it.label) }, primary) {
         item.select(settings, it.value, SettingsSurface.CAR)
+    }
+}
+
+/** The app bar's buttons: where each one goes (bar, a group, hidden) and in which order. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RailEditor(item: RailLayoutSetting, settings: LauncherSettings) {
+    val colors = LocalCarColors.current
+    val layout by settings.railLayout.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        CarLabel(stringResource(item.title), 26.sp, colors.text2, weight = FontWeight.Bold)
+        for ((index, entry) in layout.withIndex()) {
+            val name = stringResource(entry.item.label)
+            Column(
+                Modifier.background(colors.surface2, RoundedCornerShape(24.dp)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CarIcon(entry.item.icon, colors.text, Modifier.size(28.dp))
+                    CarLabel(name, 24.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold)
+                    MoveButton(CarIcons.Back, stringResource(R.string.rail_move_up, name), enabled = index > 0, rotate = 90f) {
+                        item.move(settings, entry.item, -1, SettingsSurface.CAR)
+                    }
+                    MoveButton(CarIcons.Back, stringResource(R.string.rail_move_down, name), enabled = index < layout.lastIndex, rotate = -90f) {
+                        item.move(settings, entry.item, 1, SettingsSurface.CAR)
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    for (slot in RailSlot.entries) {
+                        val shape = RoundedCornerShape(50)
+                        val selected = entry.slot == slot
+                        val label = stringResource(slot.label)
+                        Box(
+                            Modifier
+                                .carClickable(shape, stringResource(R.string.settings_option, name, label)) {
+                                    item.place(settings, entry.item, slot, SettingsSurface.CAR)
+                                }
+                                .background(if (selected) colors.focus.copy(alpha = 0.22f) else colors.surface, shape)
+                                .height(56.dp)
+                                .padding(horizontal = 24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CarLabel(label, 20.sp, colors.text, weight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+        CarLabel(stringResource(R.string.rail_settings_note), 19.sp, colors.text2)
+    }
+}
+
+@Composable
+private fun MoveButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean, rotate: Float, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    Box(
+        Modifier
+            .carClickable(CircleShape, label) { if (enabled) onClick() }
+            .background(colors.surface, CircleShape)
+            .size(56.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarIcon(icon, if (enabled) colors.text else colors.text2.copy(alpha = 0.4f), Modifier.size(26.dp).rotate(rotate))
     }
 }
 

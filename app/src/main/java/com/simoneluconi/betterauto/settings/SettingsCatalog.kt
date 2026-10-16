@@ -97,10 +97,30 @@ class MutedChatsSetting(
     }
 }
 
+/** A title that starts a group of settings. */
+class SettingHeader(override val key: String, @param:StringRes override val title: Int) : SettingItem
+
+/** Order and place (bar, group, hidden) of the app bar's items; each surface draws its own editor. */
+class RailLayoutSetting(override val key: String, @param:StringRes override val title: Int) : SettingItem {
+    fun move(settings: LauncherSettings, item: RailItem, delta: Int, from: SettingsSurface) {
+        EventLog.log("Setting $key: move ${item.name} ${if (delta < 0) "up" else "down"} (from ${from.name.lowercase()})")
+        settings.moveRailItem(item, delta)
+    }
+
+    fun place(settings: LauncherSettings, item: RailItem, slot: RailSlot, from: SettingsSurface) {
+        if (settings.railLayout.value.firstOrNull { it.item == item }?.slot == slot) return
+        EventLog.log("Setting $key: ${item.name} -> ${slot.name} (from ${from.name.lowercase()})")
+        settings.placeRailItem(item, slot)
+    }
+}
+
 object SettingsCatalog {
     private val onOff = listOf(SettingOption(false, R.string.option_off), SettingOption(true, R.string.option_on))
 
+    private val shownHidden = listOf(SettingOption(true, R.string.option_show), SettingOption(false, R.string.option_hide))
+
     val all: List<SettingItem> = listOf(
+        SettingHeader("look", R.string.settings_section_look),
         ChoiceSetting(
             "theme", R.string.settings_theme,
             listOf(
@@ -109,15 +129,6 @@ object SettingsCatalog {
                 SettingOption(ThemeMode.NIGHT, R.string.option_night),
             ),
             { it.themeMode }, LauncherSettings::setThemeMode,
-        ),
-        ChoiceSetting(
-            "app_bar", R.string.settings_app_bar,
-            listOf(
-                SettingOption(BarPosition.AUTO, R.string.option_auto),
-                SettingOption(BarPosition.LEFT, R.string.option_left),
-                SettingOption(BarPosition.BOTTOM, R.string.option_bottom),
-            ),
-            { it.barPosition }, LauncherSettings::setBarPosition,
         ),
         ChoiceSetting(
             "home_layout", R.string.settings_home_layout,
@@ -129,6 +140,52 @@ object SettingsCatalog {
             { it.layout }, LauncherSettings::setLayout,
         ),
         ActionSetting("widget_order", R.string.settings_widget_order, R.string.rotate_widgets, LauncherSettings::rotateWidgets),
+
+        SettingHeader("app_bar_section", R.string.settings_section_app_bar),
+        ChoiceSetting(
+            "app_bar", R.string.settings_app_bar,
+            listOf(
+                SettingOption(BarPosition.AUTO, R.string.option_auto),
+                SettingOption(BarPosition.LEFT, R.string.option_left),
+                SettingOption(BarPosition.BOTTOM, R.string.option_bottom),
+            ),
+            { it.barPosition }, LauncherSettings::setBarPosition,
+        ),
+        RailLayoutSetting("rail_layout", R.string.settings_rail_layout),
+        AppsSetting(
+            "bar_apps", R.string.settings_bar_apps, R.string.settings_no_apps,
+            { context, _ -> MediaApps.installed(context) },
+            { it.pinnedApps }, listedMeansSelected = true, LauncherSettings::togglePinned,
+        ),
+
+        SettingHeader("status_bar", R.string.settings_section_status_bar),
+        ChoiceSetting(
+            "clock", R.string.settings_clock,
+            listOf(
+                SettingOption(ClockStyle.AUTO, R.string.option_clock_auto),
+                SettingOption(ClockStyle.H24, R.string.option_clock_24),
+                SettingOption(ClockStyle.H12, R.string.option_clock_12),
+                SettingOption(ClockStyle.HIDDEN, R.string.option_hide),
+            ),
+            { it.clockStyle }, LauncherSettings::setClockStyle,
+        ),
+        ChoiceSetting(
+            "date", R.string.settings_date,
+            listOf(
+                SettingOption(DateStyle.SHORT, R.string.option_date_short),
+                SettingOption(DateStyle.LONG, R.string.option_date_long),
+                SettingOption(DateStyle.NUMERIC, R.string.option_date_numeric),
+                SettingOption(DateStyle.HIDDEN, R.string.option_hide),
+            ),
+            { it.dateStyle }, LauncherSettings::setDateStyle,
+        ),
+        ChoiceSetting("engine_light", R.string.settings_engine_light, shownHidden, { it.showEngineLight }, LauncherSettings::setShowEngineLight),
+        ChoiceSetting("bell", R.string.settings_bell, shownHidden, { it.showBell }, LauncherSettings::setShowBell),
+        ChoiceSetting("signal", R.string.settings_signal, shownHidden, { it.showSignal }, LauncherSettings::setShowSignal),
+        ChoiceSetting("battery", R.string.settings_battery, shownHidden, { it.showBattery }, LauncherSettings::setShowBattery),
+        ChoiceSetting("layout_button", R.string.settings_layout_button, shownHidden, { it.showLayoutButton }, LauncherSettings::setShowLayoutButton),
+
+        SettingHeader("media", R.string.settings_section_media),
         ChoiceSetting(
             "music_view", R.string.settings_music_view,
             listOf(
@@ -137,6 +194,9 @@ object SettingsCatalog {
             ),
             { it.musicPanel }, LauncherSettings::setMusicPanel,
         ),
+        ChoiceSetting("auto_play", R.string.settings_auto_play, onOff, { it.autoPlay }, LauncherSettings::setAutoPlay),
+
+        SettingHeader("phone", R.string.settings_section_phone),
         ChoiceSetting(
             "contact_names", R.string.settings_contact_names,
             listOf(
@@ -145,17 +205,11 @@ object SettingsCatalog {
             ),
             { it.nameOrder }, LauncherSettings::setNameOrder,
         ),
-        ChoiceSetting("auto_play", R.string.settings_auto_play, onOff, { it.autoPlay }, LauncherSettings::setAutoPlay),
-        ChoiceSetting("debug_overlay", R.string.settings_debug, onOff, { it.debugOverlay }, LauncherSettings::setDebugOverlay),
-        AppsSetting(
-            "bar_apps", R.string.settings_bar_apps, R.string.settings_no_apps,
-            { context, _ -> MediaApps.installed(context) },
-            { it.pinnedApps }, listedMeansSelected = true, LauncherSettings::togglePinned,
-        ),
+
+        SettingHeader("notifications", R.string.settings_section_notifications),
         ChoiceSetting("quiet_mode", R.string.settings_quiet_mode, onOff, { it.quietMode }, LauncherSettings::setQuietMode),
         ChoiceSetting(
-            "notification_groups", R.string.settings_notification_groups,
-            listOf(SettingOption(true, R.string.option_show), SettingOption(false, R.string.option_hide)),
+            "notification_groups", R.string.settings_notification_groups, shownHidden,
             { it.notificationGroups }, LauncherSettings::setNotificationGroups,
         ),
         AppsSetting(
@@ -164,5 +218,8 @@ object SettingsCatalog {
             { it.notificationHiddenApps }, listedMeansSelected = false, LauncherSettings::toggleNotificationApp,
         ),
         MutedChatsSetting("muted_chats", R.string.settings_muted_chats),
+
+        SettingHeader("advanced", R.string.settings_section_advanced),
+        ChoiceSetting("debug_overlay", R.string.settings_debug, onOff, { it.debugOverlay }, LauncherSettings::setDebugOverlay),
     )
 }

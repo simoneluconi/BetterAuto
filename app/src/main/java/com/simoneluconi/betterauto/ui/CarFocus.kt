@@ -66,7 +66,8 @@ fun Modifier.carClickable(
     val scale by animateFloatAsState(
         targetValue = when {
             pressed -> 0.92f
-            focused -> 1.06f
+            // Slight: controls sit close together, the ring must not reach the next one
+            focused -> 1.03f
             else -> 1f
         },
         animationSpec = spring(dampingRatio = 0.55f, stiffness = 700f),
@@ -101,9 +102,10 @@ fun Modifier.carClickable(
                 drawOutline(shape.createOutline(size, layoutDirection, this), colors.text.copy(alpha = 0.14f * veil))
             }
             if (focused) {
-                // Solid ring just outside the control, then a soft halo band outside the ring
-                val ring = 4.dp.toPx()
-                val halo = 10.dp.toPx()
+                // Solid ring just outside the control, then a soft halo band outside the ring:
+                // 6 dp in all, so it stays within the gap to the next control
+                val ring = 3.dp.toPx()
+                val halo = 6.dp.toPx()
                 drawRingOutside(shape, ring / 2, ring) { outline, stroke ->
                     drawOutline(outline, colors.focus, style = stroke)
                 }

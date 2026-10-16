@@ -29,6 +29,8 @@ import java.time.format.DateTimeFormatter
 data class PhoneStatus(
     val time: String,
     val date: String,
+    /** The moment [time] and [date] describe, for other formats. */
+    val at: LocalDateTime = LocalDateTime.now(),
     val batteryPercent: Int?,
     val charging: Boolean,
     /** 0..4, null when unknown (no SIM, airplane mode). */
@@ -101,6 +103,7 @@ private fun PhoneStatus.withClock(context: Context): PhoneStatus {
     return copy(
         time = now.format(if (DateFormat.is24HourFormat(context)) Time24 else Time12),
         date = now.format(DayFormat),
+        at = now,
     )
 }
 

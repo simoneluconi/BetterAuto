@@ -1,6 +1,14 @@
 package com.simoneluconi.betterauto.ui.launcher
 
+import android.content.Context
+import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.platform.LocalContext
+import com.simoneluconi.betterauto.settings.ClockStyle
+import com.simoneluconi.betterauto.settings.DateStyle
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +58,14 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val call by Calls.current.collectAsStateWithLifecycle()
     val callMinimized by Calls.minimized.collectAsStateWithLifecycle()
     val section by settings.section.collectAsStateWithLifecycle()
+    val clockStyle by settings.clockStyle.collectAsStateWithLifecycle()
+    val dateStyle by settings.dateStyle.collectAsStateWithLifecycle()
+    val showEngine by settings.showEngineLight.collectAsStateWithLifecycle()
+    val showBell by settings.showBell.collectAsStateWithLifecycle()
+    val showSignal by settings.showSignal.collectAsStateWithLifecycle()
+    val showBattery by settings.showBattery.collectAsStateWithLifecycle()
+    val showLayout by settings.showLayoutButton.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Row(
         Modifier
@@ -58,15 +74,15 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        CarLabel(phone.time, 32.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true)
-        CarLabel(phone.date, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+        clockText(context, phone.at, clockStyle)?.let { CarLabel(it, 32.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true) }
+        dateText(phone.at, dateStyle)?.let { CarLabel(it, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp)) }
         Spacer(Modifier.weight(1f))
 
         call?.takeIf { callMinimized }?.let { CallPill(it) }
-        EngineLight(settings)
+        if (showEngine) EngineLight(settings)
         // On the notifications screen its own header already has the bell
-        if (section != Section.NOTIFICATIONS) NotificationsButton(settings)
-        if (showLayoutButton) {
+        if (showBell && section != Section.NOTIFICATIONS) NotificationsButton(settings)
+        if (showLayoutButton && showLayout) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(
                 Modifier
@@ -79,11 +95,34 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
             }
         }
         Spacer(Modifier.width(6.dp))
-        if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
-        phone.signalLevel?.let { SignalBars(it) }
-        phone.batteryPercent?.let { Battery(it, phone.charging) }
+        if (showSignal) {
+            if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
+            phone.signalLevel?.let { SignalBars(it) }
+        }
+        if (showBattery) phone.batteryPercent?.let { Battery(it, phone.charging) }
     }
 }
+
+private fun clockText(context: Context, at: LocalDateTime, style: ClockStyle): String? = when (style) {
+    ClockStyle.HIDDEN -> null
+    ClockStyle.H24 -> at.format(Clock24)
+    ClockStyle.H12 -> at.format(Clock12)
+    ClockStyle.AUTO -> at.format(if (DateFormat.is24HourFormat(context)) Clock24 else Clock12)
+}
+
+private fun dateText(at: LocalDateTime, style: DateStyle): String? {
+    val pattern = when (style) {
+        DateStyle.HIDDEN -> return null
+        DateStyle.SHORT -> "EEE d MMM"
+        DateStyle.LONG -> "EEEE d MMMM"
+        // Day and month in the order and with the separator of the phone's language
+        DateStyle.NUMERIC -> DateFormat.getBestDateTimePattern(Locale.getDefault(), "dM")
+    }
+    return at.format(DateTimeFormatter.ofPattern(pattern, Locale.getDefault()))
+}
+
+private val Clock24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val Clock12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm")
 
 private val LowBattery = Color(0xFFE5484D)
 

@@ -13,6 +13,7 @@ import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
 
@@ -33,6 +34,8 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *   ... --ez clearDemo true  remove the pretend notifications
  *   ... --es vehicle demo    pretend car data on the vehicle screen ("off" clears it, "diagnostics" opens the codes);
  *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
+ *   ... --es rail "MAP:GROUP_1,VEHICLE:GROUP_1"  arrange the app bar (missing items keep their default;
+ *                            "default" resets it)
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -45,6 +48,15 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("section")?.let { name ->
             Section.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setSection(it) }
+        }
+        intent.getStringExtra("rail")?.let { spec ->
+            val settings = LauncherSettings.get(context)
+            if (spec == "default") {
+                settings.setRailLayout(RailLayout.Default)
+            } else {
+                val changes = RailLayout.decode(spec).filter { e -> spec.contains(e.item.name) }
+                settings.setRailLayout(RailLayout.Default.map { d -> changes.firstOrNull { it.item == d.item } ?: d })
+            }
         }
         intent.getStringExtra("layout")?.let { name ->
             HomeLayout.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }

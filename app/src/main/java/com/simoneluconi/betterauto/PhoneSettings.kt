@@ -39,6 +39,12 @@ import com.simoneluconi.betterauto.settings.ChoiceSetting
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.AppsSetting
 import com.simoneluconi.betterauto.settings.MutedChatsSetting
+import com.simoneluconi.betterauto.settings.RailLayoutSetting
+import com.simoneluconi.betterauto.settings.RailSlot
+import com.simoneluconi.betterauto.settings.SettingHeader
+import com.simoneluconi.betterauto.settings.SettingItem
+import com.simoneluconi.betterauto.ui.launcher.icon
+import com.simoneluconi.betterauto.ui.launcher.label
 import com.simoneluconi.betterauto.settings.SettingsCatalog
 import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -76,27 +82,87 @@ fun PhoneSettingsPage(onBack: () -> Unit) {
 @Composable
 private fun SettingsList(settings: LauncherSettings) {
     val colors = LocalCarColors.current
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(colors.surface)
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-    ) {
+    // One card per section, a header starts the next one
+    val sections = buildList<Pair<SettingHeader?, MutableList<SettingItem>>> {
         for (item in SettingsCatalog.all) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                CarLabel(stringResource(item.title), 16.sp, colors.text2, weight = FontWeight.Bold)
-                when (item) {
-                    is ChoiceSetting<*> -> PhoneChoice(item, settings)
-                    is ActionSetting -> Chip(stringResource(item.label), selected = false) {
-                        item.run(settings, SettingsSurface.PHONE)
+            if (item is SettingHeader || isEmpty()) add((item as? SettingHeader) to mutableListOf())
+            if (item !is SettingHeader) last().second += item
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        for ((header, items) in sections) {
+            header?.let { CarLabel(stringResource(it.title), 19.sp, colors.text, Modifier.padding(start = 4.dp, top = 6.dp), weight = FontWeight.Bold) }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(colors.surface)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+            ) {
+                for (item in items) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CarLabel(stringResource(item.title), 16.sp, colors.text2, weight = FontWeight.Bold)
+                        when (item) {
+                            is SettingHeader -> Unit
+                            is RailLayoutSetting -> PhoneRailEditor(item, settings)
+                            is ChoiceSetting<*> -> PhoneChoice(item, settings)
+                            is ActionSetting -> Chip(stringResource(item.label), selected = false) {
+                                item.run(settings, SettingsSurface.PHONE)
+                            }
+                            is AppsSetting -> PhoneApps(item, settings)
+                            is MutedChatsSetting -> PhoneMutedChats(item, settings)
+                        }
                     }
-                    is AppsSetting -> PhoneApps(item, settings)
-                    is MutedChatsSetting -> PhoneMutedChats(item, settings)
                 }
             }
         }
+    }
+}
+
+/** The app bar's buttons on the phone: place chips and up/down arrows for each. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PhoneRailEditor(item: RailLayoutSetting, settings: LauncherSettings) {
+    val colors = LocalCarColors.current
+    val layout by settings.railLayout.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        for ((index, entry) in layout.withIndex()) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(colors.surface2).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CarIcon(entry.item.icon, colors.text, Modifier.size(22.dp))
+                    CarLabel(stringResource(entry.item.label), 16.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold)
+                    ArrowButton("▲", enabled = index > 0) { item.move(settings, entry.item, -1, SettingsSurface.PHONE) }
+                    ArrowButton("▼", enabled = index < layout.lastIndex) { item.move(settings, entry.item, 1, SettingsSurface.PHONE) }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (slot in RailSlot.entries) {
+                        Chip(stringResource(slot.label), selected = entry.slot == slot) {
+                            item.place(settings, entry.item, slot, SettingsSurface.PHONE)
+                        }
+                    }
+                }
+            }
+        }
+        CarLabel(stringResource(R.string.rail_settings_note), 14.sp, colors.text2, maxLines = 2)
+    }
+}
+
+@Composable
+private fun ArrowButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(colors.surface)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarLabel(symbol, 16.sp, if (enabled) colors.text else colors.text2.copy(alpha = 0.4f), weight = FontWeight.Bold)
     }
 }
 

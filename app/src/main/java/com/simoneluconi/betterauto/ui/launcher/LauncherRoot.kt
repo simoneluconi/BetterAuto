@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +58,7 @@ import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
 import com.simoneluconi.betterauto.settings.BarPosition
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.settings.RailSlot
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
 import com.simoneluconi.betterauto.settings.WidgetType
@@ -122,6 +126,14 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val contentFocus = remember { FocusRequester() }
     var railHasFocus by remember { mutableStateOf(false) }
     var railVertical by remember { mutableStateOf(true) }
+    var openGroup by remember { mutableStateOf<RailSlot?>(null) }
+    // After a group closes, the focus goes back to the bar once it shows the new section
+    var refocusRail by remember { mutableIntStateOf(0) }
+    LaunchedEffect(refocusRail) {
+        if (refocusRail == 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { railFocus.requestFocus() }
+    }
     var hasFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     // Read by the bridge below long after composition: always the latest value
@@ -208,7 +220,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
             }
             val rail = @Composable { vertical: Boolean ->
                 Box(Modifier.onFocusChanged { railHasFocus = it.hasFocus }) {
-                    AppRail(settings, section, vertical = vertical, firstFocus = railFocus)
+                    AppRail(settings, section, vertical = vertical, firstFocus = railFocus, onOpenGroup = { openGroup = it })
                 }
             }
             val current = shownCall
@@ -225,6 +237,17 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     main(Modifier.weight(1f))
                     rail(false)
                 }
+            }
+            openGroup?.let { slot ->
+                RailGroupPanel(
+                    settings, slot, section,
+                    onClose = {
+                        openGroup = null
+                        refocusRail++
+                    },
+                    modifier = if (left) Modifier.align(Alignment.CenterStart).padding(start = 124.dp)
+                    else Modifier.align(Alignment.BottomCenter).padding(bottom = 116.dp),
+                )
             }
             // No banner over a call, nor on the notifications screen itself
             if (shownCall == null && section != Section.NOTIFICATIONS) {

@@ -110,6 +110,7 @@ adb shell pm enable com.google.android.projection.gearhead   # to bring it back
   (see `docs/screenshots`).
   Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
   `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes.
+  App bar: `--es rail "MAP:GROUP_1,VEHICLE:GROUP_1"` arranges it (`default` resets it).
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 
