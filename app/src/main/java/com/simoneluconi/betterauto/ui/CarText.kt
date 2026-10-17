@@ -1,6 +1,7 @@
 package com.simoneluconi.betterauto.ui
 
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +22,8 @@ fun CarLabel(
     lineHeight: TextUnit = TextUnit.Unspecified,
     tabularNumbers: Boolean = false,
     textAlign: TextAlign = TextAlign.Unspecified,
+    /** Smaller text rather than an ellipsis when it does not fit, down to half the size. */
+    shrinkToFit: Boolean = false,
 ) {
     BasicText(
         text = text,
@@ -35,6 +38,7 @@ fun CarLabel(
         ),
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
+        autoSize = if (shrinkToFit) TextAutoSize.StepBased(minFontSize = size * 0.5f, maxFontSize = size) else null,
     )
 }
 

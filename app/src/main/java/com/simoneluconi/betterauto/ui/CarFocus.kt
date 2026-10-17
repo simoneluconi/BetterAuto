@@ -46,6 +46,12 @@ private val ActivateKeys = setOf(Key.Enter, Key.DirectionCenter, Key.NumPadEnter
 
 private const val MIN_PRESS_MS = 120L
 
+/** Press-in and focus zoom: this many dp on the longest side, at most these fractions on small controls. */
+private const val PRESS_SHRINK_DP = 8
+private const val MAX_PRESS_SHRINK = 0.08f
+private const val FOCUS_GROW_DP = 6
+private const val MAX_FOCUS_GROW = 0.03f
+
 /**
  * A control usable both by touch and by the car's rotary/d-pad: always focusable (touch mode or not),
  * activated by tap or by the center/enter key, with a clear focus ring and slight zoom when focused,
@@ -63,16 +69,9 @@ fun Modifier.carClickable(
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
     var pressedAt by remember { mutableLongStateOf(0L) }
-    val scale by animateFloatAsState(
-        targetValue = when {
-            pressed -> 0.92f
-            // Slight: controls sit close together, the ring must not reach the next one
-            focused -> 1.03f
-            else -> 1f
-        },
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 700f),
-        label = "pressScale",
-    )
+    // How far into the press-in and the focus zoom the control is (0..1); the size change is applied below
+    val press by animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 700f), label = "press")
+    val zoom by animateFloatAsState(if (focused && !pressed) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 700f), label = "zoom")
     val veil by animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 60 else 260), label = "pressVeil")
     val click by rememberUpdatedState(onClick)
     val longClick by rememberUpdatedState(onLongClick)
@@ -93,6 +92,12 @@ fun Modifier.carClickable(
 
     this
         .graphicsLayer {
+            // The same few dp for a small button and a long card: a percentage would make big cards jump
+            val longest = maxOf(size.width, size.height).coerceAtLeast(1f)
+            val shrink = minOf(MAX_PRESS_SHRINK, PRESS_SHRINK_DP.dp.toPx() / longest)
+            // Slight: controls sit close together, the ring must not reach the next one
+            val grow = minOf(MAX_FOCUS_GROW, FOCUS_GROW_DP.dp.toPx() / longest)
+            val scale = 1f - shrink * press + grow * zoom
             scaleX = scale
             scaleY = scale
         }

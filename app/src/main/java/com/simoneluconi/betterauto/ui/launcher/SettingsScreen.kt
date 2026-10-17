@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.launcher
 
+import com.simoneluconi.betterauto.ui.verticalScrollWithBar
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -55,7 +56,7 @@ fun SettingsScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         modifier
             .clip(RoundedCornerShape(32.dp))
             .background(colors.surface)
-            .verticalScroll(rememberScrollState())
+            .verticalScrollWithBar()
             .padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {

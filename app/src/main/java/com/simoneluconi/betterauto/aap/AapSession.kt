@@ -221,6 +221,7 @@ class AapSession(
             EventLog.log("    sensors: ${sensors.joinToString()}")
             SensorChannel(this, service.id, sensors)
         }
+        service.hasVendorExtensionService() -> VendorExtensionChannel(this, service.id, service.vendorExtensionService.name)
         else -> null
     }
 

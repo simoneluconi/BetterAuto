@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto
 
+import com.simoneluconi.betterauto.ui.verticalScrollWithBar
 import android.Manifest
 import android.app.AppOpsManager
 import android.content.ClipData
@@ -133,7 +134,7 @@ private fun PhoneHome(onOpenSettings: () -> Unit) {
             .fillMaxSize()
             .background(colors.bg)
             .safeDrawingPadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScrollWithBar()
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -319,7 +320,7 @@ private fun LogCard() {
                 Modifier
                     .fillMaxWidth()
                     .heightIn(max = 420.dp)
-                    .verticalScroll(scroll)
+                    .verticalScrollWithBar(scroll)
                     .padding(start = 18.dp, end = 18.dp, bottom = 18.dp)
             ) {
                 BasicText(

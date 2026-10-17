@@ -52,6 +52,7 @@ import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
+import java.util.Locale
 
 private val OkGreen = Color(0xFF2E9E5B)
 
@@ -158,7 +159,7 @@ private fun TileView(tile: Tile, modifier: Modifier) {
                 if (tile.onClick != null) CarIcon(CarIcons.Chevron, colors.text2, Modifier.size(22.dp))
             }
             Column {
-                CarLabel(tile.value, if (compact) 32.sp else 40.sp, tint ?: colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true)
+                CarLabel(tile.value, if (compact) 32.sp else 40.sp, tint ?: colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true, shrinkToFit = true)
                 if (detailLines > 0) tile.detail?.let { CarLabel(it, 17.sp, colors.text2, maxLines = detailLines) }
             }
         }
@@ -225,10 +226,19 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
             s.parkingBrake?.value?.let { stringResource(if (it) R.string.vehicle_parking_brake_on else R.string.vehicle_parking_brake_off) },
         )
     }
-    s.satellites?.value?.let { sat ->
+    // Where the car is, which the cluster does not say; the satellites are under "all data"
+    s.position?.value?.let { p ->
+        val altitude = stringResource(R.string.vehicle_altitude)
+        val heading = stringResource(R.string.vehicle_heading)
         list += Tile(
-            CarIcons.Map, stringResource(R.string.vehicle_gps), stringResource(R.string.vehicle_satellites_value, sat.inUse),
-            s.position?.value?.accuracyM?.let { stringResource(R.string.vehicle_accuracy_detail, units.length(it)) },
+            CarIcons.Map, stringResource(R.string.vehicle_gps), "%.5f, %.5f".format(Locale.ROOT, p.latitude, p.longitude),
+            listOfNotNull(
+                listOfNotNull(
+                    p.altitudeM?.let { "$altitude ${units.length(it)}" },
+                    p.bearing?.let { "$heading ${"%.0f°".format(Locale.getDefault(), it)}" },
+                ).joinToString(" · ").ifEmpty { null },
+                p.accuracyM?.let { stringResource(R.string.vehicle_accuracy_detail, units.length(it)) },
+            ).joinToString("\n").ifEmpty { null },
         )
     }
     // A car that shares little still says what it is, and that it shares little

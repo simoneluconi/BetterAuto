@@ -139,7 +139,7 @@ fun AlphabetPicker(letters: List<Char>, onPick: (Char) -> Unit, onClose: () -> U
                 if (event.type == KeyEventType.KeyUp) onClose()
                 true
             }
-            .verticalScroll(rememberScrollState()),
+            .verticalScrollWithBar(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         CarLabel(stringResource(R.string.az_title), 22.sp, colors.text2, weight = FontWeight.Bold)

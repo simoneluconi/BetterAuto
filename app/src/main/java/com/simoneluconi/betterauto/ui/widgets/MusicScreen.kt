@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.widgets
 
+import com.simoneluconi.betterauto.ui.LazyColumnWithBar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -157,7 +158,7 @@ private fun QueueList(track: Track?) {
     LaunchedEffect(track?.packageName, activeIndex) {
         if (activeIndex > 0) listState.scrollToItem(activeIndex - 1)
     }
-    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumnWithBar(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(queue, key = { it.id }) { entry ->
             ListRow(
                 icon = entry.icon,
@@ -222,7 +223,7 @@ private fun LibraryList(packageName: String?) {
             } else if (jump.open) {
                 AlphabetPicker(firstOfLetter.keys.toList(), onPick = { jump.jumpTo(firstOfLetter.getValue(it)) }, onClose = { jump.open = false })
             } else {
-                LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumnWithBar(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(current.items, key = { _, it -> it.id }) { index, item ->
                         ListRow(
                             icon = item.icon,
@@ -245,7 +246,7 @@ private fun LibraryList(packageName: String?) {
 private fun AppsList(current: String?) {
     val context = LocalContext.current
     val apps = remember { MediaApps.installed(context).mapNotNull { MediaApps.info(context, it) } }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumnWithBar(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(apps, key = { it.packageName }) { app ->
             ListRow(
                 icon = app.icon,

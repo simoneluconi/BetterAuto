@@ -1,5 +1,7 @@
 package com.simoneluconi.betterauto.ui.phone
 
+import com.simoneluconi.betterauto.ui.LazyVerticalGridWithBar
+import com.simoneluconi.betterauto.ui.LazyColumnWithBar
 import android.net.Uri
 import android.provider.CallLog
 import android.text.format.DateUtils
@@ -162,7 +164,7 @@ private fun RecentsList(settings: LauncherSettings) {
     when {
         list == null -> PanelMessage(stringResource(R.string.music_loading))
         list.isEmpty() -> PanelMessage(stringResource(if (PhoneBook.canReadCallLog(context)) R.string.phone_no_recents else R.string.phone_no_access))
-        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        else -> LazyColumnWithBar(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(list, key = { "${it.number}|${it.date}" }) { recent ->
                 RecentRow(recent) { Calls.place(context, recent.number) }
             }
@@ -221,7 +223,7 @@ private fun FavoritesGrid(settings: LauncherSettings, onPick: (Contact) -> Unit)
         else -> BoxWithConstraints {
             // Big tiles: 2 to 5 per row depending on the width
             val columns = (maxWidth / 220.dp).toInt().coerceIn(2, 5)
-            LazyVerticalGrid(
+            LazyVerticalGridWithBar(
                 GridCells.Fixed(columns),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -277,7 +279,7 @@ private fun ContactsList(settings: LauncherSettings, onPick: (Contact) -> Unit) 
                 if (jump.open) {
                     AlphabetPicker(firstOfLetter.keys.toList(), onPick = { jump.jumpTo(firstOfLetter.getValue(it)) }, onClose = { jump.open = false })
                 } else {
-                    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LazyColumnWithBar(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         var letter: Char? = null
                         var index = 0
                         for (contact in list) {
@@ -357,7 +359,7 @@ private fun NumberPicker(contact: Contact, onClose: () -> Unit) {
         }
         when {
             list == null -> PanelMessage(stringResource(R.string.music_loading))
-            list.size > 1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            list.size > 1 -> LazyColumnWithBar(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(list, key = { it.number }) { number ->
                     ListRow(
                         icon = null,

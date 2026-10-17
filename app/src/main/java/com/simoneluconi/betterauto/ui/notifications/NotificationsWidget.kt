@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.notifications
 
+import com.simoneluconi.betterauto.ui.LazyColumnWithBar
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -103,7 +104,7 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
                     open != null -> Detail(open, settings, onClose = { openKey = null })
                     list.isEmpty() -> PanelMessage(stringResource(R.string.notif_empty))
                     compact -> CompactList(list) { openKey = it.key }
-                    else -> LazyColumn(state = rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    else -> LazyColumnWithBar(state = rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(list, key = { it.key }) { n ->
                             NotificationRow(n, Modifier.contentFocus(enabled = primary && n === list.first())) { openKey = n.key }
                         }
@@ -253,7 +254,7 @@ private fun Detail(n: CarNotification, settings: LauncherSettings, onClose: () -
         }
         val listState = rememberLazyListState()
         LaunchedEffect(n.messages.size) { if (n.messages.isNotEmpty()) listState.scrollToItem(n.messages.lastIndex) }
-        LazyColumn(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumnWithBar(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(n.messages) { message ->
                 Column(
                     Modifier

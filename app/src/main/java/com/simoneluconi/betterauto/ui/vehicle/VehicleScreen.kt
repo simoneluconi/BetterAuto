@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.vehicle
 
+import com.simoneluconi.betterauto.ui.LazyColumnWithBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,12 +8,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import com.simoneluconi.betterauto.ui.verticalScrollWithBar
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +43,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.car.FaultCode
+import com.simoneluconi.betterauto.exlap.ExlapData
+import com.simoneluconi.betterauto.exlap.exlapRows
 import com.simoneluconi.betterauto.car.FaultCodes
 import com.simoneluconi.betterauto.car.FaultSeverity
 import com.simoneluconi.betterauto.car.GearPosition
@@ -65,6 +69,9 @@ private val StopRed = Color(0xFFE5484D)
 /** Opens the vehicle screen straight on its diagnostics (from the status bar engine light). */
 object VehicleScreenState {
     val showDiagnostics = MutableStateFlow(false)
+
+    /** "All data" open; kept here so it survives the car screen being rebuilt (video watchdog). */
+    val showAllData = MutableStateFlow(false)
 }
 
 private class VehicleCard(
@@ -74,7 +81,13 @@ private class VehicleCard(
     val at: Long?,
     val warning: Boolean = false,
     val onClick: (() -> Unit)? = null,
-)
+) {
+    /** Lots of rows (e.g. Exlap): the card spans the whole width and splits them into columns. */
+    val wide: Boolean get() = rows.size > WIDE_CARD_ROWS
+}
+
+private const val WIDE_CARD_ROWS = 12
+private val CARD_COLUMN_WIDTH = 420.dp
 
 /**
  * Everything the car shares, one card per kind of data, only for what arrived. Values the instrument
@@ -85,7 +98,7 @@ fun VehicleScreen(modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
     val snapshot by VehicleData.snapshot.collectAsStateWithLifecycle()
     val diagnosticsOpen by VehicleScreenState.showDiagnostics.collectAsStateWithLifecycle()
-    var allData by remember { mutableStateOf(false) }
+    val allData by VehicleScreenState.showAllData.collectAsStateWithLifecycle()
 
     Column(
         modifier
@@ -99,11 +112,11 @@ fun VehicleScreen(modifier: Modifier = Modifier) {
         if (diagnosticsOpen && codes.isNotEmpty()) {
             Diagnostics(codes, onClose = { VehicleScreenState.showDiagnostics.value = false })
         } else if (allData) {
-            AllData(snapshot, onClose = { allData = false })
+            AllData(snapshot, onClose = { VehicleScreenState.showAllData.value = false })
         } else if (snapshot.info.name == null && !snapshot.connected && !snapshot.hasData) {
             PanelMessage(stringResource(R.string.vehicle_not_connected))
         } else {
-            VehicleOverview(snapshot, onAllData = { allData = true }, modifier = Modifier.weight(1f).fillMaxWidth())
+            VehicleOverview(snapshot, onAllData = { VehicleScreenState.showAllData.value = true }, modifier = Modifier.weight(1f).fillMaxWidth())
         }
     }
 }
@@ -151,20 +164,36 @@ private fun AllData(snapshot: VehicleSnapshot, onClose: () -> Unit) {
             CarLabel(stringResource(R.string.vehicle_all_data), 26.sp, colors.text, weight = FontWeight.ExtraBold)
         }
         if (!snapshot.hasData) PanelMessage(stringResource(R.string.vehicle_no_data))
-        LazyVerticalGrid(
-            GridCells.Adaptive(420.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            itemsIndexed(cards, key = { _, card -> card.title }) { index, card ->
-                Card(card, Modifier.contentFocus(enabled = index == 0))
+        // A plain scrolling page (a few dozen cards at most): its scrollbar is exact, unlike a lazy grid's estimate
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val columns = (maxWidth / CARD_COLUMN_WIDTH).toInt().coerceAtLeast(1)
+            val (wide, regular) = cards.partition { it.wide }
+            // Columns that fill from the top, each card going to the shortest so far: no holes beside a short card
+            val lanes = List(columns) { ArrayList<VehicleCard>() }
+            val heights = IntArray(columns)
+            for (card in regular) {
+                val lane = heights.indices.minBy { heights[it] }
+                lanes[lane] += card
+                heights[lane] += card.rows.size + 2
+            }
+            val first = regular.firstOrNull() ?: wide.firstOrNull()
+            Column(Modifier.fillMaxSize().verticalScrollWithBar(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    for (lane in lanes) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            for (card in lane) Card(card, Modifier.contentFocus(enabled = card === first))
+                        }
+                    }
+                }
+                // The long ones last, across the whole width, their rows in as many columns as fit
+                for (card in wide) Card(card, Modifier.contentFocus(enabled = card === first), columns = columns)
             }
         }
     }
 }
 
 @Composable
-private fun Card(card: VehicleCard, modifier: Modifier) {
+private fun Card(card: VehicleCard, modifier: Modifier, columns: Int = 1) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(24.dp)
     Column(
@@ -181,11 +210,23 @@ private fun Card(card: VehicleCard, modifier: Modifier) {
             CarLabel(card.title, 21.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold)
             if (card.onClick != null) CarIcon(CarIcons.Chevron, colors.text2, Modifier.size(22.dp))
         }
-        for ((label, value) in card.rows) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                CarLabel(label, 18.sp, colors.text2)
-                CarLabel(value, 19.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold, tabularNumbers = true, textAlign = TextAlign.End)
+        // Read down each column, then the next one
+        val perColumn = (card.rows.size + columns - 1) / columns.coerceAtLeast(1)
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            for (chunk in card.rows.chunked(perColumn.coerceAtLeast(1))) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    chunk.forEachIndexed { i, (label, value) ->
+                        // A hairline between rows, so the eye follows each label to its value
+                        if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            CarLabel(label, 18.sp, colors.text2, Modifier.weight(1f), maxLines = 2)
+                            CarLabel(value, 19.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold, tabularNumbers = true, maxLines = 3)
+                        }
+                    }
+                }
             }
+            // Keep the columns as wide as in a full card when the last ones are missing
+            repeat(columns - (card.rows.size + perColumn - 1) / perColumn.coerceAtLeast(1)) { Spacer(Modifier.weight(1f)) }
         }
     }
 }
@@ -196,8 +237,15 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
     val yes = stringResource(R.string.vehicle_yes)
     val no = stringResource(R.string.vehicle_no)
     val units = rememberUnits()
+    val exlap by ExlapData.values.collectAsStateWithLifecycle()
     fun yn(value: Boolean?) = value?.let { if (it) yes else no }
     val list = ArrayList<VehicleCard>()
+
+    // Everything extra a VW car shares over Exlap (read only): one card, same label/value rows as the rest
+    val exlapRows = exlapRows(exlap.values)
+    if (exlapRows.isNotEmpty()) {
+        list += VehicleCard(CarIcons.Engine, stringResource(R.string.vehicle_exlap), exlapRows, null)
+    }
 
     // Faults first: the reason to come here from the engine light
     s.diagnostics?.let { d ->
@@ -422,7 +470,7 @@ private fun Diagnostics(codes: List<String>, onClose: () -> Unit) {
             CarIcon(CarIcons.Engine, WarningAmber, Modifier.size(30.dp))
             CarLabel(stringResource(R.string.vehicle_diagnostics), 26.sp, colors.text, weight = FontWeight.ExtraBold)
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumnWithBar(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(described, key = { it.code }) { fault -> FaultRow(fault, primary = fault === described.first()) }
         }
     }

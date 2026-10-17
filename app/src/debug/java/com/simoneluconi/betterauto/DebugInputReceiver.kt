@@ -22,6 +22,7 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
 import com.simoneluconi.betterauto.voice.VoiceAssistant
 import com.simoneluconi.betterauto.voice.VoiceState
+import com.simoneluconi.betterauto.exlap.ExlapSettings
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
@@ -50,6 +51,8 @@ import kotlin.concurrent.thread
  *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
  *   ... --es rail "MAP:GROUP_1,VEHICLE:GROUP_1"  arrange the app bar (missing items keep their default;
  *                            "default" resets it)
+ *   ... --es exlap_user USER --es exlap_password secret
+ *                            set Exlap credentials and enable the feature (omit password to keep the saved one)
  *   ... --es problem certificate_rejected  the phone notification for a car that refused the connection
  *                            (any ConnectionProblem name; --ei code -3 and --es carMaker Volkswagen fill the
  *                            details, "off" removes it)
@@ -80,6 +83,13 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("temperature")?.let { name ->
             TemperatureUnit.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setTemperatureUnit(it) }
+        }
+
+        intent.getStringExtra("exlap_user")?.let { user ->
+            val exlap = ExlapSettings.get(context)
+            val pw = intent.getStringExtra("exlap_password")
+            if (pw != null) exlap.setCredentials(user, pw) else exlap.renameUser(user)
+            exlap.setEnabled(true)
         }
 
         intent.getStringExtra("section")?.let { name ->

@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto
 
+import com.simoneluconi.betterauto.ui.verticalScrollWithBar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import com.simoneluconi.betterauto.settings.SettingsCatalog
 import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
+import com.simoneluconi.betterauto.exlap.ExlapPhoneSettings
 
 /** The car screen's settings on the phone: the same [SettingsCatalog] the car shows, in the phone's style. */
 @Composable
@@ -61,7 +63,7 @@ fun PhoneSettingsPage(onBack: () -> Unit) {
             .fillMaxSize()
             .background(colors.bg)
             .safeDrawingPadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScrollWithBar()
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -76,6 +78,8 @@ fun PhoneSettingsPage(onBack: () -> Unit) {
         }
         CarLabel(stringResource(R.string.phone_settings_hint), 15.sp, colors.text2, Modifier.padding(horizontal = 4.dp), maxLines = 3)
         SettingsList(settings)
+        // VW group cars only, so not in the catalog the car shows
+        ExlapPhoneSettings()
     }
 }
 
@@ -214,7 +218,7 @@ private fun PhoneMutedChats(item: MutedChatsSetting, settings: LauncherSettings)
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, icon: ImageBitmap? = null, onClick: () -> Unit) {
+internal fun Chip(label: String, selected: Boolean, icon: ImageBitmap? = null, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(50)
     Row(

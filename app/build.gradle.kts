@@ -22,6 +22,11 @@ android {
         }
     }
 
+    // android.util.Log (EventLog) returns defaults in JVM tests instead of throwing
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildFeatures {
         compose = true
     }

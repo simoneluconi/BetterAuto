@@ -25,6 +25,7 @@ import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VehicleData
+import com.simoneluconi.betterauto.exlap.ExlapSettings
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
 import kotlin.concurrent.thread
@@ -53,6 +54,8 @@ class AapService : Service() {
         // Media sessions are needed by audio (auto-play, pause on disconnect) before the screen is up
         NowPlaying.acquire(this)
         CarAudio.init(this)
+        // The car's vendor channel reads the Exlap switch and credentials from here
+        ExlapSettings.get(this)
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(detached, filter, RECEIVER_EXPORTED) else registerReceiver(detached, filter)
