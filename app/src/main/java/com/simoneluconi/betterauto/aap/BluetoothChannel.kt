@@ -18,6 +18,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.audio.ShizukuAudio
 import kotlin.concurrent.thread
@@ -91,7 +92,13 @@ class BluetoothChannel(
             BluetoothMessageId.BLUETOOTH_MESSAGE_PAIRING_RESPONSE_VALUE -> {
                 val response = BluetoothPairingResponse.parseFrom(msg.payload)
                 EventLog.log("Bluetooth: pairing response ${response.status}, car says ${if (response.alreadyPaired) "already paired" else "not paired"}")
-                if (response.status == MessageStatus.STATUS_SUCCESS && !response.alreadyPaired && !isPaired()) startPairing()
+                if (response.status == MessageStatus.STATUS_SUCCESS && !response.alreadyPaired && !isPaired()) {
+                    if (failedRecently()) {
+                        EventLog.log("Bluetooth: pairing with this car failed or was declined lately, not asking again yet")
+                    } else {
+                        startPairing()
+                    }
+                }
             }
             BluetoothMessageId.BLUETOOTH_MESSAGE_AUTHENTICATION_DATA_VALUE -> {
                 val data = BluetoothAuthenticationData.parseFrom(msg.payload)
@@ -102,6 +109,15 @@ class BluetoothChannel(
             else -> EventLog.log("Bluetooth: unhandled message ${msg.id} (${msg.payload.size} bytes)")
         }
     }
+
+    /** A failed or declined pairing is not asked again at every reconnection, only after a while. */
+    private fun failedRecently(): Boolean {
+        val prefs = prefs()
+        return prefs.getString(KEY_FAILED_CAR, null) == carAddress &&
+            System.currentTimeMillis() - prefs.getLong(KEY_FAILED_AT, 0L) < RETRY_AFTER_MS
+    }
+
+    private fun prefs() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private fun isPaired() = runCatching {
         adapter?.bondedDevices.orEmpty().any { it.address.equals(carAddress, ignoreCase = true) }
@@ -180,6 +196,7 @@ class BluetoothChannel(
             }
             state == BluetoothDevice.BOND_NONE && previous == BluetoothDevice.BOND_BONDING -> {
                 EventLog.log("Bluetooth: pairing with the car failed or was declined")
+                prefs().edit { putString(KEY_FAILED_CAR, carAddress).putLong(KEY_FAILED_AT, System.currentTimeMillis()) }
                 sendResult(MessageStatus.STATUS_AUTHENTICATION_FAILURE)
             }
         }
@@ -215,6 +232,11 @@ class BluetoothChannel(
             BluetoothPairingMethod.BLUETOOTH_PAIRING_PASSKEY_ENTRY,
             BluetoothPairingMethod.BLUETOOTH_PAIRING_PIN,
         )
+        const val PREFS = "car_bluetooth"
+        const val KEY_FAILED_CAR = "failed_car"
+        const val KEY_FAILED_AT = "failed_at"
+        const val RETRY_AFTER_MS = 60 * 60 * 1000L
+
         /** What Android gives apps instead of the real address. */
         const val PLACEHOLDER_ADDRESS = "02:00:00:00:00:00"
 

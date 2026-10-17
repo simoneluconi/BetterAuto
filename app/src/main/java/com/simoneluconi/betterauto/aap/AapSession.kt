@@ -17,6 +17,7 @@ import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.os.Build
 import com.google.protobuf.ByteString
 import com.google.protobuf.MessageLite
+import android.os.Looper
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VehicleData
@@ -26,6 +27,7 @@ import com.simoneluconi.betterauto.transport.Transport
 import java.io.Closeable
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 /**
  * Phone side of the Android Auto Protocol on one connection.
@@ -240,8 +242,22 @@ class AapSession(
     }
 
     fun send(channel: Int, id: Int, payload: ByteArray, encrypted: Boolean = true, controlType: Boolean = false) {
-        codec.write(AapMessage(channel, id, payload, encrypted, controlType))
+        val message = AapMessage(channel, id, payload, encrypted, controlType)
+        // Over WiFi a write is network I/O, which Android forbids on the main thread (broadcast receivers,
+        // UI callbacks): those go out on their own thread, in the order they were sent
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // After close the queue refuses new work: the session is gone, nothing to send
+            runCatching {
+                mainThreadSends.execute {
+                    runCatching { codec.write(message) }.onFailure { EventLog.log("Send from the main thread failed: $it") }
+                }
+            }
+            return
+        }
+        codec.write(message)
     }
+
+    private val mainThreadSends = Executors.newSingleThreadExecutor { Thread(it, "aap-send").apply { isDaemon = true } }
 
     private fun send(id: Int, message: MessageLite, encrypted: Boolean) = send(id, message.toByteArray(), encrypted)
 
@@ -259,6 +275,7 @@ class AapSession(
 
     /** Ends the connection; safe from any thread and more than once. Closing the transport unblocks [run]. */
     override fun close() {
+        mainThreadSends.shutdown()
         synchronized(this) {
             if (closed) return
             closed = true
