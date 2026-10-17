@@ -131,11 +131,11 @@ object Calls {
     /** Development: a pretend call, so the call screen can be tried without phoning anyone. */
     private var simulated: CallInfo? = null
 
-    fun simulate(phase: CallPhase?, name: String? = "Mario Rossi", number: String = "+39 333 123 4567") {
+    fun simulate(phase: CallPhase?, name: String? = "Mario Rossi", number: String = "+1 555 010 4567") {
         val info = phase?.let {
             CallInfo(
                 id = -1, phase = it, name = name, number = number, photo = null,
-                numberLabel = "Cellulare", company = "Officina Rossi",
+                numberLabel = "Mobile", company = "Rossi Garage",
                 connectedAt = if (it == CallPhase.ACTIVE || it == CallPhase.HOLDING) System.currentTimeMillis() else 0L,
                 canHold = true, muted = false, others = 0,
             )
