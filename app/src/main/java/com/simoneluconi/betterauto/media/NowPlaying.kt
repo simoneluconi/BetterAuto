@@ -480,7 +480,11 @@ object NowPlaying {
     private fun nextInQueue(timeline: Timeline, active: Int): String? {
         if (active < 0 || active + 1 >= timeline.windowCount) return null
         val next = timeline.getWindow(active + 1, Timeline.Window()).mediaItem.mediaMetadata
-        return listOfNotNull(next.title.text(), next.subtitle.text() ?: next.artist.text()).joinToString(" · ").ifEmpty { null }
+        // Artist then album, whatever order the player uses in its own subtitle
+        val artist = next.artist.text() ?: next.albumArtist.text()
+        val album = next.albumTitle.text()
+        val details = if (artist != null || album != null) listOfNotNull(artist, album) else listOfNotNull(next.subtitle.text())
+        return (listOfNotNull(next.title.text()) + details).joinToString(" · ").ifEmpty { null }
     }
 
     /**
