@@ -9,3 +9,14 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+
+# Phone certificates: only our self-signed development pair is public, anything else put here stays local
+/app/src/main/assets/*.pem
+/app/src/main/assets/*.crt
+/app/src/main/assets/*.cer
+/app/src/main/assets/*.key
+/app/src/main/assets/*.der
+/app/src/main/assets/*.p12
+/app/src/main/assets/*.pfx
+!/app/src/main/assets/phone_cert.pem
+!/app/src/main/assets/phone_key.pem
