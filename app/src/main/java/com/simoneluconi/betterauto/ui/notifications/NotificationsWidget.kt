@@ -126,10 +126,12 @@ private fun Header(settings: LauncherSettings, list: List<CarNotification>, comp
             }
         }
         Spacer(Modifier.weight(1f))
+        // A moon, not a bell: the bell in the status bar opens and closes this screen
         HeaderButton(
-            if (quiet) CarIcons.BellOff else CarIcons.Bell,
+            CarIcons.Moon,
             stringResource(if (quiet) R.string.notif_quiet_on else R.string.notif_quiet_off),
             active = quiet,
+            text = if (compact) null else stringResource(R.string.notif_quiet),
         ) { settings.setQuietMode(!quiet) }
         if (list.isNotEmpty() && !compact) {
             HeaderButton(CarIcons.Close, stringResource(R.string.notif_clear_all), active = false) {
@@ -140,16 +142,26 @@ private fun Header(settings: LauncherSettings, list: List<CarNotification>, comp
 }
 
 @Composable
-private fun HeaderButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+private fun HeaderButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    active: Boolean,
+    text: String? = null,
+    onClick: () -> Unit,
+) {
     val colors = LocalCarColors.current
-    Box(
+    val shape = RoundedCornerShape(50)
+    Row(
         Modifier
-            .carClickable(CircleShape, label, onClick = onClick)
-            .background(if (active) colors.focus.copy(alpha = 0.25f) else colors.surface2, CircleShape)
-            .size(52.dp),
-        contentAlignment = Alignment.Center,
+            .carClickable(shape, label, onClick = onClick)
+            .background(if (active) colors.focus.copy(alpha = 0.25f) else colors.surface2, shape)
+            .height(52.dp)
+            .padding(horizontal = if (text != null) 18.dp else 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         CarIcon(icon, if (active) colors.text else colors.text2, Modifier.size(24.dp))
+        if (text != null) CarLabel(text, 19.sp, if (active) colors.text else colors.text2, weight = FontWeight.Bold)
     }
 }
 

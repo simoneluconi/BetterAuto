@@ -54,6 +54,7 @@ import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.ui.phone.CallScreen
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreen
 import com.simoneluconi.betterauto.ui.voice.VoiceOverlay
+import com.simoneluconi.betterauto.ui.voice.VoiceScrim
 import com.simoneluconi.betterauto.voice.VoiceAssistant
 import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
@@ -212,7 +213,10 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 }
                 .onKeyEvent { event ->
                     if (event.key != Key.Back && event.key != Key.Escape) return@onKeyEvent false
-                    if (event.type == KeyEventType.KeyUp && section != Section.HOME) settings.setSection(Section.HOME)
+                    if (event.type == KeyEventType.KeyUp && section != Section.HOME) {
+                        // The notifications are a detour: back to where the driver came from; elsewhere, home
+                        if (section == Section.NOTIFICATIONS) settings.closeNotifications() else settings.setSection(Section.HOME)
+                    }
                     section != Section.HOME
                 }
                 .padding(insets),
@@ -257,6 +261,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     else Modifier.align(Alignment.BottomCenter).padding(bottom = 116.dp),
                 )
             }
+            VoiceScrim(Modifier.fillMaxSize())
             VoiceOverlay(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
             // No banner over a call, nor on the notifications screen itself
             if (shownCall == null && section != Section.NOTIFICATIONS) {

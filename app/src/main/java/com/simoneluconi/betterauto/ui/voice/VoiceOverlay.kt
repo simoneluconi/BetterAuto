@@ -19,6 +19,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +47,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,7 +64,8 @@ import com.simoneluconi.betterauto.voice.VoiceState
 
 /**
  * The voice panel at the bottom of the screen: a microphone that moves with the voice, the live
- * transcription word by word, then what was understood and done. Only the contact choice takes the knob.
+ * transcription word by word, then what was understood and done. While it waits for the driver
+ * (listening, a choice, a call about to start) it takes the knob, and Cancel is always there.
  */
 @Composable
 fun VoiceOverlay(modifier: Modifier = Modifier) {
@@ -102,9 +106,26 @@ fun VoiceOverlay(modifier: Modifier = Modifier) {
 /** The last state shown, for the exit animation; not a state itself, it never triggers recomposition. */
 private class Last { var value: VoiceState? = null }
 
+/** Behind the voice panel while it waits for the driver: the screen dims, and a tap anywhere else cancels. */
+@Composable
+fun VoiceScrim(modifier: Modifier = Modifier) {
+    val state by VoiceAssistant.state.collectAsStateWithLifecycle()
+    val waiting = state is VoiceState.Listening || state is VoiceState.Choosing || state is VoiceState.Calling
+    AnimatedVisibility(visible = waiting, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.25f))
+                .pointerInput(Unit) { detectTapGestures { VoiceAssistant.cancel() } }
+        )
+    }
+}
+
 @Composable
 private fun Listening(state: VoiceState.Listening) {
     val colors = LocalCarColors.current
+    val cancel = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Microphone(state.level)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -119,6 +140,24 @@ private fun Listening(state: VoiceState.Listening) {
                 CarLabel(state.text, 34.sp, colors.text, weight = FontWeight.ExtraBold, maxLines = 2, lineHeight = 40.sp)
             }
         }
+        CancelButton(cancel)
+    }
+}
+
+/** Cancel under the knob: a press, a tap, Back or the voice key all end the voice command. */
+@Composable
+private fun CancelButton(focus: FocusRequester) {
+    val colors = LocalCarColors.current
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .focusRequester(focus)
+            .carClickable(shape, stringResource(R.string.voice_call_cancel)) { VoiceAssistant.cancel() }
+            .background(colors.surface2, shape)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarLabel(stringResource(R.string.voice_call_cancel), 22.sp, colors.text, weight = FontWeight.Bold)
     }
 }
 
@@ -193,17 +232,7 @@ private fun Calling(state: VoiceState.Calling) {
                 Box(Modifier.fillMaxWidth(progress.value).height(6.dp).background(Color(0xFF2E9E5B), RoundedCornerShape(3.dp)))
             }
         }
-        val shape = RoundedCornerShape(50)
-        Box(
-            Modifier
-                .focusRequester(cancel)
-                .carClickable(shape, stringResource(R.string.voice_call_cancel)) { VoiceAssistant.cancel() }
-                .background(colors.surface2, shape)
-                .padding(horizontal = 24.dp, vertical = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            CarLabel(stringResource(R.string.voice_call_cancel), 22.sp, colors.text, weight = FontWeight.Bold)
-        }
+        CancelButton(cancel)
     }
 }
 

@@ -171,6 +171,8 @@
     <string name="notif_title">Notifiche</string>
     <string name="notif_empty">Nessuna notifica</string>
     <string name="notif_no_access">Consenti l\'accesso alle notifiche a BetterAuto sul telefono</string>
+    <string name="notif_quiet">Silenzioso</string>
+    <string name="notif_close">Chiudi le notifiche</string>
     <string name="notif_quiet_on">Modalità silenziosa attiva</string>
     <string name="notif_quiet_off">Modalità silenziosa disattivata</string>
     <string name="notif_clear_all">Cancella tutte</string>
@@ -334,6 +336,7 @@
     <string name="settings_voice_replies">Risposte a voce</string>
     <string name="settings_mic_button">Pulsante microfono nella barra in alto</string>
     <string name="voice_start">Comando vocale</string>
+    <string name="voice_stop">Interrompi il comando vocale</string>
     <string name="voice_which">Quale?</string>
     <string name="voice_unavailable">Questo telefono non ha il riconoscimento vocale offline per i comandi</string>
     <string name="voice_nothing_heard">Non ho sentito niente</string>

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +45,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +98,14 @@ private fun Modifier.secondaryLinks(): Modifier = composed {
 
 /** Below this width/height ratio the player stacks its parts instead of putting the text beside the cover. */
 private const val NARROW_RATIO = 1.45f
+
+/** Progress bar refresh: as often as the knob moves a pixel, within these bounds. */
+private const val MIN_PROGRESS_STEP_MS = 50L
+private const val MAX_PROGRESS_STEP_MS = 500L
+
+/** How long a seek is shown before the player reports it, and how close its report must be to count. */
+private const val SEEK_HOLD_MS = 1500L
+private const val SEEK_MATCH_MS = 1500L
 
 /** Below this width/height ratio (portrait screens) the cover gets the whole width on top. */
 private const val TALL_RATIO = 0.9f
@@ -358,25 +369,60 @@ private fun InfoLine(icon: ImageVector, text: String, size: TextUnit) {
 private fun Progress(track: Track) {
     val colors = LocalCarColors.current
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(track.playing, track.positionUpdatedAt) {
+    var barWidthPx by remember { mutableIntStateOf(0) }
+    // Where the finger is while dragging the knob, as a fraction of the track
+    var dragFraction by remember { mutableStateOf<Float?>(null) }
+    // A seek the player has not reported back yet (target, when): shown so the knob does not jump back first
+    var pendingSeek by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    LaunchedEffect(track.playing, track.positionUpdatedAt, track.durationMs, barWidthPx) {
         now = SystemClock.elapsedRealtime()
+        // About a pixel per step: smooth, without redrawing (and re-encoding for the car) every frame
+        val step = if (barWidthPx > 0 && track.durationMs > 0) (track.durationMs / barWidthPx).coerceIn(MIN_PROGRESS_STEP_MS, MAX_PROGRESS_STEP_MS) else MAX_PROGRESS_STEP_MS
         while (track.playing) {
-            delay(500)
+            delay(step)
             now = SystemClock.elapsedRealtime()
         }
     }
-    val position = track.positionAt(now)
+    LaunchedEffect(pendingSeek) {
+        if (pendingSeek == null) return@LaunchedEffect
+        delay(SEEK_HOLD_MS)
+        pendingSeek = null
+    }
+    val reported = track.positionAt(now)
+    val pending = pendingSeek?.let { (target, at) -> target + if (track.playing) (now - at).coerceAtLeast(0) else 0 }
+        ?.takeIf { kotlin.math.abs(it - reported) > SEEK_MATCH_MS }
+    val position = dragFraction?.let { (it * track.durationMs).toLong() } ?: pending ?: reported
     val fraction = if (track.durationMs > 0) position.toFloat() / track.durationMs else 0f
 
-    // Touchscreens: a tap along the bar, or on the times under it, seeks there
+    // Touchscreens: a tap along the bar (or on the times under it) seeks there, dragging the knob seeks on release
     val seek = if (track.canSeek && track.durationMs > 0) {
-        Modifier.pointerInput(track.durationMs) {
-            detectTapGestures { offset -> NowPlaying.seekTo((offset.x / size.width * track.durationMs).toLong()) }
+        fun commit(f: Float) {
+            val target = (f * track.durationMs).toLong()
+            pendingSeek = target to SystemClock.elapsedRealtime()
+            NowPlaying.seekTo(target)
         }
+        Modifier
+            .pointerInput(track.durationMs) {
+                detectTapGestures { offset -> commit((offset.x / size.width).coerceIn(0f, 1f)) }
+            }
+            .pointerInput(track.durationMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragFraction = (it.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = {
+                        dragFraction?.let(::commit)
+                        dragFraction = null
+                    },
+                    onDragCancel = { dragFraction = null },
+                ) { change, _ ->
+                    change.consume()
+                    dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                }
+            }
     } else {
         Modifier
     }
-    Column(seek) {
+    val knob = if (dragFraction != null) 28.dp else 20.dp
+    Column(seek.onSizeChanged { barWidthPx = it.width }) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
             Box(Modifier.fillMaxWidth().height(8.dp).background(colors.text.copy(alpha = 0.16f), RoundedCornerShape(50)))
             if (track.durationMs > 0) {
@@ -384,8 +430,8 @@ private fun Progress(track: Track) {
                 // Knob centred on the playback position, positioned on the full-width track so it never gets squeezed
                 Box(
                     Modifier
-                        .offset(x = maxWidth * fraction.coerceIn(0f, 1f) - 10.dp)
-                        .size(20.dp)
+                        .offset(x = maxWidth * fraction.coerceIn(0f, 1f) - knob / 2)
+                        .size(knob)
                         .background(colors.album, CircleShape)
                 )
             }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -82,11 +83,10 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         dateText(phone.at, dateStyle)?.let { CarLabel(it, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp)) }
         Spacer(Modifier.weight(1f))
 
+        // The row hangs from the right edge: what comes and goes (a call, the engine light, the layout button on
+        // the home screen) sits on the left, so the buttons that are always there never move under the finger
         call?.takeIf { callMinimized }?.let { CallPill(it) }
         if (showEngine) EngineLight(settings)
-        if (voiceEnabled && showMic) MicButton()
-        // On the notifications screen its own header already has the bell
-        if (showBell && section != Section.NOTIFICATIONS) NotificationsButton(settings)
         if (showLayoutButton && showLayout) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(
@@ -99,14 +99,29 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
                 CarIcon(CarIcons.Layout, colors.text, Modifier.size(24.dp))
             }
         }
+        if (voiceEnabled && showMic) MicButton()
+        // Stays on the notifications screen too, lit like the app bar's current section: tapped again, it goes back
+        if (showBell) NotificationsButton(settings, open = section == Section.NOTIFICATIONS)
         Spacer(Modifier.width(6.dp))
-        if (showSignal) {
-            if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
-            phone.signalLevel?.let { SignalBars(it) }
+        // A steady width, so Wi-Fi coming and going or the battery reaching 100% does not push the buttons
+        if (showSignal || showBattery) {
+            Row(
+                Modifier.widthIn(min = STATUS_MIN_WIDTH),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showSignal) {
+                    if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
+                    phone.signalLevel?.let { SignalBars(it) }
+                }
+                if (showBattery) phone.batteryPercent?.let { Battery(it, phone.charging) }
+            }
         }
-        if (showBattery) phone.batteryPercent?.let { Battery(it, phone.charging) }
     }
 }
+
+/** Room for Wi-Fi, the signal bars and a three-digit battery. */
+private val STATUS_MIN_WIDTH = 176.dp
 
 private fun clockText(context: Context, at: LocalDateTime, style: ClockStyle): String? = when (style) {
     ClockStyle.HIDDEN -> null
@@ -154,35 +169,35 @@ private fun EngineLight(settings: LauncherSettings) {
     }
 }
 
-/** Starts (or stops) voice commands; the steering wheel's voice button does the same. */
+/** Starts voice commands, and becomes a stop button while one runs; the steering wheel's voice button does the same. */
 @Composable
 private fun MicButton() {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val voice by VoiceAssistant.state.collectAsStateWithLifecycle()
-    val active = voice is VoiceState.Listening
+    val active = voice is VoiceState.Listening || voice is VoiceState.Choosing || voice is VoiceState.Calling
     Box(
         Modifier
-            .carClickable(CircleShape, stringResource(R.string.voice_start)) { VoiceAssistant.toggle(context) }
+            .carClickable(CircleShape, stringResource(if (active) R.string.voice_stop else R.string.voice_start)) { VoiceAssistant.toggle(context) }
             .background(if (active) colors.album else colors.surface, CircleShape)
             .size(52.dp),
         contentAlignment = Alignment.Center,
     ) {
-        CarIcon(CarIcons.Mic, if (active) colors.onAlbum else colors.text, Modifier.size(24.dp))
+        CarIcon(if (active) CarIcons.Close else CarIcons.Mic, if (active) colors.onAlbum else colors.text, Modifier.size(24.dp))
     }
 }
 
-/** Bell with the number of notifications; opens the notifications section. */
+/** Bell with the number of notifications; opens the notifications section, and closes it when [open]. */
 @Composable
-private fun NotificationsButton(settings: LauncherSettings) {
+private fun NotificationsButton(settings: LauncherSettings, open: Boolean) {
     val colors = LocalCarColors.current
     val count = rememberVisibleNotifications(settings).size
     val quiet by settings.quietMode.collectAsStateWithLifecycle()
-    val label = stringResource(R.string.notif_badge, count)
+    val label = if (open) stringResource(R.string.notif_close) else stringResource(R.string.notif_badge, count)
     Box(
         Modifier
-            .carClickable(CircleShape, label) { settings.setSection(Section.NOTIFICATIONS) }
-            .background(colors.surface, CircleShape)
+            .carClickable(CircleShape, label) { if (open) settings.closeNotifications() else settings.setSection(Section.NOTIFICATIONS) }
+            .background(if (open) colors.focus.copy(alpha = 0.2f) else colors.surface, CircleShape)
             .size(52.dp),
         contentAlignment = Alignment.Center,
     ) {

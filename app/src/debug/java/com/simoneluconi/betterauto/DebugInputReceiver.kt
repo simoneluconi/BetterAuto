@@ -3,6 +3,8 @@ package com.simoneluconi.betterauto
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import aap_protobuf.service.inputsource.message.PointerActionOuterClass.PointerAction
+import aap_protobuf.service.inputsource.message.TouchEventOuterClass.TouchEvent
 import com.simoneluconi.betterauto.aap.ConnectionProblem
 import com.simoneluconi.betterauto.aap.VideoChannel
 import com.simoneluconi.betterauto.car.CarState
@@ -31,6 +33,7 @@ import kotlin.concurrent.thread
  *   ... --ei key 23          press a key (23 = center, 4 = back)
  *   ... --ez night true      the car's night-mode sensor (used when the theme is Auto)
  *   ... --es theme night     force the theme: day, night or auto
+ *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto
@@ -91,6 +94,7 @@ class DebugInputReceiver : BroadcastReceiver() {
             // Previews of the voice panel: nothing is dialed
             "preview_call" -> VoiceAssistant.preview(VoiceState.Calling("Mario Rossi", "Mobile", android.os.SystemClock.elapsedRealtime() + 3000))
             "preview_confirm" -> VoiceAssistant.preview(VoiceState.Choosing(listOf("Mario Rossi"), null, confirm = true))
+            "preview_listen" -> VoiceAssistant.preview(VoiceState.Listening("chiama Mario", 0.4f, carMicrophone = true))
             "preview_off" -> VoiceAssistant.preview(VoiceState.Idle)
         }
         intent.getStringExtra("voice")?.takeIf { !it.startsWith("preview") }?.let { mode ->
@@ -139,5 +143,32 @@ class DebugInputReceiver : BroadcastReceiver() {
             projection.dispatchKey(key, down = true, longPress = false)
             projection.dispatchKey(key, down = false, longPress = false)
         }
+        // Touches as the head unit sends them, in video-frame pixels: "x,y" taps, "x1,y1,x2,y2" drags over ~0.6 s
+        intent.getStringExtra("touch")?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.let { p ->
+            val video = CarState.video.value
+            if (video.width == 0 || (p.size != 2 && p.size != 4)) return@let
+            val (x1, y1) = p[0] to p[1]
+            val (x2, y2) = if (p.size == 4) p[2] to p[3] else x1 to y1
+            thread(name = "debug-touch") {
+                fun send(action: PointerAction, x: Int, y: Int) = projection.dispatchTouch(
+                    TouchEvent.newBuilder().setAction(action).setActionIndex(0)
+                        .addPointerData(TouchEvent.Pointer.newBuilder().setX(x).setY(y).setPointerId(0)).build(),
+                    video.width, video.height,
+                )
+                send(PointerAction.ACTION_DOWN, x1, y1)
+                if (p.size == 4) {
+                    for (i in 1..TOUCH_DRAG_STEPS) {
+                        Thread.sleep(30)
+                        send(PointerAction.ACTION_MOVED, x1 + (x2 - x1) * i / TOUCH_DRAG_STEPS, y1 + (y2 - y1) * i / TOUCH_DRAG_STEPS)
+                    }
+                }
+                Thread.sleep(30)
+                send(PointerAction.ACTION_UP, x2, y2)
+            }
+        }
+    }
+
+    private companion object {
+        const val TOUCH_DRAG_STEPS = 20
     }
 }

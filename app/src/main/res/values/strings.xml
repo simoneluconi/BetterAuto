@@ -172,6 +172,8 @@
     <string name="notif_empty">No notifications</string>
     <string name="notif_no_access">Allow notification access for BetterAuto on the phone</string>
     <string name="notif_quiet_on">Quiet mode on</string>
+    <string name="notif_quiet">Quiet</string>
+    <string name="notif_close">Close notifications</string>
     <string name="notif_quiet_off">Quiet mode off</string>
     <string name="notif_clear_all">Clear all</string>
     <string name="notif_dismiss">Dismiss</string>
@@ -334,6 +336,7 @@
     <string name="settings_voice_replies">Spoken replies</string>
     <string name="settings_mic_button">Microphone button in the top bar</string>
     <string name="voice_start">Voice command</string>
+    <string name="voice_stop">Stop the voice command</string>
     <string name="voice_which">Which one?</string>
     <string name="voice_unavailable">This phone has no offline speech recognition for voice commands</string>
     <string name="voice_nothing_heard">I didn\'t hear anything</string>

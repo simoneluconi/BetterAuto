@@ -148,7 +148,16 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setLayout(value: HomeLayout) = saveEnum(KEY_LAYOUT, value, _layout)
 
-    fun setSection(value: Section) = saveEnum(KEY_SECTION, value, _section)
+    /** The section shown before the current one (not saved): where the notifications screen goes back to. */
+    private var previousSection = Section.HOME
+
+    fun setSection(value: Section) {
+        if (value != _section.value) previousSection = _section.value
+        saveEnum(KEY_SECTION, value, _section)
+    }
+
+    /** Back from the notifications to wherever the driver was. */
+    fun closeNotifications() = setSection(previousSection.takeIf { it != Section.NOTIFICATIONS } ?: Section.HOME)
 
     fun cycleLayout() = setLayout(HomeLayout.entries[(layout.value.ordinal + 1) % HomeLayout.entries.size])
 
