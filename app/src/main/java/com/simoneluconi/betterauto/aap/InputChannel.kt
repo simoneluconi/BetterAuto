@@ -42,6 +42,8 @@ class InputChannel(
         if (report.hasTouchEvent()) projection.dispatchTouch(report.touchEvent, touchWidth, touchHeight)
         if (report.hasKeyEvent()) {
             for (key in report.keyEvent.keysList) {
+                // Which keys a car really sends, and how (e.g. its voice button only on a long press)
+                EventLog.log("Input: key ${key.keycode} ${if (key.down) "down" else "up"}${if (key.longpress) " (long press)" else ""}")
                 projection.dispatchKey(key.keycode, key.down, key.longpress)
             }
         }
