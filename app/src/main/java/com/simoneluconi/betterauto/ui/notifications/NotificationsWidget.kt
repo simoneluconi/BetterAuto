@@ -176,12 +176,20 @@ private fun CompactList(list: List<CarNotification>, onOpen: (CarNotification) -
     }
 }
 
+/** The privacy setting: what notifications say is not shown at all; who, which app and when stay. */
+@Composable
+private fun contentHidden(): Boolean {
+    val context = LocalContext.current
+    val hidden by remember { LauncherSettings.get(context).notificationPrivacy }.collectAsStateWithLifecycle()
+    return hidden
+}
+
 @Composable
 private fun NotificationRow(n: CarNotification, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(20.dp)
     val last = n.last
-    val preview = listOfNotNull(last?.sender?.takeIf { n.isGroup }, last?.text).joinToString(": ")
+    val preview = listOfNotNull(last?.sender?.takeIf { n.isGroup }, last?.text?.takeUnless { contentHidden() }).joinToString(": ")
     Row(
         modifier
             .fillMaxWidth()
@@ -254,7 +262,8 @@ private fun Detail(n: CarNotification, settings: LauncherSettings, onClose: () -
         }
         val listState = rememberLazyListState()
         LaunchedEffect(n.messages.size) { if (n.messages.isNotEmpty()) listState.scrollToItem(n.messages.lastIndex) }
-        LazyColumnWithBar(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // With the privacy setting on, no messages at all: the actions stay at the bottom
+        if (contentHidden()) Spacer(Modifier.weight(1f)) else LazyColumnWithBar(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(n.messages) { message ->
                 Column(
                     Modifier
@@ -357,7 +366,7 @@ fun NotificationBanner(settings: LauncherSettings, modifier: Modifier = Modifier
                     CarLabel(current.title, 24.sp, colors.text, Modifier.weight(1f, fill = false), weight = FontWeight.ExtraBold)
                     CarLabel(current.appLabel, 17.sp, colors.text2, weight = FontWeight.Bold)
                 }
-                val preview = listOfNotNull(last?.sender?.takeIf { current.isGroup }, last?.text).joinToString(": ")
+                val preview = listOfNotNull(last?.sender?.takeIf { current.isGroup }, last?.text?.takeUnless { contentHidden() }).joinToString(": ")
                 if (preview.isNotEmpty()) CarLabel(preview, 22.sp, colors.text, weight = FontWeight.Medium, maxLines = 2)
             }
         }

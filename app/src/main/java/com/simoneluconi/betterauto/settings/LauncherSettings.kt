@@ -224,6 +224,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         prefs.edit { putBoolean(key, value) }
     }
 
+    private val _notificationPrivacy = boolFlow(KEY_NOTIFICATION_PRIVACY, false)
+    /** Notifications show who and which app, not what they say (passengers, screen recordings). */
+    val notificationPrivacy: StateFlow<Boolean> = _notificationPrivacy
+
+    fun setNotificationPrivacy(value: Boolean) = saveBool(KEY_NOTIFICATION_PRIVACY, value, _notificationPrivacy)
+
     fun setQuietMode(value: Boolean) {
         _quietMode.value = value
         prefs.edit { putBoolean(KEY_QUIET, value) }
@@ -316,6 +322,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_NAME_ORDER = "name_order"
         private const val KEY_QUIET = "quiet_mode"
+        private const val KEY_NOTIFICATION_PRIVACY = "notification_privacy"
         private const val KEY_RAIL = "rail_layout"
         private const val KEY_CLOCK = "clock_style"
         private const val KEY_DATE = "date_style"

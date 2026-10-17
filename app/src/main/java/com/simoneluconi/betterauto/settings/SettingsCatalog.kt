@@ -232,6 +232,10 @@ object SettingsCatalog {
         SettingHeader("notifications", R.string.settings_section_notifications),
         ChoiceSetting("quiet_mode", R.string.settings_quiet_mode, onOff, { it.quietMode }, LauncherSettings::setQuietMode),
         ChoiceSetting(
+            "notification_privacy", R.string.settings_notification_privacy, onOff,
+            { it.notificationPrivacy }, LauncherSettings::setNotificationPrivacy,
+        ),
+        ChoiceSetting(
             "notification_groups", R.string.settings_notification_groups, shownHidden,
             { it.notificationGroups }, LauncherSettings::setNotificationGroups,
         ),

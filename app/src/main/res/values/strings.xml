@@ -197,6 +197,7 @@
     <string name="nav_notifications">Notifications</string>
     <string name="settings_no_apps">No apps yet</string>
     <string name="settings_quiet_mode">Quiet mode (no pop-ups)</string>
+    <string name="settings_notification_privacy">Hide what notifications say</string>
     <string name="settings_notification_groups">Group chat notifications</string>
     <string name="settings_notification_apps">Apps that can notify</string>
     <string name="settings_no_notification_apps">Apps appear here after their first notification</string>

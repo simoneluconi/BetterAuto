@@ -107,6 +107,9 @@ private const val MAX_PROGRESS_STEP_MS = 500L
 private const val SEEK_HOLD_MS = 1500L
 private const val SEEK_MATCH_MS = 1500L
 
+/** A card at least this wide shows the player's own buttons too, not only in the music section. */
+private val EXTRAS_MIN_WIDTH = 560.dp
+
 /** Below this width/height ratio (portrait screens) the cover gets the whole width on top. */
 private const val TALL_RATIO = 0.9f
 
@@ -131,13 +134,15 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
     ) {
         val current = track
         val ratio = maxWidth / maxHeight
+        // The player's own buttons (favorite...) wherever there is room for them, the home card too
+        val withExtras = extended || maxWidth >= EXTRAS_MIN_WIDTH
         // Only the narrow layout has its secondary controls under the transport
         links.secondaryAbove = !(ratio >= TALL_RATIO && ratio < NARROW_RATIO)
         when {
             current == null -> EmptyPlayer(hasAccess)
-            ratio < TALL_RATIO -> TallPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
-            ratio < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, extended, onShowPanel)
-            else -> WidePlayer(current, maxWidth, maxHeight, extended, onShowPanel)
+            ratio < TALL_RATIO -> TallPlayer(current, maxWidth, maxHeight, withExtras, onShowPanel)
+            ratio < NARROW_RATIO -> NarrowPlayer(current, maxWidth, maxHeight, withExtras, onShowPanel)
+            else -> WidePlayer(current, maxWidth, maxHeight, withExtras, onShowPanel)
         }
     }
     }
