@@ -44,6 +44,7 @@ import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.car.GearPosition
 import com.simoneluconi.betterauto.car.HeadLights
 import com.simoneluconi.betterauto.car.TurnSignal
+import com.simoneluconi.betterauto.car.Units
 import com.simoneluconi.betterauto.car.VehicleSnapshot
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
@@ -51,7 +52,6 @@ import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
-import java.util.Locale
 
 private val OkGreen = Color(0xFF2E9E5B)
 
@@ -167,7 +167,7 @@ private fun TileView(tile: Tile, modifier: Modifier) {
 
 @Composable
 private fun tiles(s: VehicleSnapshot): List<Tile> {
-    val locale = Locale.getDefault()
+    val units = rememberUnits()
     val list = ArrayList<Tile>()
     s.diagnostics?.let { d ->
         list += if (d.value.isEmpty()) {
@@ -180,7 +180,7 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
         }
     }
     s.fuel?.value?.let { f ->
-        val value = f.rangeKm?.let { "$it km" } ?: f.levelPercent?.let { "$it%" }
+        val value = f.rangeKm?.let { units.distance(it.toDouble()) } ?: f.levelPercent?.let { "$it%" }
         if (value != null) {
             val detail = listOfNotNull(
                 f.levelPercent?.takeIf { f.rangeKm != null }?.let { stringResource(R.string.vehicle_fuel_detail, it) },
@@ -193,22 +193,22 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
         val e = s.environment.value
         val detail = listOfNotNull(
             e.rain?.takeIf { it > 0 }?.let { stringResource(R.string.vehicle_rain) },
-            e.pressureKpa?.let { "%.0f hPa".format(locale, it * 10) },
+            e.pressureKpa?.let { units.airPressure(it) },
         ).joinToString(" · ").ifEmpty { null }
-        list += Tile(CarIcons.Thermometer, stringResource(R.string.vehicle_outside), "%.0f °C".format(locale, t), detail)
+        list += Tile(CarIcons.Thermometer, stringResource(R.string.vehicle_outside), units.temperature(t, decimals = 0), detail)
     }
     s.odometer?.value?.let { o ->
         list += Tile(
-            CarIcons.Gauge, stringResource(R.string.vehicle_distance), "%,.0f km".format(locale, o.totalKm),
-            o.tripKm?.let { stringResource(R.string.vehicle_trip_detail, "%,.1f".format(locale, it)) },
+            CarIcons.Gauge, stringResource(R.string.vehicle_distance), units.distance(o.totalKm),
+            o.tripKm?.let { stringResource(R.string.vehicle_trip_detail, units.distance(it, decimals = 1)) },
         )
     }
     s.hvac?.value?.let { h ->
         val value = h.targetC ?: h.currentC
         if (value != null) {
             list += Tile(
-                CarIcons.Thermometer, stringResource(R.string.vehicle_climate), "%.1f °C".format(locale, value),
-                h.currentC?.takeIf { h.targetC != null }?.let { stringResource(R.string.vehicle_cabin_detail, "%.1f".format(locale, it)) },
+                CarIcons.Thermometer, stringResource(R.string.vehicle_climate), units.temperature(value),
+                h.currentC?.takeIf { h.targetC != null }?.let { stringResource(R.string.vehicle_cabin_detail, units.temperature(it)) },
             )
         }
     }
@@ -228,7 +228,7 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
     s.satellites?.value?.let { sat ->
         list += Tile(
             CarIcons.Map, stringResource(R.string.vehicle_gps), stringResource(R.string.vehicle_satellites_value, sat.inUse),
-            s.position?.value?.accuracyM?.let { stringResource(R.string.vehicle_accuracy_detail, "%.0f".format(locale, it)) },
+            s.position?.value?.accuracyM?.let { stringResource(R.string.vehicle_accuracy_detail, units.length(it)) },
         )
     }
     // A car that shares little still says what it is, and that it shares little
@@ -252,6 +252,7 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
 @Composable
 private fun CarDiagram(s: VehicleSnapshot, modifier: Modifier) {
     val colors = LocalCarColors.current
+    val units = rememberUnits()
     val tires = s.tires?.value?.bar?.takeIf { it.size == 4 }
     val low = tires?.let { values -> values.indices.filter { values.max() - values[it] >= LOW_TIRE_BAR } }.orEmpty()
     Column(
@@ -263,9 +264,9 @@ private fun CarDiagram(s: VehicleSnapshot, modifier: Modifier) {
     ) {
         CarLabel(s.info.name ?: stringResource(R.string.nav_vehicle), 24.sp, colors.text, weight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
         Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TireColumn(tires, left = true, low = low, modifier = Modifier.weight(1f).fillMaxHeight())
+            TireColumn(tires, units, left = true, low = low, modifier = Modifier.weight(1f).fillMaxHeight())
             CarDrawing(s, Modifier.fillMaxHeight().aspectRatio(0.5f, matchHeightConstraintsFirst = true))
-            TireColumn(tires, left = false, low = low, modifier = Modifier.weight(1f).fillMaxHeight())
+            TireColumn(tires, units, left = false, low = low, modifier = Modifier.weight(1f).fillMaxHeight())
         }
         CarLabel(diagramCaption(s), 19.sp, if (anythingOpen(s)) WarningAmber else colors.text2, weight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
     }
@@ -273,29 +274,29 @@ private fun CarDiagram(s: VehicleSnapshot, modifier: Modifier) {
 
 /** Front and rear pressure on one side, level with the wheels of the drawing. */
 @Composable
-private fun TireColumn(tires: List<Double>?, left: Boolean, low: List<Int>, modifier: Modifier) {
+private fun TireColumn(tires: List<Double>?, units: Units, left: Boolean, low: List<Int>, modifier: Modifier) {
     val colors = LocalCarColors.current
     val front = if (left) 0 else 1
     val rear = if (left) 2 else 3
     Column(modifier, horizontalAlignment = if (left) Alignment.End else Alignment.Start) {
         Spacer(Modifier.weight(0.15f))
-        TireLabel(tires?.getOrNull(front), front in low, colors.text)
+        TireLabel(tires?.getOrNull(front), units, front in low, colors.text)
         Spacer(Modifier.weight(0.52f))
-        TireLabel(tires?.getOrNull(rear), rear in low, colors.text)
+        TireLabel(tires?.getOrNull(rear), units, rear in low, colors.text)
         Spacer(Modifier.weight(0.15f))
     }
 }
 
 @Composable
-private fun TireLabel(bar: Double?, low: Boolean, color: Color) {
+private fun TireLabel(bar: Double?, units: Units, low: Boolean, color: Color) {
     val colors = LocalCarColors.current
     if (bar == null) {
         Spacer(Modifier.size(1.dp))
         return
     }
     Column(Modifier.padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        CarLabel("%.1f".format(Locale.getDefault(), bar), 32.sp, if (low) WarningAmber else color, weight = FontWeight.ExtraBold, tabularNumbers = true)
-        CarLabel("bar", 16.sp, colors.text2)
+        CarLabel(units.tirePressureValue(bar), 32.sp, if (low) WarningAmber else color, weight = FontWeight.ExtraBold, tabularNumbers = true)
+        CarLabel(units.tirePressureUnit, 16.sp, colors.text2)
     }
 }
 

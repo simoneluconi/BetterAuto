@@ -195,6 +195,7 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
     val context = LocalContext.current
     val yes = stringResource(R.string.vehicle_yes)
     val no = stringResource(R.string.vehicle_no)
+    val units = rememberUnits()
     fun yn(value: Boolean?) = value?.let { if (it) yes else no }
     val list = ArrayList<VehicleCard>()
 
@@ -218,7 +219,7 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
             CarIcons.Fuel, stringResource(R.string.vehicle_fuel),
             listOfNotNull(
                 f.value.levelPercent?.let { stringResource(R.string.vehicle_fuel_level) to "$it%" },
-                f.value.rangeKm?.let { stringResource(R.string.vehicle_range) to "$it km" },
+                f.value.rangeKm?.let { stringResource(R.string.vehicle_range) to units.distance(it.toDouble()) },
                 yn(f.value.low)?.let { stringResource(R.string.vehicle_low_fuel) to it },
             ),
             f.at,
@@ -228,8 +229,8 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
         list += VehicleCard(
             CarIcons.Gauge, stringResource(R.string.vehicle_distance),
             listOfNotNull(
-                stringResource(R.string.vehicle_odometer) to "%,.0f km".format(Locale.getDefault(), o.value.totalKm),
-                o.value.tripKm?.let { stringResource(R.string.vehicle_trip) to "%,.1f km".format(Locale.getDefault(), it) },
+                stringResource(R.string.vehicle_odometer) to units.distance(o.value.totalKm),
+                o.value.tripKm?.let { stringResource(R.string.vehicle_trip) to units.distance(it, decimals = 1) },
             ),
             o.at,
         )
@@ -239,7 +240,7 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
         list += VehicleCard(
             CarIcons.Tire, stringResource(R.string.vehicle_tires),
             t.value.bar.mapIndexed { i, bar ->
-                (if (t.value.bar.size == 4) names[i] else stringResource(R.string.vehicle_tire_n, i + 1)) to "%.1f bar".format(Locale.getDefault(), bar)
+                (if (t.value.bar.size == 4) names[i] else stringResource(R.string.vehicle_tire_n, i + 1)) to units.tirePressure(bar)
             },
             t.at,
         )
@@ -248,8 +249,8 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
         list += VehicleCard(
             CarIcons.Thermometer, stringResource(R.string.vehicle_outside),
             listOfNotNull(
-                e.value.temperatureC?.let { stringResource(R.string.vehicle_temperature) to "%.1f °C".format(Locale.getDefault(), it) },
-                e.value.pressureKpa?.let { stringResource(R.string.vehicle_pressure) to "%.0f hPa".format(Locale.getDefault(), it * 10) },
+                e.value.temperatureC?.let { stringResource(R.string.vehicle_temperature) to units.temperature(it) },
+                e.value.pressureKpa?.let { stringResource(R.string.vehicle_pressure) to units.airPressure(it) },
                 e.value.rain?.let { stringResource(R.string.vehicle_rain) to if (it > 0) yes else no },
             ),
             e.at,
@@ -259,8 +260,8 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
         list += VehicleCard(
             CarIcons.Thermometer, stringResource(R.string.vehicle_climate),
             listOfNotNull(
-                h.value.targetC?.let { stringResource(R.string.vehicle_climate_set) to "%.1f °C".format(Locale.getDefault(), it) },
-                h.value.currentC?.let { stringResource(R.string.vehicle_climate_cabin) to "%.1f °C".format(Locale.getDefault(), it) },
+                h.value.targetC?.let { stringResource(R.string.vehicle_climate_set) to units.temperature(it) },
+                h.value.currentC?.let { stringResource(R.string.vehicle_climate_cabin) to units.temperature(it) },
             ),
             h.at,
         )
@@ -319,9 +320,9 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
                     }
                 },
                 yn(s.parkingBrake?.value)?.let { stringResource(R.string.vehicle_parking_brake) to it },
-                s.speed?.let { stringResource(R.string.vehicle_speed) to "%.0f km/h".format(Locale.getDefault(), it.value.kmh) },
+                s.speed?.let { stringResource(R.string.vehicle_speed) to units.speed(it.value.kmh) },
                 s.speed?.value?.cruiseOn?.let { on ->
-                    stringResource(R.string.vehicle_cruise) to if (on) (s.speed.value.cruiseSetKmh?.let { "$it km/h" } ?: yes) else no
+                    stringResource(R.string.vehicle_cruise) to if (on) (s.speed.value.cruiseSetKmh?.let { units.speed(it.toDouble()) } ?: yes) else no
                 },
                 s.rpm?.let { stringResource(R.string.vehicle_rpm) to "%,d".format(Locale.getDefault(), it.value) },
             ),
@@ -334,8 +335,8 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
             CarIcons.Map, stringResource(R.string.vehicle_position),
             listOfNotNull(
                 p?.let { stringResource(R.string.vehicle_coordinates) to "%.5f, %.5f".format(Locale.ROOT, it.latitude, it.longitude) },
-                p?.accuracyM?.let { stringResource(R.string.vehicle_accuracy) to "± %.0f m".format(Locale.getDefault(), it) },
-                p?.altitudeM?.let { stringResource(R.string.vehicle_altitude) to "%.0f m".format(Locale.getDefault(), it) },
+                p?.accuracyM?.let { stringResource(R.string.vehicle_accuracy) to "± ${units.length(it)}" },
+                p?.altitudeM?.let { stringResource(R.string.vehicle_altitude) to units.length(it) },
                 p?.bearing?.let { stringResource(R.string.vehicle_heading) to "%.0f°".format(Locale.getDefault(), it) },
                 s.satellites?.let { sat -> stringResource(R.string.vehicle_satellites) to (sat.value.inView?.let { "${sat.value.inUse} / $it" } ?: sat.value.inUse.toString()) },
             ),

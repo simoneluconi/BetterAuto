@@ -4,7 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.simoneluconi.betterauto.aap.ConnectionProblem
+import com.simoneluconi.betterauto.aap.VideoChannel
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.car.TemperatureUnit
+import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.car.Timed
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
@@ -20,6 +23,7 @@ import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
+import kotlin.concurrent.thread
 
 /**
  * Simulates head unit input and car state, for testing without a car:
@@ -27,6 +31,9 @@ import com.simoneluconi.betterauto.settings.ThemeMode
  *   ... --ei key 23          press a key (23 = center, 4 = back)
  *   ... --ez night true      the car's night-mode sensor (used when the theme is Auto)
  *   ... --es theme night     force the theme: day, night or auto
+ *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
+ *   ... --es units imperial  distances and pressures: metric, imperial or auto;
+ *                            --es temperature fahrenheit: celsius, fahrenheit or auto
  *   ... --es screen 9:16     pretend the car screen has this shape (or a size like 1280x480) inside the
  *                            real frame, to try portrait and wide layouts on any head unit; "off" to stop
  *   ... --es section music   open a section: home, music, map, phone or settings
@@ -61,6 +68,16 @@ class DebugInputReceiver : BroadcastReceiver() {
             ThemeMode.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setThemeMode(it) }
         }
+        // What the stall watchdog does: new encoder, virtual display and launcher (off the main thread, it waits for the encoder)
+        if (intent.getBooleanExtra("restartVideo", false)) thread(name = "debug-video-restart") { VideoChannel.active?.restartStreaming() }
+        intent.getStringExtra("units")?.let { name ->
+            UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { LauncherSettings.get(context).setUnitSystem(it) }
+        }
+        intent.getStringExtra("temperature")?.let { name ->
+            TemperatureUnit.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { LauncherSettings.get(context).setTemperatureUnit(it) }
+        }
 
         intent.getStringExtra("section")?.let { name ->
             Section.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -72,7 +89,7 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         when (intent.getStringExtra("voice")) {
             // Previews of the voice panel: nothing is dialed
-            "preview_call" -> VoiceAssistant.preview(VoiceState.Calling("Mario Rossi", "Cellulare", android.os.SystemClock.elapsedRealtime() + 3000))
+            "preview_call" -> VoiceAssistant.preview(VoiceState.Calling("Mario Rossi", "Mobile", android.os.SystemClock.elapsedRealtime() + 3000))
             "preview_confirm" -> VoiceAssistant.preview(VoiceState.Choosing(listOf("Mario Rossi"), null, confirm = true))
             "preview_off" -> VoiceAssistant.preview(VoiceState.Idle)
         }

@@ -4,6 +4,8 @@ import androidx.annotation.StringRes
 import com.simoneluconi.betterauto.EventLog
 import android.content.Context
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.car.TemperatureUnit
+import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.media.MediaApps
 import kotlinx.coroutines.flow.StateFlow
 
@@ -140,6 +142,24 @@ object SettingsCatalog {
             { it.layout }, LauncherSettings::setLayout,
         ),
         ActionSetting("widget_order", R.string.settings_widget_order, R.string.rotate_widgets, LauncherSettings::rotateWidgets),
+        ChoiceSetting(
+            "units", R.string.settings_units,
+            listOf(
+                SettingOption(UnitSystem.AUTO, R.string.option_auto),
+                SettingOption(UnitSystem.METRIC, R.string.option_metric),
+                SettingOption(UnitSystem.IMPERIAL, R.string.option_imperial),
+            ),
+            { it.unitSystem }, LauncherSettings::setUnitSystem,
+        ),
+        ChoiceSetting(
+            "temperature_unit", R.string.settings_temperature_unit,
+            listOf(
+                SettingOption(TemperatureUnit.AUTO, R.string.option_auto),
+                SettingOption(TemperatureUnit.CELSIUS, R.string.option_celsius),
+                SettingOption(TemperatureUnit.FAHRENHEIT, R.string.option_fahrenheit),
+            ),
+            { it.temperatureUnit }, LauncherSettings::setTemperatureUnit,
+        ),
 
         SettingHeader("app_bar_section", R.string.settings_section_app_bar),
         ChoiceSetting(

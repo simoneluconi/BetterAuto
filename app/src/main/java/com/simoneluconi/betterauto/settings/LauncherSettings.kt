@@ -3,6 +3,8 @@ package com.simoneluconi.betterauto.settings
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.simoneluconi.betterauto.car.TemperatureUnit
+import com.simoneluconi.betterauto.car.UnitSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -116,6 +118,17 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setVoiceReplies(value: Boolean) = saveBool(KEY_VOICE_REPLIES, value, _voiceReplies)
 
     fun setShowMicButton(value: Boolean) = saveBool(KEY_SHOW_MIC, value, _showMicButton)
+
+    private val _unitSystem = MutableStateFlow(enumOf(KEY_UNITS, UnitSystem.AUTO))
+    /** Kilometres and bar, or miles and psi, on the vehicle screens. */
+    val unitSystem: StateFlow<UnitSystem> = _unitSystem
+
+    private val _temperatureUnit = MutableStateFlow(enumOf(KEY_TEMPERATURE, TemperatureUnit.AUTO))
+    val temperatureUnit: StateFlow<TemperatureUnit> = _temperatureUnit
+
+    fun setUnitSystem(value: UnitSystem) = saveEnum(KEY_UNITS, value, _unitSystem)
+
+    fun setTemperatureUnit(value: TemperatureUnit) = saveEnum(KEY_TEMPERATURE, value, _temperatureUnit)
 
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
@@ -290,6 +303,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_RAIL = "rail_layout"
         private const val KEY_CLOCK = "clock_style"
         private const val KEY_DATE = "date_style"
+        private const val KEY_UNITS = "unit_system"
+        private const val KEY_TEMPERATURE = "temperature_unit"
         private const val KEY_SHOW_ENGINE = "show_engine_light"
         private const val KEY_SHOW_BELL = "show_bell"
         private const val KEY_SHOW_SIGNAL = "show_signal"
