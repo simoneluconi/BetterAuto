@@ -1,6 +1,8 @@
 package com.simoneluconi.betterauto.audio
 
 import android.content.AttributionSource
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.media.AudioAttributes
@@ -134,6 +136,29 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
 
     override fun status(): String = lastStatus
 
+    override fun bluetoothAddress(): String? = runCatching {
+        val process = ProcessBuilder("settings", "get", "secure", "bluetooth_address").redirectErrorStream(true).start()
+        process.inputStream.bufferedReader().readText().trim().also { process.waitFor() }
+    }.getOrNull()?.takeIf { BluetoothAdapter.checkBluetoothAddress(it) }
+
+    /** Needs BLUETOOTH_PRIVILEGED, which the shell user holds: called as this process, with the shell's identity. */
+    override fun confirmPairing(address: String, accept: Boolean): Boolean = asShell {
+        runCatching {
+            val adapter = shellContext.getSystemService(BluetoothManager::class.java)?.adapter ?: return@runCatching false
+            adapter.getRemoteDevice(address).setPairingConfirmation(accept)
+        }.getOrDefault(false)
+    }
+
+    /** `cmd wifi` takes it from the shell user, which this process is; the phone forgets it when it restarts. */
+    override fun setDualWifi(on: Boolean): String = runCatching {
+        val change = if (on) arrayOf("enabled", "true") else arrayOf("disabled", "false")
+        val process = ProcessBuilder("cmd", "wifi", "force-overlay-config-value", "bool", DUAL_WIFI_OVERLAY, *change)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        "exit ${process.waitFor()}${if (output.isNotEmpty()) ", $output" else ""}"
+    }.getOrElse { "failed: $it" }
+
     override fun destroy() {
         stop()
         exitProcess(0)
@@ -203,6 +228,8 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     }
 
     private companion object {
+        /** The WiFi setting for a second connection to a local-only network (a head unit's or dongle's). */
+        private const val DUAL_WIFI_OVERLAY = "config_wifiMultiStaLocalOnlyConcurrencyEnabled"
         val POLICY: Class<*> = Class.forName("android.media.audiopolicy.AudioPolicy")
         val MIX: Class<*> = Class.forName("android.media.audiopolicy.AudioMix")
 

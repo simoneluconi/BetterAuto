@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.transport.wireless.WirelessAutoConnect
 import com.simoneluconi.betterauto.transport.wireless.WirelessConnector
 import com.simoneluconi.betterauto.transport.wireless.WirelessState
@@ -51,6 +53,7 @@ import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.verticalScrollWithBar
+import kotlin.concurrent.thread
 
 /** A paired Bluetooth device, and whether it offers wireless Android Auto. */
 private class Paired(val address: String, val name: String, val wireless: Boolean)
@@ -142,6 +145,7 @@ internal fun WirelessPage(onBack: () -> Unit) {
                 PillButton(stringResource(R.string.wireless_show_all, hidden), primary = false) { showAll = true }
             }
             if (WirelessAutoConnect.supported()) selected?.let { AutoConnectCard(it) }
+            if (missing.isEmpty()) DualWifiCard()
         }
 
         // Fixed at the bottom of the screen, however long the list: what is happening, and the button
@@ -207,12 +211,47 @@ private fun AutoConnectCard(address: String) {
     }
     Card {
         CarLabel(stringResource(R.string.wireless_auto_title), 18.sp, colors.text, weight = FontWeight.Bold)
+        CarLabel(stringResource(R.string.wireless_auto_hint), 15.sp, colors.text2, maxLines = 3)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(stringResource(R.string.option_off), selected = !on) {
                 if (on) WirelessAutoConnect.disable(context, address)
                 on = false
             }
             Chip(stringResource(R.string.option_on), selected = on) { if (!on) turnOn() }
+        }
+    }
+}
+
+/**
+ * Dual WiFi: the phone keeps its own WiFi (and internet, adb) while on the head unit's. A setting only the
+ * shell user can change, so it needs Shizuku: without it the card is there but cannot be switched on.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DualWifiCard() {
+    val colors = LocalCarColors.current
+    val context = LocalContext.current
+    val shizukuChanges by ShizukuAudio.changes.collectAsStateWithLifecycle()
+    val available = remember(shizukuChanges) { ShizukuAudio.state(context) != ShizukuAudio.State.NOT_INSTALLED }
+    var on by remember { mutableStateOf(WirelessConnector.dualWifi(context)) }
+    fun set(value: Boolean) {
+        if (value == on) return
+        on = value
+        WirelessConnector.setDualWifi(context, value)
+        // Now too, not only at the next connection: the phone may already be on the head unit's WiFi
+        thread(name = "dual-wifi") { ShizukuAudio.setDualWifi(context, value) }
+    }
+    Card {
+        CarLabel(stringResource(R.string.wireless_dual_title), 18.sp, colors.text, weight = FontWeight.Bold)
+        CarLabel(stringResource(R.string.wireless_dual_hint), 15.sp, colors.text2, maxLines = 3)
+        if (!available) CarLabel(stringResource(R.string.wireless_dual_needs_shizuku), 15.sp, colors.text2)
+        FlowRow(
+            Modifier.alpha(if (available) 1f else 0.4f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Chip(stringResource(R.string.option_off), selected = !on) { if (available) set(false) }
+            Chip(stringResource(R.string.option_on), selected = on) { if (available) set(true) }
         }
     }
 }

@@ -226,6 +226,7 @@ class AapSession(
             SensorChannel(this, service.id, sensors)
         }
         service.hasVendorExtensionService() -> VendorExtensionChannel(this, service.id, service.vendorExtensionService.name)
+        service.hasBluetoothService() -> BluetoothChannel(this, service.id, service.bluetoothService, projection.context)
         else -> null
     }
 

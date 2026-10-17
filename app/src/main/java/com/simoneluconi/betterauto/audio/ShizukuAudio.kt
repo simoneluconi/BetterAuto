@@ -25,7 +25,7 @@ object ShizukuAudio {
     enum class State { NOT_INSTALLED, NOT_RUNNING, NOT_ALLOWED, READY }
 
     private const val PERMISSION_REQUEST = 4242
-    private const val SERVICE_VERSION = 1
+    private const val SERVICE_VERSION = 3
 
     private val _changes = MutableStateFlow(0)
     /** Bumps when Shizuku starts, stops or answers a permission request: re-read [state]. */
@@ -97,6 +97,56 @@ object ShizukuAudio {
             return null
         }
         return Connection(router!!) { runCatching { Shizuku.unbindUserService(args, connection, true) } }
+    }
+
+    /** Turns dual WiFi on or back to the phone's default through the shell service; false if it did not take. */
+    fun setDualWifi(context: Context, on: Boolean): Boolean {
+        val state = state(context)
+        if (state != State.READY) {
+            EventLog.log("Wireless: dual WiFi not set, Shizuku is $state")
+            return false
+        }
+        val result = withService(context) { it.setDualWifi(on) }
+        if (result == null) {
+            EventLog.log("Wireless: dual WiFi not set, the Shizuku service did not start")
+            return false
+        }
+        EventLog.log("Wireless: dual WiFi ${if (on) "on" else "back to the phone's default"} ($result)")
+        return result.startsWith("exit 0")
+    }
+
+    /** The phone's real Bluetooth address through the shell service; null without Shizuku. */
+    fun bluetoothAddress(context: Context): String? =
+        if (state(context) == State.READY) withService(context) { it.bluetoothAddress() } else null
+
+    /** Confirms the pairing in progress with [address] without Android's dialog; false without Shizuku. */
+    fun confirmPairing(context: Context, address: String): Boolean =
+        state(context) == State.READY && withService(context) { it.confirmPairing(address, true) } == true
+
+    /**
+     * Runs [block] on the shell service, binding it for the call only, without touching an audio routing
+     * that may be running; null when it does not come up or the call fails.
+     */
+    private fun <T> withService(context: Context, block: (IAudioRouter) -> T): T? {
+        val ready = CountDownLatch(1)
+        var router: IAudioRouter? = null
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                if (binder != null && binder.pingBinder()) router = IAudioRouter.Stub.asInterface(binder)
+                ready.countDown()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) = Unit
+        }
+        val args = serviceArgs(context)
+        Shizuku.bindUserService(args, connection)
+        try {
+            val service = (if (ready.await(5000, TimeUnit.MILLISECONDS)) router else null) ?: return null
+            return runCatching { block(service) }.getOrNull()
+        } finally {
+            // Unbind without removing it: the same service may be moving the car's audio
+            runCatching { Shizuku.unbindUserService(args, connection, false) }
+        }
     }
 
     class Connection(val router: IAudioRouter, private val unbind: () -> Unit) {

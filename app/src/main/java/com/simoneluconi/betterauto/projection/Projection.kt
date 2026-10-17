@@ -23,7 +23,7 @@ import com.simoneluconi.betterauto.voice.VoiceAssistant
  * The car screen: a private virtual display rendering into the encoder surface,
  * with the launcher shown on it as a Presentation. All UI work runs on the main thread.
  */
-class Projection(private val context: Context) {
+class Projection(val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: LauncherPresentation? = null

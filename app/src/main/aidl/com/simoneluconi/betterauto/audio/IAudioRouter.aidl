@@ -1,6 +1,6 @@
 package com.simoneluconi.betterauto.audio;
 
-/** The Shizuku service that moves the phone's media audio, running as the shell user. */
+/** The Shizuku service that moves the phone's media audio (and a WiFi setting), running as the shell user. */
 interface IAudioRouter {
     /**
      * Starts routing media audio away from the speaker; returns the read end of a pipe of little-endian
@@ -15,6 +15,18 @@ interface IAudioRouter {
 
     /** What the service did last, for the log. */
     String status() = 3;
+
+    /**
+     * Lets the phone stay on its WiFi while it joins the head unit's (STA+STA for local-only networks, which
+     * some makers leave off), or gives the setting back to the phone's default. Returns what the command said.
+     */
+    String setDualWifi(boolean on) = 4;
+
+    /** The phone's real Bluetooth address (apps only get a placeholder), or null. */
+    String bluetoothAddress() = 5;
+
+    /** Answers the pairing in progress with this device, as the user would in Android's dialog. */
+    boolean confirmPairing(String address, boolean accept) = 6;
 
     /** Called by Shizuku when the app unbinds for good (fixed transaction id from the Shizuku API). */
     void destroy() = 16777114;

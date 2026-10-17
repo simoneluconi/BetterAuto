@@ -34,7 +34,7 @@ anything copied from closed-source apps.
 | Package | What lives there |
 |---|---|
 | `transport/` | Byte pipe to the head unit: `Transport` interface, `UsbAccessoryTransport`, `TcpTransport`. `wireless/`: `WirelessConnector` (Bluetooth RFCOMM bootstrap `WirelessBootstrap`, WiFi join `WifiJoin`, TCP), auto-connect (`WirelessAutoConnect` + `WirelessCompanionService`, companion device manager). Retries and the setup timeout live in `AapService` |
-| `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `VendorExtensionChannel`), `ConnectionProblem` (why a car refused us) |
+| `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `VendorExtensionChannel`, `BluetoothChannel` (pairs the phone with the car for calls; confirmed through Shizuku when there)), `ConnectionProblem` (why a car refused us) |
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
 | `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI |
@@ -133,7 +133,7 @@ the catalog.
 - Shizuku started without root dies whenever the phone connects to the car by USB (the switch to
   accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
   wireless Android Auto.
-- Channels the cars offer that are not implemented yet: guidance/system audio, Bluetooth pairing,
+- Channels the cars offer that are not implemented yet: guidance/system audio,
   navigation status, phone status, notifications, media browser, radio.
 - Wireless with an AAWireless dongle: it often drops the first session while it sets up its USB link to
   the car (retried automatically), and sends an empty control message 0 right before it hangs up (not

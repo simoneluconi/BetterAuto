@@ -12,6 +12,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.transport.TcpTransport
 import com.simoneluconi.betterauto.transport.Transport
 import java.io.Closeable
@@ -83,6 +84,8 @@ class WirelessConnector(private val context: Context) : Closeable {
 
         enter(WirelessStep.WIFI_JOIN)
         EventLog.log("Wireless: joining \"${endpoint.ssid}\"")
+        // Without it many phones leave their own WiFi to join the head unit's
+        if (dualWifi(context)) ShizukuAudio.setDualWifi(context, true)
         val join = WifiJoin(context)
         wifi = join
         val network = try {
@@ -221,6 +224,15 @@ class WirelessConnector(private val context: Context) : Closeable {
 
         private const val PREFS = "wireless"
         private const val KEY_DEVICE = "device"
+        private const val KEY_DUAL_WIFI = "dual_wifi"
+
+        /** Stay on the phone's own WiFi while on the head unit's: set through Shizuku before each join. */
+        fun dualWifi(context: Context): Boolean =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_DUAL_WIFI, false)
+
+        fun setDualWifi(context: Context, value: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_DUAL_WIFI, value) }
+        }
 
         /** Runtime permissions wireless needs on this Android version. */
         fun requiredPermissions(): Array<String> = buildList {

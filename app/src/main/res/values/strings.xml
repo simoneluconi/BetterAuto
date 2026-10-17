@@ -112,6 +112,10 @@
     <string name="wireless_cancel">Cancel</string>
     <string name="wireless_disconnect">Disconnect</string>
     <string name="wireless_auto_title">Connect automatically</string>
+    <string name="wireless_auto_hint">Connects by itself when you switch the car on, without opening the app.</string>
+    <string name="wireless_dual_title">Dual WiFi</string>
+    <string name="wireless_dual_hint">While connected to the car, the phone also stays on your own WiFi instead of leaving it.</string>
+    <string name="wireless_dual_needs_shizuku">Needs Shizuku</string>
     <string name="wireless_show_all">Show all paired devices (%1$d more)</string>
     <string name="wireless_step_bluetooth">Connecting over Bluetooth…</string>
     <string name="wireless_step_wifi_details">Getting the WiFi details…</string>
