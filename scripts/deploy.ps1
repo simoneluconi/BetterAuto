@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Builds BetterAuto (debug) and installs it on the phone connected over adb.
+    Builds BetterAuto (debug), installs it on the phone connected over adb and pre-approves its audio
+    capture (no consent prompt on every connection).
 
 .EXAMPLE
     scripts\deploy.cmd                        build, install, open the app on the phone
@@ -14,20 +15,8 @@ param(
     [switch]$NoLaunch
 )
 
-# Native tools write progress to stderr: judge them by exit code, not by PowerShell errors
-$ErrorActionPreference = 'Continue'
-$root = Split-Path -Parent $PSScriptRoot
-$package = 'com.simoneluconi.betterauto'
+. (Join-Path $PSScriptRoot 'phone.ps1')
 $apk = Join-Path $root 'app\build\outputs\apk\debug\app-debug.apk'
-
-function Fail($message) {
-    Write-Host "ERROR: $message" -ForegroundColor Red
-    exit 1
-}
-
-function Step($message) {
-    Write-Host "==> $message" -ForegroundColor Cyan
-}
 
 # Java for Gradle: JAVA_HOME, java on the PATH, or the one shipped with Android Studio
 if (-not $env:JAVA_HOME -and -not (Get-Command java -ErrorAction SilentlyContinue)) {
@@ -38,35 +27,9 @@ if (-not $env:JAVA_HOME -and -not (Get-Command java -ErrorAction SilentlyContinu
     $env:JAVA_HOME = $studioJbr
 }
 
-# adb from the SDK Android Studio uses (local.properties), then ANDROID_HOME, then the default install
-$sdk = $null
-$localProperties = Join-Path $root 'local.properties'
-if (Test-Path $localProperties) {
-    $line = Select-String -Path $localProperties -Pattern '^sdk\.dir=(.+)$' | Select-Object -First 1
-    if ($line) { $sdk = $line.Matches[0].Groups[1].Value.Replace('\:', ':').Replace('\\', '\') }
-}
-if (-not $sdk) { $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' } }
-$adb = Join-Path $sdk 'platform-tools\adb.exe'
-if (-not (Test-Path $adb)) { Fail "adb not found in $sdk" }
-
-# The phone: the one asked for, else the only one connected (a phone on both USB and wireless counts once, by USB)
-$lines = @(& $adb devices | Select-Object -Skip 1 | Where-Object { $_ -match '\S' })
-$ready = @($lines | Where-Object { $_ -match '\tdevice$' } | ForEach-Object { ($_ -split '\t')[0] })
-if ($lines | Where-Object { $_ -match '\tunauthorized$' }) {
-    Write-Host 'A phone is waiting for you to allow USB debugging: accept the prompt on its screen.' -ForegroundColor Yellow
-}
-if ($Serial) {
-    if ($ready -notcontains $Serial) { Fail "Phone $Serial is not connected. Connected: $($ready -join ', ')" }
-} elseif ($ready.Count -eq 0) {
-    Fail 'No phone connected: plug it in with USB debugging on'
-} elseif ($ready.Count -eq 1) {
-    $Serial = $ready[0]
-} else {
-    $usb = @($ready | Where-Object { $_ -notmatch ':' })
-    if ($usb.Count -ne 1) { Fail "More than one phone connected, pick one with -Serial: $($ready -join ', ')" }
-    $Serial = $usb[0]
-}
-$model = (& $adb -s $Serial shell getprop ro.product.model | Out-String).Trim()
+$adb = Find-Adb
+$Serial = Select-Phone $adb $Serial
+$model = Get-PhoneModel $adb $Serial
 
 $tasks = @('assembleDebug')
 if ($Tests) { $tasks = @('testDebugUnitTest') + $tasks }
@@ -85,6 +48,16 @@ if ($install -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
 }
 if ($install -notmatch 'Success') { Fail 'Install failed, see the message above' }
 
+# Pre-approved audio capture: the car gets the phone's sound without the consent prompt on every connection
+Step 'Allowing audio capture without asking'
+& $adb -s $Serial shell appops set $package PROJECT_MEDIA allow | Out-Null
+$audio = (& $adb -s $Serial shell appops get $package PROJECT_MEDIA | Out-String).Trim()
+if ($audio -notmatch 'allow') { Write-Host "Could not pre-approve audio capture ($audio): the phone will ask on each connection." -ForegroundColor Yellow }
+
+# Installing switches BetterAuto back on even if toggle-aa had switched it off
+if ((Get-AppState $adb $Serial $androidAuto) -eq 'enabled') {
+    Write-Host 'The official Android Auto is on too, and both answer the head unit: run scripts\toggle-aa.cmd -To BetterAuto (or -To AndroidAuto) to keep one.' -ForegroundColor Yellow
+}
 if (-not $NoLaunch) {
     # Opening the app once also lets it receive the debug broadcasts after a fresh install
     Step 'Opening BetterAuto on the phone'

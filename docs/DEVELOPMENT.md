@@ -37,9 +37,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 On Windows, `scripts\deploy.cmd` does the same in one go: it finds Java (Android Studio's own if none is
-set) and adb (from `local.properties`), builds the debug APK, installs it on the connected phone and opens
-the app. `-Tests` runs the unit tests first, `-NoLaunch` skips opening the app, `-Serial <id>` picks a
-phone when more than one is connected (a phone on both USB and wireless adb is taken by USB).
+set) and adb (from `local.properties`), builds the debug APK, installs it on the connected phone,
+pre-approves audio capture (`appops set ... PROJECT_MEDIA allow`) and opens the app. `-Tests` runs the
+unit tests first, `-NoLaunch` skips opening the app, `-Serial <id>` picks a phone when more than one is
+connected (a phone on both USB and wireless adb is taken by USB). Installing switches BetterAuto back on
+if it was off, so the script warns when the official Android Auto is on too.
 
 The protobuf files under `app/src/main/proto/aap_protobuf` are from opencardev/aasdk
 (commit in `app/src/main/proto/AASDK_VERSION.txt`).
@@ -77,6 +79,10 @@ The official app must be disabled, or it opens the USB accessory before BetterAu
 adb shell pm disable-user --user 0 com.google.android.projection.gearhead
 adb shell pm enable com.google.android.projection.gearhead   # to bring it back
 ```
+
+On Windows, `scripts\toggle-aa.cmd` swaps the two: whichever is on goes off (`pm disable-user`, data
+kept) and the other comes on. `-Show` only tells which one is on, `-To BetterAuto` or `-To AndroidAuto`
+picks one, `-Serial <id>` picks the phone.
 
 ## Debugging
 
