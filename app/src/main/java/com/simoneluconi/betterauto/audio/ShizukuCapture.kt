@@ -6,6 +6,8 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.SystemClock
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.media.MediaApps
+import com.simoneluconi.betterauto.media.NowPlaying
 import java.io.DataInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -70,7 +72,7 @@ class ShizukuCapture(
         val router = connection.router
         for (encoding in intArrayOf(AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_16BIT)) {
             if (encoding == AudioFormat.ENCODING_PCM_16BIT && format.bits != 16) break
-            val pipe = runCatching { router.start(format.sampleRate, format.channels, encoding) }.getOrNull()
+            val pipe = runCatching { router.start(format.sampleRate, format.channels, encoding, musicApps(), CarAudio.carUsages()) }.getOrNull()
             if (pipe != null) {
                 EventLog.log("Car audio: moved through Shizuku, ${runCatching { router.status() }.getOrDefault("")}")
                 return DataInputStream(ParcelFileDescriptor.AutoCloseInputStream(pipe)).also { input = it } to
@@ -81,6 +83,16 @@ class ShizukuCapture(
         connection.close()
         this.connection = null
         return null
+    }
+
+    /**
+     * Only the music apps go to the car: the players BetterAuto lists (they offer a media browser) and the
+     * one playing now. Videos in a social app, for instance, keep playing on the phone.
+     */
+    private fun musicApps(): IntArray {
+        val packages = (MediaApps.installed(context) + listOfNotNull(NowPlaying.track.value?.packageName)).distinct()
+        return packages.mapNotNull { runCatching { context.packageManager.getApplicationInfo(it, 0).uid }.getOrNull() }
+            .distinct().toIntArray()
     }
 
     private fun stream(pipe: Pair<DataInputStream, Boolean>) {

@@ -84,8 +84,13 @@ class MainActivity : ComponentActivity() {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
                 BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
                 when (page) {
-                    PhonePage.HOME -> PhoneHome(onOpenSetup = { page = PhonePage.SETUP }, onOpenSettings = { page = PhonePage.SETTINGS })
+                    PhonePage.HOME -> PhoneHome(
+                        onOpenSetup = { page = PhonePage.SETUP },
+                        onOpenWireless = { page = PhonePage.WIRELESS },
+                        onOpenSettings = { page = PhonePage.SETTINGS },
+                    )
                     PhonePage.SETUP -> SetupPage(onBack = { page = PhonePage.HOME })
+                    PhonePage.WIRELESS -> WirelessPage(onBack = { page = PhonePage.HOME })
                     PhonePage.SETTINGS -> PhoneSettingsPage(onBack = { page = PhonePage.HOME })
                 }
             }
@@ -93,7 +98,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class PhonePage { HOME, SETUP, SETTINGS }
+private enum class PhonePage { HOME, SETUP, WIRELESS, SETTINGS }
 
 private enum class StepState { DONE, TODO, OPTIONAL }
 
@@ -139,7 +144,7 @@ private fun rememberSteps(): List<Step> {
 }
 
 @Composable
-private fun PhoneHome(onOpenSetup: () -> Unit, onOpenSettings: () -> Unit) {
+private fun PhoneHome(onOpenSetup: () -> Unit, onOpenWireless: () -> Unit, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
     val steps = rememberSteps()
@@ -159,6 +164,7 @@ private fun PhoneHome(onOpenSetup: () -> Unit, onOpenSettings: () -> Unit) {
         }
         ConnectionCard()
         SetupCard(steps, onOpenSetup)
+        WirelessCard(onOpenWireless)
         SettingsCard(onOpenSettings)
 
         PillButton(stringResource(R.string.action_preview), primary = true, modifier = Modifier.fillMaxWidth()) {
@@ -411,7 +417,7 @@ private fun LogCard() {
 }
 
 @Composable
-private fun PillButton(label: String, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun PillButton(label: String, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     Box(
         modifier
@@ -479,6 +485,8 @@ private fun audioStep(context: Context, request: () -> Unit): Step {
 
 private val PhonePermissions = arrayOf(
     Manifest.permission.READ_CONTACTS, Manifest.permission.READ_CALL_LOG, Manifest.permission.CALL_PHONE,
+    // The network type next to the signal (5G, 4G+...); same group as calls, so no extra question
+    Manifest.permission.READ_PHONE_STATE,
 )
 
 /** Voice commands use the phone's own offline recognizer: there or not, nothing to grant. */

@@ -48,6 +48,12 @@ class VideoChannel(
     private var closed = false
     private var watchdog: Thread? = null
     private var restarts = 0
+    /** When the watchdog asked a silent screen to redraw, 0 if it has not. */
+    private var redrawAskedAt = 0L
+    /** When the frame now going out started waiting (window or socket), 0 when none is. */
+    @Volatile
+    private var sendingSince = 0L
+    private var slowLinkLogged = false
 
     // Frames in flight, bounded by the head unit's max_unacked
     @Volatile
@@ -142,8 +148,10 @@ class VideoChannel(
     }
 
     /**
-     * A screen that sends nothing is frozen for the driver: the encoder repeats even a static picture a few
-     * times a second, so a long silence while the car shows us means the pipeline is stuck. Rebuild it.
+     * A screen that sends nothing is frozen for the driver: rebuild the pipeline when it is stuck. Silence alone
+     * is not proof: a still screen may give no frames (not every encoder repeats them), and over WiFi a frame
+     * may be stuck on its way out. So a silent screen is first redrawn, and rebuilt only if even that brings no
+     * frame; a send that blocks is a slow link, which a rebuild would not fix.
      */
     private fun startWatchdog() {
         if (watchdog != null) return
@@ -162,15 +170,35 @@ class VideoChannel(
     private fun checkStalled() {
         val running = encoder ?: return
         if (closed || !focused) return
-        val silentMs = (System.nanoTime() - running.lastOutputNanos) / 1_000_000
-        if (silentMs < STALL_MS || restarts > MAX_RESTARTS) return
+        val now = System.nanoTime()
+        val sending = sendingSince
+        if (sending != 0L) {
+            val blockedMs = (now - sending) / 1_000_000
+            if (blockedMs >= STALL_MS && !slowLinkLogged) {
+                slowLinkLogged = true
+                EventLog.log("Video: a frame has been waiting $blockedMs ms to go out, the link to the head unit is slow")
+            }
+            return
+        }
+        val silentMs = (now - running.lastOutputNanos) / 1_000_000
+        if (silentMs < STALL_MS) {
+            redrawAskedAt = 0L
+            return
+        }
+        if (redrawAskedAt == 0L || redrawAskedAt < running.lastOutputNanos) {
+            redrawAskedAt = now
+            projection.redraw()
+            return
+        }
+        if ((now - redrawAskedAt) / 1_000_000 < REDRAW_WAIT_MS || restarts > MAX_RESTARTS) return
+        redrawAskedAt = 0L
         if (restarts == MAX_RESTARTS) {
             restarts++
             EventLog.log("Video: still no frames after $MAX_RESTARTS restarts, giving up")
             return
         }
         restarts++
-        EventLog.log("Video: no frames from the encoder for $silentMs ms, rebuilding the car screen ($restarts/$MAX_RESTARTS)")
+        EventLog.log("Video: no frames from the encoder for $silentMs ms, not even after a redraw, rebuilding the car screen ($restarts/$MAX_RESTARTS)")
         restartStreaming()
     }
 
@@ -187,14 +215,20 @@ class VideoChannel(
     private fun sendFrame(data: ByteArray, timestampUs: Long) {
         // The car is showing its own screen (reversing camera, its menus): nothing to decode there
         if (!focused) return
-        // Wait for the head unit to catch up instead of flooding its decoder
-        window.tryAcquire(WINDOW_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        sendingSince = System.nanoTime()
+        try {
+            // Wait for the head unit to catch up instead of flooding its decoder
+            window.tryAcquire(WINDOW_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 
-        val payload = ByteArray(8 + data.size)
-        putU32(payload, 0, (timestampUs ushr 32).toInt())
-        putU32(payload, 4, timestampUs.toInt())
-        data.copyInto(payload, 8)
-        send(MediaMessageId.MEDIA_MESSAGE_DATA_VALUE, payload)
+            val payload = ByteArray(8 + data.size)
+            putU32(payload, 0, (timestampUs ushr 32).toInt())
+            putU32(payload, 4, timestampUs.toInt())
+            data.copyInto(payload, 8)
+            send(MediaMessageId.MEDIA_MESSAGE_DATA_VALUE, payload)
+        } finally {
+            sendingSince = 0L
+        }
+        slowLinkLogged = false
         updateStats(data.size)
     }
 
@@ -233,6 +267,8 @@ class VideoChannel(
         private const val WINDOW_TIMEOUT_MS = 500L
         private const val WATCHDOG_PERIOD_MS = 1000L
         private const val STALL_MS = 3000L
+        /** After a redraw a live pipeline answers within a frame or two. */
+        private const val REDRAW_WAIT_MS = 1500L
         private const val MAX_RESTARTS = 3
     }
 }

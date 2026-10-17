@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.media.AudioManager
 import android.media.session.MediaController as PlatformController
 import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
@@ -174,14 +175,26 @@ object NowPlaying {
 
     fun next() = controller?.seekToNext()
 
-    /** The one control callable from any thread: a disconnect pauses before the phone volume comes back. */
+    /**
+     * The one control callable from any thread: a disconnect pauses before the phone volume comes back.
+     * Always sent, not only when "playing": while the sound moves from the car back to the phone a player
+     * can be buffering or briefly suppressed, and would then carry on from the phone speaker.
+     */
     fun pause() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             main.post { pause() }
             return
         }
-        val c = controller ?: return
-        if (c.isPlaying) c.pause()
+        val c = controller
+        if (c != null) {
+            c.pause()
+            return
+        }
+        // No player followed right now: the pause key reaches whichever app has the active media session
+        if (!::appContext.isInitialized) return
+        val audio = appContext.getSystemService(AudioManager::class.java) ?: return
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
     }
 
     /** Resumes the current player, or starts the most recently used music app if none is active. */

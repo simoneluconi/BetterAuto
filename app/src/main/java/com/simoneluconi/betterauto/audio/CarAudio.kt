@@ -1,6 +1,7 @@
 package com.simoneluconi.betterauto.audio
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
@@ -50,6 +51,12 @@ object CarAudio {
             PhoneSpeakerMute.release(appContext)
         }
     }
+
+    /** The kinds of sound that go to the car: music, and per setting apps that don't say. */
+    fun carUsages(): IntArray = buildList {
+        add(AudioAttributes.USAGE_MEDIA)
+        if (LauncherSettings.get(appContext).unknownAudio.value) add(AudioAttributes.USAGE_UNKNOWN)
+    }.toIntArray()
 
     val hasProjection: Boolean
         @Synchronized get() = projection != null
@@ -139,7 +146,7 @@ object CarAudio {
             return
         }
         capture = try {
-            AudioCapture(p, s).also { it.start() }
+            AudioCapture(p, s, carUsages()).also { it.start() }
         } catch (e: Exception) {
             EventLog.log("Audio capture failed: $e")
             null

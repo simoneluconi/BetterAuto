@@ -206,15 +206,8 @@ object SettingsCatalog {
         ChoiceSetting("layout_button", R.string.settings_layout_button, shownHidden, { it.showLayoutButton }, LauncherSettings::setShowLayoutButton),
 
         SettingHeader("media", R.string.settings_section_media),
-        ChoiceSetting(
-            "music_view", R.string.settings_music_view,
-            listOf(
-                SettingOption(false, R.string.option_music_fullscreen),
-                SettingOption(true, R.string.option_music_panel),
-            ),
-            { it.musicPanel }, LauncherSettings::setMusicPanel,
-        ),
         ChoiceSetting("auto_play", R.string.settings_auto_play, onOff, { it.autoPlay }, LauncherSettings::setAutoPlay),
+        ChoiceSetting("unknown_audio", R.string.settings_unknown_audio, onOff, { it.unknownAudio }, LauncherSettings::setUnknownAudio),
 
         SettingHeader("phone", R.string.settings_section_phone),
         ChoiceSetting(

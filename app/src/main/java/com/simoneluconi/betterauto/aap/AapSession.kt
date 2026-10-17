@@ -108,7 +108,11 @@ class AapSession(
                 EventLog.log("Audio focus from car: ${focus.focusState}${if (focus.unsolicited) " (unsolicited)" else ""}")
                 audioSink?.onFocus(focus.focusState)
             }
-            else -> EventLog.log("Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes)")
+            // Flags too: a wireless dongle sends an empty message 0 right before it hangs up, not yet understood
+            else -> EventLog.log(
+                "Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes, " +
+                    "${if (msg.encrypted) "encrypted" else "plain"}, ${if (msg.controlType) "control" else "specific"} type)"
+            )
         }
     }
 
@@ -129,7 +133,7 @@ class AapSession(
         if (reply.isNotEmpty()) send(ControlMessageType.MESSAGE_ENCAPSULATED_SSL_VALUE, reply, encrypted = false)
         if (tls.handshakeComplete) {
             EventLog.log("TLS handshake complete: ${tls.describeSession()}")
-            CarState.link.value = "USB · ${tls.protocol}"
+            CarState.link.value = "${transport.kind} · ${tls.protocol}"
         }
     }
 

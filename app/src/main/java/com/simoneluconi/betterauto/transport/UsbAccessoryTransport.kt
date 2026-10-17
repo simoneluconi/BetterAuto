@@ -6,6 +6,8 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 
 class UsbAccessoryTransport(private val fd: ParcelFileDescriptor) : Transport {
+    override val kind = "USB"
+
     private val input = FileInputStream(fd.fileDescriptor)
     private val output = FileOutputStream(fd.fileDescriptor)
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -111,8 +112,18 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (showSignal) {
-                    if (phone.onWifi) CarLabel(stringResource(R.string.wifi), 19.sp, colors.text, weight = FontWeight.Bold)
-                    phone.signalLevel?.let { SignalBars(it) }
+                    // Like a phone: Wi-Fi when on it, otherwise the mobile network (5G, 4G+, H+, E...), small and
+                    // level with the top of the bars (higher with a second SIM, whose squares lift them)
+                    val network = if (phone.onWifi) stringResource(R.string.wifi) else phone.network
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        network?.let {
+                            val lift = if (phone.secondSignalLevel != null) SECOND_SIM_HEIGHT else 0f
+                            Box(Modifier.height(BARS_HEIGHT.dp)) {
+                                CarLabel(it, 15.sp, colors.text, Modifier.offset(y = (-LABEL_TOP_INSET - lift).dp), weight = FontWeight.Bold)
+                            }
+                        }
+                        phone.signalLevel?.let { SignalBars(it, phone.secondSignalLevel) }
+                    }
                 }
                 if (showBattery) phone.batteryPercent?.let { Battery(it, phone.charging) }
             }
@@ -217,21 +228,41 @@ private fun NotificationsButton(settings: LauncherSettings, open: Boolean) {
 }
 
 @Composable
-private fun SignalBars(level: Int) {
+private fun SignalBars(level: Int, secondLevel: Int?, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
-    Canvas(Modifier.size(26.dp)) {
+    // Same size with one or two SIMs, so nothing around it moves: with a second SIM the bars are drawn
+    // higher, past the top, and its squares take their place at the bottom
+    Canvas(modifier.size(BARS_HEIGHT.dp)) {
+        val barsBottom = if (secondLevel == null) size.height else size.height - SECOND_SIM_HEIGHT.dp.toPx()
         val bar = size.width / 7f
         for (i in 0 until 4) {
             val h = size.height * (0.3f + 0.7f * (i + 1) / 4f)
             drawRoundRect(
                 color = if (i < level) colors.text else colors.text.copy(alpha = 0.3f),
-                topLeft = Offset(i * bar * 1.9f, size.height - h),
+                topLeft = Offset(i * bar * 1.9f, barsBottom - h),
                 size = Size(bar, h),
                 cornerRadius = CornerRadius(bar / 3),
             )
         }
+        // The second SIM: one square under each bar, all the same height, lit like the bars
+        if (secondLevel != null) {
+            for (i in 0 until 4) {
+                drawRoundRect(
+                    color = if (i < secondLevel) colors.text else colors.text.copy(alpha = 0.3f),
+                    topLeft = Offset(i * bar * 1.9f, size.height - bar),
+                    size = Size(bar, bar),
+                    cornerRadius = CornerRadius(bar / 3),
+                )
+            }
+        }
     }
 }
+
+/** The bars' square, and how far they move up for a second SIM's squares (a gap and the squares), in dp. */
+private const val BARS_HEIGHT = 26f
+private const val SECOND_SIM_HEIGHT = 6f
+/** Room the font leaves above capital letters at the network label's size: its tops then meet the bars'. */
+private const val LABEL_TOP_INSET = 7f
 
 @Composable
 private fun Battery(percent: Int, charging: Boolean) {

@@ -151,6 +151,7 @@ class AapProtocolTest {
     }
 
     private class LoopbackTransport : Transport {
+        override val kind = "loopback"
         private val buffer = ByteArrayOutputStream()
         private var readPos = 0
 

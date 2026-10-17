@@ -42,7 +42,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     val widgets: StateFlow<List<WidgetType>> = _widgets
 
     private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, false))
-    /** Music section: player plus library panel (true) or full-screen player (false, the default). */
+    /** Music section: player plus library panel (true) or full-screen player (false, the default); the screen remembers how it was left. */
     val musicPanel: StateFlow<Boolean> = _musicPanel
 
     private val _musicTab = MutableStateFlow(prefs.getString(KEY_MUSIC_TAB, null))
@@ -132,6 +132,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
+
+    private val _unknownAudio = boolFlow(KEY_UNKNOWN_AUDIO, false)
+    /** Also send the car the sound of apps that don't say what kind it is (some players do so); off by default. */
+    val unknownAudio: StateFlow<Boolean> = _unknownAudio
+
+    fun setUnknownAudio(value: Boolean) = saveBool(KEY_UNKNOWN_AUDIO, value, _unknownAudio)
 
     private val _debugOverlay = MutableStateFlow(prefs.getBoolean(KEY_DEBUG, false))
     val debugOverlay: StateFlow<Boolean> = _debugOverlay
@@ -301,6 +307,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_WIDGETS = "widgets"
         private const val KEY_DEBUG = "debug_overlay"
         private const val KEY_AUTO_PLAY = "auto_play"
+        private const val KEY_UNKNOWN_AUDIO = "unknown_audio"
         private const val KEY_VOICE = "voice_enabled"
         private const val KEY_VOICE_MIC = "voice_microphone"
         private const val KEY_VOICE_REPLIES = "voice_replies"

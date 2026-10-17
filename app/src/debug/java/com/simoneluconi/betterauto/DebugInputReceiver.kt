@@ -37,6 +37,7 @@ import kotlin.concurrent.thread
  *   ... --ez night true      the car's night-mode sensor (used when the theme is Auto)
  *   ... --es theme night     force the theme: day, night or auto
  *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
+ *   ... --es tcp 192.0.2.10:5277  start a session with a head unit listening on the network (port 5277 if left out)
  *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
@@ -79,6 +80,17 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         // What the stall watchdog does: new encoder, virtual display and launcher (off the main thread, it waits for the encoder)
         if (intent.getBooleanExtra("restartVideo", false)) thread(name = "debug-video-restart") { VideoChannel.active?.restartStreaming() }
+        // A head unit listening on the network, e.g. the bench Pi in wireless mode: "host" or "host:port"
+        intent.getStringExtra("tcp")?.let { target ->
+            val host = target.substringBefore(':')
+            val port = target.substringAfter(':', "").toIntOrNull() ?: AapService.DEFAULT_TCP_PORT
+            runCatching {
+                context.startForegroundService(
+                    Intent(context, AapService::class.java).setAction(AapService.ACTION_CONNECT_TCP)
+                        .putExtra(AapService.EXTRA_HOST, host).putExtra(AapService.EXTRA_PORT, port)
+                )
+            }.onFailure { EventLog.log("TCP connect: cannot start the service ($it); open the app first") }
+        }
         when (intent.getStringExtra("shizuku")) {
             "allow" -> ShizukuAudio.requestPermission()
             "probe" -> thread(name = "debug-shizuku") { probeShizuku(context) }
@@ -190,7 +202,7 @@ class DebugInputReceiver : BroadcastReceiver() {
         EventLog.log("Shizuku probe: ${ShizukuAudio.state(context)}")
         val connection = ShizukuAudio.connect(context) ?: return
         try {
-            val pipe = connection.router.start(48000, 2, android.media.AudioFormat.ENCODING_PCM_16BIT)
+            val pipe = connection.router.start(48000, 2, android.media.AudioFormat.ENCODING_PCM_16BIT, intArrayOf(), intArrayOf())
             EventLog.log("Shizuku probe: ${connection.router.status()}")
             if (pipe == null) return
             val input = ParcelFileDescriptor.AutoCloseInputStream(pipe)

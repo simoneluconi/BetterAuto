@@ -25,7 +25,7 @@ import kotlin.math.max
  * Only media/game/unknown usages are capturable, and apps may opt out (Android rules).
  */
 @SuppressLint("MissingPermission") // RECORD_AUDIO is requested before capture consent
-class AudioCapture(projection: MediaProjection, private val sink: AudioSink) {
+class AudioCapture(projection: MediaProjection, private val sink: AudioSink, usages: IntArray) {
     private val format = sink.format
     private val chunkFrames = format.sampleRate / CHUNKS_PER_SECOND
     private val record: AudioRecord
@@ -37,9 +37,7 @@ class AudioCapture(projection: MediaProjection, private val sink: AudioSink) {
 
     init {
         val config = AudioPlaybackCaptureConfiguration.Builder(projection)
-            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .apply { usages.forEach(::addMatchingUsage) }
             .build()
         val floatRecord = runCatching { build(config, AudioFormat.ENCODING_PCM_FLOAT) }.getOrNull()
         floatCapture = floatRecord != null

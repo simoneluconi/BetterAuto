@@ -39,7 +39,8 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     constructor() : this(Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as Context)
 
     @Synchronized
-    override fun start(sampleRate: Int, channels: Int, encoding: Int): ParcelFileDescriptor? = asShell { startRouting(sampleRate, channels, encoding) }
+    override fun start(sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? =
+        asShell { startRouting(sampleRate, channels, encoding, uids, usages) }
 
     @Synchronized
     override fun stop() = asShell { stopRouting() }
@@ -57,7 +58,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         }
     }
 
-    private fun startRouting(sampleRate: Int, channels: Int, encoding: Int): ParcelFileDescriptor? {
+    private fun startRouting(sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? {
         stopRouting()
         return try {
             val format = AudioFormat.Builder()
@@ -65,7 +66,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
                 .setSampleRate(sampleRate)
                 .setChannelMask(if (channels == 1) AudioFormat.CHANNEL_IN_MONO else AudioFormat.CHANNEL_IN_STEREO)
                 .build()
-            val mix = buildMix(format)
+            val mix = buildMix(format, uids, if (usages.isEmpty()) intArrayOf(AudioAttributes.USAGE_MEDIA) else usages)
             val newPolicy = buildPolicy(mix)
             val audio = context.getSystemService(AudioManager::class.java)
             val result = AudioManager::class.java.getMethod("registerAudioPolicy", POLICY).invoke(audio, newPolicy) as Int
@@ -80,7 +81,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
             running = true
             newRecord.startRecording()
             pump = thread(name = "audio-router") { pump(newRecord, writeEnd) }
-            lastStatus = "routing $sampleRate Hz ${channels}ch ${if (encoding == AudioFormat.ENCODING_PCM_FLOAT) "float" else "16-bit"}"
+            lastStatus = "routing ${if (uids.isEmpty()) "all media" else "${uids.size} apps"}, $sampleRate Hz ${channels}ch ${if (encoding == AudioFormat.ENCODING_PCM_FLOAT) "float" else "16-bit"}"
             readEnd
         } catch (e: Throwable) {
             lastStatus = "start failed: ${(e.cause ?: e)}"
@@ -138,12 +139,19 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         exitProcess(0)
     }
 
-    /** A mix of the media the car should play, kept from the speaker (loop back only). */
-    private fun buildMix(format: AudioFormat): Any {
+    /**
+     * A mix of the media the car should play, kept from the speaker (loop back only). Rules of one kind
+     * match any of their values, and kinds combine: music usage AND one of these apps.
+     */
+    private fun buildMix(format: AudioFormat, uids: IntArray, usages: IntArray): Any {
         val ruleBuilder = Class.forName("android.media.audiopolicy.AudioMixingRule\$Builder").getConstructor().newInstance()
         val addRule = ruleBuilder.javaClass.getMethod("addRule", AudioAttributes::class.java, Int::class.javaPrimitiveType)
-        for (usage in ROUTED_USAGES) {
+        for (usage in usages) {
             addRule.invoke(ruleBuilder, AudioAttributes.Builder().setUsage(usage).build(), RULE_MATCH_ATTRIBUTE_USAGE)
+        }
+        if (uids.isNotEmpty()) {
+            val addMixRule = ruleBuilder.javaClass.getMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
+            for (uid in uids) addMixRule.invoke(ruleBuilder, RULE_MATCH_UID, uid)
         }
         val rule = ruleBuilder.javaClass.getMethod("build").invoke(ruleBuilder)
         val mixBuilder = Class.forName("android.media.audiopolicy.AudioMix\$Builder").getConstructor(rule.javaClass).newInstance(rule)
@@ -200,10 +208,8 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
 
         /** AudioMixingRule.RULE_MATCH_ATTRIBUTE_USAGE and AudioMix.ROUTE_FLAG_LOOP_BACK (system API constants). */
         const val RULE_MATCH_ATTRIBUTE_USAGE = 0x1
+        const val RULE_MATCH_UID = 0x4
         const val ROUTE_FLAG_LOOP_BACK = 0x2
-
-        /** What playback capture copies today: music, games, and apps that don't say. */
-        val ROUTED_USAGES = intArrayOf(AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME, AudioAttributes.USAGE_UNKNOWN)
 
         const val BUFFER_BYTES = 4096
 

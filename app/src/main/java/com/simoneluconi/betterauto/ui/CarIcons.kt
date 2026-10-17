@@ -49,6 +49,7 @@ object CarIcons {
     val Expand = icon("M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3")
     val UpNext = icon("M3 6h12M3 12h12M3 18h7", "M15 15l6 3-6 3z")
     val Check = icon("M5 12.5l4.5 4.5L19 7.5")
+    val Wireless = icon("M2 9a15 15 0 0 1 20 0", "M5.5 12.5a10 10 0 0 1 13 0", "M9 16a5 5 0 0 1 6 0", circle(12f, 19.5f, 0.6f))
     val Speaker = icon("M11 5L6 9H3v6h3l5 4V5z", "M15.5 8.5a5 5 0 0 1 0 7", "M18.5 5.5a9.5 9.5 0 0 1 0 13")
     val Car = icon("M5 16V11l2-5h10l2 5v5", "M3 16h18v2H3z", "M5 11h14", circle(7.5f, 14f, 0.6f), circle(16.5f, 14f, 0.6f))
     val CallEnd = icon(filled = listOf(

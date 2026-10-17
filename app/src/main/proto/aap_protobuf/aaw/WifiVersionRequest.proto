@@ -2,6 +2,9 @@ syntax="proto2";
 
 package aap_protobuf.aaw;
 
+// The head unit's first message on newer units and dongles; it waits for a WifiVersionResponse.
+// Only the version is read: the rest (WiFi channels, head unit info) differs between revisions.
 message WifiVersionRequest {
-
+  optional uint32 major_version = 1;
+  optional uint32 minor_version = 2;
 }

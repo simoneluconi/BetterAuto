@@ -48,6 +48,11 @@ class Projection(private val context: Context) {
         }
     }
 
+    /** Draws the screen again although nothing changed: a live pipeline then hands out a frame. */
+    fun redraw() = main.post {
+        presentation?.window?.decorView?.invalidate()
+    }
+
     fun stop() = main.post {
         if (active === this) active = null
         if (presentation != null) NowPlaying.release()

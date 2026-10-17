@@ -2,7 +2,7 @@
 
 BetterAuto is the **phone side of the Android Auto protocol (AAP)**: a replacement for the Android Auto
 app. The head unit (car) is unchanged; the phone renders its own launcher on a virtual display, encodes it
-as H.264 and streams it, plus audio, over USB (wireless is planned). Kotlin, Jetpack Compose (foundation
+as H.264 and streams it, plus audio, over USB or wirelessly (a wireless head unit or dongle). Kotlin, Jetpack Compose (foundation
 only, no Material), minSdk 29. User-facing docs: `README.md`; build, bench and debugging details:
 `docs/DEVELOPMENT.md` (read it before touching the protocol or the bench).
 
@@ -33,7 +33,7 @@ anything copied from closed-source apps.
 
 | Package | What lives there |
 |---|---|
-| `transport/` | Byte pipe to the head unit: `Transport` interface, `UsbAccessoryTransport` (TCP for wireless will plug in here) |
+| `transport/` | Byte pipe to the head unit: `Transport` interface, `UsbAccessoryTransport`, `TcpTransport`. `wireless/`: `WirelessConnector` (Bluetooth RFCOMM bootstrap `WirelessBootstrap`, WiFi join `WifiJoin`, TCP), auto-connect (`WirelessAutoConnect` + `WirelessCompanionService`, companion device manager). Retries and the setup timeout live in `AapService` |
 | `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `VendorExtensionChannel`), `ConnectionProblem` (why a car refused us) |
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
@@ -113,7 +113,9 @@ the catalog.
   switches between BetterAuto and the official Android Auto (both answer the head unit).
 - Installing kills the running session: the head unit must reconnect (re-plug, or restart the bench head
   unit's core service; see `docs/DEVELOPMENT.md`).
-- The log: `adb logcat -s BetterAuto` (also shown in the phone app). Car screen screenshot:
+- The log: `adb logcat -s BetterAuto` (also shown in the phone app). Logcat keeps only a few minutes: the same
+  lines go to `files/log/events.txt` (1 MB files, 3 kept), read after a car trip with
+  `adb shell run-as com.simoneluconi.betterauto cat files/log/events.txt` (debug builds). Car screen screenshot:
   `adb exec-out screencap -p -d <display id>` with the id of the "BetterAuto" display from
   `adb shell dumpsys SurfaceFlinger --display-id`.
 - `DebugInputReceiver` (debug builds): `adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT …`
@@ -132,4 +134,7 @@ the catalog.
   accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
   wireless Android Auto.
 - Channels the cars offer that are not implemented yet: guidance/system audio, Bluetooth pairing,
-  navigation status, phone status, notifications, media browser, radio. Wireless (TCP) transport is planned.
+  navigation status, phone status, notifications, media browser, radio.
+- Wireless with an AAWireless dongle: it often drops the first session while it sets up its USB link to
+  the car (retried automatically), and sends an empty control message 0 right before it hangs up (not
+  understood yet). On a bench without a car it may never switch its WiFi on.
