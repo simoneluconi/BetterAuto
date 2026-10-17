@@ -7,14 +7,16 @@ import android.media.MediaFormat
 import android.os.Bundle
 import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
+import kotlin.concurrent.withLock
 
 /**
  * H.264 Baseline encoder fed through [inputSurface]. Output is Annex-B:
  * SPS/PPS go to [start]'s onCodecConfig once, every frame to onFrame with its timestamp.
  */
 class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
-    private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+    private val codec: MediaCodec
     val inputSurface: Surface
     val name: String get() = codec.name
 
@@ -22,7 +24,20 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
     private var running = false
     private var drainThread: Thread? = null
 
+    /** When the encoder last handed out a frame: a static screen still gives a few a second (repeats). */
+    @Volatile
+    var lastOutputNanos = System.nanoTime()
+        private set
+
     init {
+        // A new session's encoder must not be set up while the previous one is still being torn down
+        Lifecycle.lock()
+        try {
+            codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        } catch (e: Exception) {
+            Lifecycle.unlock()
+            throw e
+        }
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
@@ -35,14 +50,22 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
             // rather than re-encoding the same picture at full rate (battery, heat, USB)
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, STATIC_REPEAT_US)
         }
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        inputSurface = codec.createInputSurface()
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            inputSurface = codec.createInputSurface()
+        } catch (e: Exception) {
+            codec.release()
+            throw e
+        } finally {
+            Lifecycle.unlock()
+        }
         EventLog.log("Encoder ${codec.name}: ${width}x$height $fps fps ${bitrate / 1000} kbps")
     }
 
     fun start(onCodecConfig: (ByteArray) -> Unit, onFrame: (data: ByteArray, timestampUs: Long) -> Unit) {
         running = true
-        codec.start()
+        lastOutputNanos = System.nanoTime()
+        Lifecycle.withLock { codec.start() }
         drainThread = thread(name = "video-encoder") {
             try {
                 drain(onCodecConfig, onFrame)
@@ -67,6 +90,7 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
                 }
             }
             if (index < 0) continue
+            lastOutputNanos = System.nanoTime()
 
             val buffer = codec.getOutputBuffer(index) ?: continue
             buffer.position(info.offset)
@@ -85,6 +109,7 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
 
     /** No frames while paused; resuming starts with a keyframe, so the car's decoder can pick up at once. */
     fun setPaused(paused: Boolean) {
+        if (!paused) lastOutputNanos = System.nanoTime()
         runCatching {
             codec.setParameters(
                 Bundle().apply {
@@ -98,14 +123,19 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
     fun stop() {
         running = false
         drainThread?.join(500)
-        runCatching { codec.stop() }
-        codec.release()
-        inputSurface.release()
+        Lifecycle.withLock {
+            runCatching { codec.stop() }
+            codec.release()
+            inputSurface.release()
+        }
     }
 
     private fun java.nio.ByteBuffer.toArray() = ByteArray(remaining()).also { get(it) }
 
     private companion object {
+        /** One encoder set up or torn down at a time, across sessions. */
+        val Lifecycle = ReentrantLock()
+
         /** Keyframes are big: one every couple of seconds is enough, focus changes request their own. */
         const val KEYFRAME_INTERVAL_S = 2
 

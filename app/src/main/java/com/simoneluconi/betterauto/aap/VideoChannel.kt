@@ -22,6 +22,7 @@ import com.simoneluconi.betterauto.video.VideoEncoder
 import java.util.Locale
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
  * Video sink of the head unit. Flow:
@@ -42,6 +43,11 @@ class VideoChannel(
     @Volatile
     private var focused = false
     private var encoder: VideoEncoder? = null
+
+    @Volatile
+    private var closed = false
+    private var watchdog: Thread? = null
+    private var restarts = 0
 
     // Frames in flight, bounded by the head unit's max_unacked
     @Volatile
@@ -92,6 +98,7 @@ class VideoChannel(
         maybeStartStreaming()
     }
 
+    @Synchronized
     private fun onFocus(notification: VideoFocusNotification) {
         EventLog.log("Video focus: ${notification.focus}")
         val wasFocused = focused
@@ -107,9 +114,10 @@ class VideoChannel(
         }
     }
 
+    @Synchronized
     private fun maybeStartStreaming() {
         val cfg = config ?: return
-        if (!focused || encoder != null) return
+        if (closed || !focused || encoder != null) return
 
         val (width, height) = cfg.size()
         val fps = if (cfg.frameRate == VideoFrameRateType.VIDEO_FPS_60) 60 else 30
@@ -129,6 +137,51 @@ class VideoChannel(
         CarState.viewport.value = cfg.viewport()
         val density = if (cfg.density > 0) cfg.density else 160
         projection.start(newEncoder.inputSurface, width, height, density)
+        active = this
+        startWatchdog()
+    }
+
+    /**
+     * A screen that sends nothing is frozen for the driver: the encoder repeats even a static picture a few
+     * times a second, so a long silence while the car shows us means the pipeline is stuck. Rebuild it.
+     */
+    private fun startWatchdog() {
+        if (watchdog != null) return
+        watchdog = thread(name = "video-watchdog", isDaemon = true) {
+            try {
+                while (!closed) {
+                    Thread.sleep(WATCHDOG_PERIOD_MS)
+                    checkStalled()
+                }
+            } catch (_: InterruptedException) {
+            }
+        }
+    }
+
+    @Synchronized
+    private fun checkStalled() {
+        val running = encoder ?: return
+        if (closed || !focused) return
+        val silentMs = (System.nanoTime() - running.lastOutputNanos) / 1_000_000
+        if (silentMs < STALL_MS || restarts > MAX_RESTARTS) return
+        if (restarts == MAX_RESTARTS) {
+            restarts++
+            EventLog.log("Video: still no frames after $MAX_RESTARTS restarts, giving up")
+            return
+        }
+        restarts++
+        EventLog.log("Video: no frames from the encoder for $silentMs ms, rebuilding the car screen ($restarts/$MAX_RESTARTS)")
+        restartStreaming()
+    }
+
+    /** New encoder, virtual display and launcher; the car gets fresh SPS/PPS and a keyframe. */
+    @Synchronized
+    fun restartStreaming() {
+        if (closed) return
+        encoder?.stop()
+        encoder = null
+        projection.stop()
+        maybeStartStreaming()
     }
 
     private fun sendFrame(data: ByteArray, timestampUs: Long) {
@@ -160,14 +213,27 @@ class VideoChannel(
     }
 
     override fun close() {
-        encoder?.stop()
-        encoder = null
+        closed = true
+        watchdog?.interrupt()
+        synchronized(this) {
+            if (active === this) active = null
+            encoder?.stop()
+            encoder = null
+        }
         projection.stop()
     }
 
-    private companion object {
-        const val SESSION_ID = 0
-        const val WINDOW_TIMEOUT_MS = 500L
+    companion object {
+        /** The video channel streaming to the car now, if any (used by debug tools). */
+        @Volatile
+        var active: VideoChannel? = null
+            private set
+
+        private const val SESSION_ID = 0
+        private const val WINDOW_TIMEOUT_MS = 500L
+        private const val WATCHDOG_PERIOD_MS = 1000L
+        private const val STALL_MS = 3000L
+        private const val MAX_RESTARTS = 3
     }
 }
 
