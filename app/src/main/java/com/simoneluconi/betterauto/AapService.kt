@@ -397,7 +397,8 @@ class AapService : Service() {
             NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
         )
         val builder = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(NOTIFICATION_COLOR)
             .setContentTitle(getString(R.string.app_name))
             .setOngoing(true)
             .setContentIntent(
@@ -449,6 +450,8 @@ class AapService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val PROBLEM_CHANNEL_ID = "problems"
         private const val PROBLEM_NOTIFICATION_ID = 2
+        /** The blue of the app icon: the notification's car is drawn on it, as in the launcher. */
+        private const val NOTIFICATION_COLOR = 0xFF0B63CE.toInt()
 
         /**
          * Tells the driver, in plain words, why the car did not connect. It outlives the session notification,
@@ -472,7 +475,8 @@ class AapService : Service() {
             )
             val body = context.getString(text, code ?: 0)
             val builder = Notification.Builder(context, PROBLEM_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(NOTIFICATION_COLOR)
                 .setContentTitle(context.getString(title))
                 .setContentText(body)
                 .setStyle(Notification.BigTextStyle().bigText(body))
