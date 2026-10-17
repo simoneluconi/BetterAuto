@@ -9,6 +9,7 @@ lifecycle = "2.11.0"
 coreKtx = "1.19.1"
 media3 = "1.11.1"
 palette = "1.0.0"
+shizuku = "13.1.5"
 
 [libraries]
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
@@ -25,6 +26,8 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

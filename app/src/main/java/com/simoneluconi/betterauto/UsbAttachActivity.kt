@@ -5,6 +5,7 @@ import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.os.Bundle
 import com.simoneluconi.betterauto.audio.CarAudio
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 
 /**
  * Invisible entry point for USB_ACCESSORY_ATTACHED: hands the accessory to [AapService] and finishes
@@ -19,8 +20,13 @@ class UsbAttachActivity : Activity() {
             startForegroundService(
                 Intent(this, AapService::class.java).putExtra(UsbManager.EXTRA_ACCESSORY, accessory)
             )
-            // We are in the foreground only now: ask for car audio consent while we can show it
-            if (!CarAudio.hasProjection) startActivity(Intent(this, AudioConsentActivity::class.java))
+            // We are in the foreground only now: ask for car audio consent while we can show it,
+            // unless Shizuku moves the audio to the car without one
+            ShizukuAudio.init()
+            val state = ShizukuAudio.state(this)
+            EventLog.log("Shizuku at attach: $state")
+            val shizuku = state == ShizukuAudio.State.READY
+            if (!CarAudio.hasProjection && !shizuku) startActivity(Intent(this, AudioConsentActivity::class.java))
         }
         finish()
     }

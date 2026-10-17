@@ -26,6 +26,8 @@ import com.simoneluconi.betterauto.exlap.ExlapSettings
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
+import android.os.ParcelFileDescriptor
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import kotlin.concurrent.thread
 
 /**
@@ -35,6 +37,7 @@ import kotlin.concurrent.thread
  *   ... --ez night true      the car's night-mode sensor (used when the theme is Auto)
  *   ... --es theme night     force the theme: day, night or auto
  *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
+ *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto
@@ -76,6 +79,10 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         // What the stall watchdog does: new encoder, virtual display and launcher (off the main thread, it waits for the encoder)
         if (intent.getBooleanExtra("restartVideo", false)) thread(name = "debug-video-restart") { VideoChannel.active?.restartStreaming() }
+        when (intent.getStringExtra("shizuku")) {
+            "allow" -> ShizukuAudio.requestPermission()
+            "probe" -> thread(name = "debug-shizuku") { probeShizuku(context) }
+        }
         intent.getStringExtra("units")?.let { name ->
             UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setUnitSystem(it) }
@@ -178,7 +185,43 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
     }
 
+    /** Routes media audio through the Shizuku service for a few seconds: how much arrives, and how loud. */
+    private fun probeShizuku(context: Context) {
+        EventLog.log("Shizuku probe: ${ShizukuAudio.state(context)}")
+        val connection = ShizukuAudio.connect(context) ?: return
+        try {
+            val pipe = connection.router.start(48000, 2, android.media.AudioFormat.ENCODING_PCM_16BIT)
+            EventLog.log("Shizuku probe: ${connection.router.status()}")
+            if (pipe == null) return
+            val input = ParcelFileDescriptor.AutoCloseInputStream(pipe)
+            // Nothing playing means nothing to read: close the pipe after the time is up to unblock the read
+            thread(name = "debug-shizuku-timer") {
+                Thread.sleep(PROBE_MS)
+                runCatching { input.close() }
+            }
+            val buffer = ByteArray(4096)
+            var bytes = 0L
+            var peak = 0
+            runCatching {
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    bytes += n
+                    for (i in 0 until n - 1 step 2) {
+                        val sample = ((buffer[i + 1].toInt() shl 8) or (buffer[i].toInt() and 0xff)).toShort().toInt()
+                        peak = maxOf(peak, kotlin.math.abs(sample))
+                    }
+                }
+            }
+            EventLog.log("Shizuku probe: $bytes bytes in ${PROBE_MS / 1000} s (${bytes * 1000 / PROBE_MS / 4} frames/s), peak $peak of 32767")
+        } finally {
+            connection.close()
+            EventLog.log("Shizuku probe: done, ${connection.router.runCatching { status() }.getOrDefault("service gone")}")
+        }
+    }
+
     private companion object {
         const val TOUCH_DRAG_STEPS = 20
+        const val PROBE_MS = 3000L
     }
 }

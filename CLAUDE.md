@@ -38,7 +38,7 @@ anything copied from closed-source apps.
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
 | `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI |
-| `audio/` | Phone audio capture to the car (MediaProjection), car microphone, phone speaker mute |
+| `audio/` | Phone audio to the car: `CarAudio` picks the way. With Shizuku ready, `ShizukuCapture` + `AudioRouterService` (an AIDL user service running as the shell user, audio policy loopback mix, system APIs by reflection) *move* it; otherwise `AudioCapture` *copies* it (MediaProjection) and `PhoneSpeakerMute` mutes the phone. `PcmQuantizer` (float → dithered PCM) is shared. Also the car microphone |
 | `media/` | `NowPlaying` (follows the active media session), media apps, library browsing |
 | `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery) |
 | `notifications/` | Notifications shown in the car |
@@ -128,5 +128,8 @@ the catalog.
 - The H.264 encoder sometimes stops producing frames without an error (car screen frozen); the
   `VideoChannel` watchdog rebuilds the pipeline. Root cause not found yet.
 - Factory head units verify the phone certificate against Google's; ours is self-signed.
+- Shizuku started without root dies whenever the phone connects to the car by USB (the switch to
+  accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
+  wireless Android Auto.
 - Channels the cars offer that are not implemented yet: guidance/system audio, Bluetooth pairing,
   navigation status, phone status, notifications, media browser, radio. Wireless (TCP) transport is planned.

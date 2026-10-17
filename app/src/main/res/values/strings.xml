@@ -96,6 +96,9 @@
     <string name="home_plug_in">Plug the phone into the car with a USB cable</string>
     <string name="setup_title">Setup</string>
     <string name="setup_progress">%1$d of %2$d ready</string>
+    <string name="setup_all_ready">Everything is ready</string>
+    <string name="setup_todo">%1$d left to do</string>
+    <string name="setup_count">%1$d/%2$d</string>
     <string name="step_ready">Ready</string>
     <string name="step_todo">To do</string>
     <string name="step_optional">Optional</string>
@@ -107,8 +110,17 @@
     <string name="step_audio_text_todo">Allow audio access so the music plays in the car.</string>
     <string name="step_audio_text_ask">Works now, but Android asks for permission every time you connect. To skip it, run this once from a computer:</string>
     <string name="step_audio_text_done">All set: the music goes to the car by itself when you connect.</string>
+    <string name="step_audio_text_shizuku">All set, through Shizuku: the sound moves to the car with no prompt and no screen-sharing icon.</string>
     <string name="step_android_auto_title">Android Auto turned off</string>
     <string name="step_android_auto_text_todo">Android Auto is on and takes over the car connection. Open its page and tap Disable. If your phone doesn\'t allow it, run this from a computer:</string>
+    <string name="step_shizuku_title">Shizuku (optional)</string>
+    <string name="step_shizuku_purpose">With Shizuku, BetterAuto moves the phone\'s sound to the car like the official Android Auto: no permission prompt, no screen-sharing icon, the phone speaker is not muted, and apps that block copying play too. With the USB cable it needs a rooted phone: without root, Shizuku stops as soon as the phone connects to the car, and BetterAuto goes back to copying the sound.</string>
+    <string name="step_shizuku_text_missing">Without it the sound is copied, with those limits. Shizuku is free on the Play Store.</string>
+    <string name="step_shizuku_text_stopped">Installed but not running: open it and start it. Without root it stops after every restart of the phone and every time the phone connects to the car by cable.</string>
+    <string name="step_shizuku_text_allow">Running: allow BetterAuto to use it.</string>
+    <string name="step_shizuku_text_ready">Running, and BetterAuto is allowed to use it.</string>
+    <string name="action_get_shizuku">Get Shizuku</string>
+    <string name="action_open_shizuku">Open Shizuku</string>
     <string name="step_android_auto_text_done">The car connects to BetterAuto.</string>
     <string name="action_allow">Allow</string>
     <string name="action_open_settings">Open settings</string>

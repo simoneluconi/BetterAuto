@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.simoneluconi.betterauto.audio.CarAudio
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -76,12 +78,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // If the app died while connected, the phone may still be muted: put the volume back now
         CarAudio.init(this)
+        ShizukuAudio.init()
         setContent {
             CarTheme(night = isSystemInDarkTheme(), album = null) {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
                 BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
                 when (page) {
-                    PhonePage.HOME -> PhoneHome(onOpenSettings = { page = PhonePage.SETTINGS })
+                    PhonePage.HOME -> PhoneHome(onOpenSetup = { page = PhonePage.SETUP }, onOpenSettings = { page = PhonePage.SETTINGS })
+                    PhonePage.SETUP -> SetupPage(onBack = { page = PhonePage.HOME })
                     PhonePage.SETTINGS -> PhoneSettingsPage(onBack = { page = PhonePage.HOME })
                 }
             }
@@ -89,7 +93,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class PhonePage { HOME, SETTINGS }
+private enum class PhonePage { HOME, SETUP, SETTINGS }
 
 private enum class StepState { DONE, TODO, OPTIONAL }
 
@@ -104,10 +108,10 @@ private class Step(
     val command: String? = null,
 )
 
+/** The setup checklist, re-checked whenever the app comes back to the front and when Shizuku changes. */
 @Composable
-private fun PhoneHome(onOpenSettings: () -> Unit) {
+private fun rememberSteps(): List<Step> {
     val context = LocalContext.current
-    val colors = LocalCarColors.current
     // Permissions change in other screens: re-check whenever we come back
     var resumes by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(Unit) {
@@ -118,7 +122,9 @@ private fun PhoneHome(onOpenSettings: () -> Unit) {
     val askMicrophone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
     val askPhone = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { resumes++ }
 
-    val steps = remember(resumes) {
+    // Shizuku starting, stopping or answering the permission request also changes its step
+    val shizukuChanges by ShizukuAudio.changes.collectAsStateWithLifecycle()
+    val steps = remember(resumes, shizukuChanges) {
         listOf(
             notificationsStep(context) { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) },
             mediaStep(context),
@@ -126,8 +132,17 @@ private fun PhoneHome(onOpenSettings: () -> Unit) {
             phoneStep(context) { askPhone.launch(PhonePermissions) },
             voiceStep(context),
             androidAutoStep(context),
+            shizukuStep(context),
         )
     }
+    return steps
+}
+
+@Composable
+private fun PhoneHome(onOpenSetup: () -> Unit, onOpenSettings: () -> Unit) {
+    val context = LocalContext.current
+    val colors = LocalCarColors.current
+    val steps = rememberSteps()
 
     Column(
         Modifier
@@ -143,13 +158,7 @@ private fun PhoneHome(onOpenSettings: () -> Unit) {
             CarLabel(stringResource(R.string.home_subtitle), 16.sp, colors.text2, maxLines = 2)
         }
         ConnectionCard()
-
-        val ready = steps.count { it.state != StepState.TODO }
-        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.Bottom) {
-            CarLabel(stringResource(R.string.setup_title), 22.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold)
-            CarLabel(stringResource(R.string.setup_progress, ready, steps.size), 15.sp, colors.text2)
-        }
-        steps.forEach { StepCard(it) }
+        SetupCard(steps, onOpenSetup)
         SettingsCard(onOpenSettings)
 
         PillButton(stringResource(R.string.action_preview), primary = true, modifier = Modifier.fillMaxWidth()) {
@@ -215,7 +224,7 @@ private fun StepCard(step: Step) {
             CarLabel(step.title, 18.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold, maxLines = 2)
             StateBadge(step.state)
         }
-        CarLabel(step.text, 15.sp, colors.text2, maxLines = 8, lineHeight = 21.sp)
+        CarLabel(step.text, 15.sp, colors.text2, maxLines = 14, lineHeight = 21.sp)
         step.command?.let { command ->
             Row(
                 Modifier
@@ -242,7 +251,7 @@ private fun StepCard(step: Step) {
 private fun StateBadge(state: StepState) {
     val colors = LocalCarColors.current
     val (label, background, content) = when (state) {
-        StepState.DONE -> Triple(R.string.step_ready, Color(0xFF2E9E5B), Color.White)
+        StepState.DONE -> Triple(R.string.step_ready, StepDoneGreen, Color.White)
         StepState.TODO -> Triple(R.string.step_todo, colors.focus, Color.White)
         StepState.OPTIONAL -> Triple(R.string.step_optional, colors.surface2, colors.text2)
     }
@@ -255,6 +264,75 @@ private fun StateBadge(state: StepState) {
         CarLabel(stringResource(label), 13.sp, content, weight = FontWeight.Bold)
     }
 }
+
+/** The setup at a glance: a green check when nothing is left to do, otherwise how many steps are. */
+@Composable
+private fun SetupCard(steps: List<Step>, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    val ready = steps.count { it.state != StepState.TODO }
+    val todo = steps.size - ready
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(colors.surface)
+            .clickable(onClick = onClick)
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp).background(if (todo == 0) StepDoneGreen else colors.focus, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (todo == 0) {
+                CarIcon(CarIcons.Check, Color.White, Modifier.size(22.dp))
+            } else {
+                CarLabel(todo.toString(), 18.sp, Color.White, weight = FontWeight.ExtraBold)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            CarLabel(stringResource(R.string.setup_title), 18.sp, colors.text, weight = FontWeight.Bold)
+            CarLabel(
+                if (todo == 0) stringResource(R.string.setup_all_ready) else stringResource(R.string.setup_todo, todo),
+                15.sp, colors.text2, maxLines = 2,
+            )
+        }
+        CarLabel(stringResource(R.string.setup_count, ready, steps.size), 15.sp, colors.text2, weight = FontWeight.Bold, tabularNumbers = true)
+        CarIcon(CarIcons.Chevron, colors.text2, Modifier.size(22.dp))
+    }
+}
+
+/** Every setup step with its explanation and action; back returns home. */
+@Composable
+private fun SetupPage(onBack: () -> Unit) {
+    val colors = LocalCarColors.current
+    val steps = rememberSteps()
+    val ready = steps.count { it.state != StepState.TODO }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.bg)
+            .safeDrawingPadding()
+            .verticalScrollWithBar()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                CarIcon(CarIcons.Back, colors.text, Modifier.size(24.dp))
+            }
+            CarLabel(stringResource(R.string.setup_title), 26.sp, colors.text, Modifier.weight(1f), weight = FontWeight.ExtraBold)
+            CarLabel(stringResource(R.string.setup_progress, ready, steps.size), 15.sp, colors.text2)
+        }
+        steps.forEach { StepCard(it) }
+    }
+}
+
+private val StepDoneGreen = Color(0xFF2E9E5B)
 
 /** Opens the car screen settings page. */
 @Composable
@@ -389,6 +467,8 @@ private fun audioStep(context: Context, request: () -> Unit): Step {
             CarIcons.Speaker, title, context.getString(R.string.step_audio_text_todo), StepState.TODO,
             action = context.getString(R.string.action_allow), onAction = request,
         )
+        ShizukuAudio.state(context) == ShizukuAudio.State.READY ->
+            Step(CarIcons.Speaker, title, context.getString(R.string.step_audio_text_shizuku), StepState.DONE)
         automatic -> Step(CarIcons.Speaker, title, context.getString(R.string.step_audio_text_done), StepState.DONE)
         else -> Step(
             CarIcons.Speaker, title, context.getString(R.string.step_audio_text_ask), StepState.OPTIONAL,
@@ -440,6 +520,34 @@ private fun androidAutoStep(context: Context): Step {
             },
             command = "adb shell pm disable-user --user 0 $ANDROID_AUTO",
         )
+    }
+}
+
+/** Optional: with Shizuku the sound is moved to the car like the official app does, without it it is copied. */
+private fun shizukuStep(context: Context): Step {
+    val title = context.getString(R.string.step_shizuku_title)
+    // What it is for first, whatever its state, then what to do
+    fun text(state: Int) = context.getString(R.string.step_shizuku_purpose) + "\n" + context.getString(state)
+    return when (ShizukuAudio.state(context)) {
+        ShizukuAudio.State.NOT_INSTALLED -> Step(
+            CarIcons.Settings, title, text(R.string.step_shizuku_text_missing), StepState.OPTIONAL,
+            action = context.getString(R.string.action_get_shizuku),
+            onAction = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ShizukuAudio.PLAY_STORE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            },
+        )
+        ShizukuAudio.State.NOT_RUNNING -> Step(
+            CarIcons.Settings, title, text(R.string.step_shizuku_text_stopped), StepState.OPTIONAL,
+            action = context.getString(R.string.action_open_shizuku),
+            onAction = {
+                context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            },
+        )
+        ShizukuAudio.State.NOT_ALLOWED -> Step(
+            CarIcons.Settings, title, text(R.string.step_shizuku_text_allow), StepState.OPTIONAL,
+            action = context.getString(R.string.action_allow), onAction = ShizukuAudio::requestPermission,
+        )
+        ShizukuAudio.State.READY -> Step(CarIcons.Settings, title, text(R.string.step_shizuku_text_ready), StepState.DONE)
     }
 }
 

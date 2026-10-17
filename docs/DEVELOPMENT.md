@@ -130,6 +130,19 @@ picks one, `-Serial <id>` picks the phone.
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 
+## Shizuku (optional audio routing)
+
+With [Shizuku](https://shizuku.rikka.app/) running and BetterAuto allowed, `CarAudio` starts
+`AudioRouterService` as a Shizuku user service: it runs as the shell user (which holds
+`MODIFY_AUDIO_ROUTING`), registers an audio policy whose loop-back mix takes media/game/unknown
+audio away from the speaker, and streams it as float PCM through a pipe. Two details matter: the policy
+calls run with the service's own identity (`Binder.clearCallingIdentity`), and the recorder is attributed
+to `com.android.shell`, or the audio server refuses it. Everything falls back to playback capture.
+
+Without root, Shizuku dies whenever the phone switches its USB port to accessory mode (adbd restarts),
+so with the cable it only helps on rooted phones. Debug: `--es shizuku probe` routes audio for 3 s and
+logs bytes and peak; `--es shizuku allow` asks for the permission.
+
 ## TLS certificate
 
 The phone identity is read from the PEM files (`.pem`, `.crt`, `.cer`, `.key`) at the root of

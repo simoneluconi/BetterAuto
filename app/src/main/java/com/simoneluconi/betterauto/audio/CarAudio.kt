@@ -31,6 +31,9 @@ object CarAudio {
     private var projection: MediaProjection? = null
     private var sink: AudioSink? = null
     private var capture: AudioCapture? = null
+    private var shizuku: ShizukuCapture? = null
+    /** Shizuku failed during this car connection: use playback capture until the next one. */
+    private var shizukuFailed = false
     private var autoPlayed = false
     private val main = Handler(Looper.getMainLooper())
 
@@ -51,7 +54,11 @@ object CarAudio {
     val hasProjection: Boolean
         @Synchronized get() = projection != null
 
-    /** Told when the capture consent appears or goes away (called on the caller's thread). */
+    /** The audio is moved to the car through Shizuku, so no capture consent is needed. */
+    val movesAudio: Boolean
+        @Synchronized get() = shizuku != null
+
+    /** Told when the way audio reaches the car changes: consent given or gone, Shizuku on or off (any thread). */
     @Volatile
     var onProjectionChanged: (() -> Unit)? = null
 
@@ -98,17 +105,35 @@ object CarAudio {
 
     @Synchronized
     fun setSink(value: AudioSink?) {
-        // A new car audio channel is a new connection: allow auto-play again
-        if (value == null) autoPlayed = false
+        // A new car audio channel is a new connection: allow auto-play again, and Shizuku another try
+        if (value == null) {
+            autoPlayed = false
+            shizukuFailed = false
+        }
         sink = value
         restart()
     }
 
     private fun restart() {
+        val wasMoving = shizuku != null
         capture?.stop()
         capture = null
-        val p = projection
+        shizuku?.stop()
+        shizuku = null
         val s = sink
+        val shizukuState = if (s != null) ShizukuAudio.state(appContext) else null
+        if (s != null) EventLog.log("Car audio: Shizuku ${if (shizukuFailed) "failed earlier" else shizukuState.toString()}")
+        // With Shizuku the audio is moved like the system Android Auto does; otherwise it is copied
+        if (s != null && !shizukuFailed && shizukuState == ShizukuAudio.State.READY) {
+            PhoneSpeakerMute.release(appContext)
+            lateinit var started: ShizukuCapture
+            started = ShizukuCapture(appContext, s, onStarted = { autoPlayOnce() }, onFailed = { onShizukuFailed(started) })
+            shizuku = started.also { it.start() }
+            if (!wasMoving) onProjectionChanged?.invoke()
+            return
+        }
+        if (wasMoving) onProjectionChanged?.invoke()
+        val p = projection
         if (p == null || s == null) {
             PhoneSpeakerMute.release(appContext)
             return
@@ -124,13 +149,26 @@ object CarAudio {
             return
         }
         PhoneSpeakerMute.engage(appContext)
-        // Like Android Auto: start the music once per connection, only when it really goes to the car
-        if (!autoPlayed) {
-            autoPlayed = true
-            if (shouldAutoPlay()) {
-                EventLog.log("Car audio: auto-play on connect")
-                main.post { NowPlaying.resume() }
-            }
+        autoPlayOnce()
+    }
+
+    /** Shizuku stopped working mid-connection: fall back to playback capture for the rest of it. */
+    @Synchronized
+    private fun onShizukuFailed(failed: ShizukuCapture) {
+        if (shizuku !== failed) return
+        shizukuFailed = true
+        EventLog.log("Car audio: Shizuku not usable, copying the audio instead")
+        restart()
+    }
+
+    /** Like Android Auto: start the music once per connection, only when it really goes to the car. */
+    @Synchronized
+    private fun autoPlayOnce() {
+        if (autoPlayed) return
+        autoPlayed = true
+        if (shouldAutoPlay()) {
+            EventLog.log("Car audio: auto-play on connect")
+            main.post { NowPlaying.resume() }
         }
     }
 }

@@ -104,18 +104,36 @@ You need an Android phone (Android 10 or newer), a head unit that doesn't verify
 ## Car audio: how it works
 
 The official Android Auto is a system app, with permissions that let it *move* all of the phone's
-sound to the car. BetterAuto is a regular app, so it *copies* other apps' sound instead, through the
-screen-capture permission. It works well, with a few side effects:
+sound to the car. BetterAuto is a regular app, so by default it *copies* other apps' sound instead,
+through the screen-capture permission. It works well, with a few side effects:
 
 - Android shows a permission prompt on every connection (an `adb` command removes it) and a
   screen-sharing indicator while audio goes to the car;
 - the phone's own speaker is muted while connected, since the sound is copied, not moved;
-- DRM-protected apps refuse to be captured, and navigation prompts from other apps can't be;
+- apps can refuse to be captured (typically paid video apps), and navigation prompts from other
+  apps can't be captured;
 - calls go over Bluetooth, which is what Android Auto does too.
 
 Sound quality is great: Android Auto carries uncompressed PCM (typically 48 kHz / 16-bit), better
-than Bluetooth. [Shizuku](https://shizuku.rikka.app/) support would let BetterAuto move the audio the
-way the system app does, with no prompt and no indicator.
+than Bluetooth.
+
+### With Shizuku: the sound is moved, like the official app
+
+If [Shizuku](https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api) is installed,
+running and BetterAuto is allowed to use it, BetterAuto moves media audio to the car the way the system
+app does (an audio policy registered through Shizuku): no permission prompt, no screen-sharing
+indicator, the phone speaker is not muted by BetterAuto (the sound simply isn't there any more), and
+apps that only block capture by regular apps play too. The app's setup checklist shows whether Shizuku
+is installed, running and allowed. Without Shizuku, or if it stops, BetterAuto copies the sound as
+described above, automatically.
+
+- **With the USB cable, Shizuku needs a rooted phone.** Started without root (wireless debugging),
+  Shizuku stops as soon as the phone connects to the car: switching the USB port to accessory mode
+  restarts Android's debugging service, which Shizuku runs under. BetterAuto then falls back to
+  copying. Wireless Android Auto (planned) won't have this limit.
+- Without root, Shizuku must be started again after every phone restart. Keep *Developer options*
+  and *USB debugging* on, enable *Disable adb authorization timeout* (Android 11+) and let Shizuku run
+  in the background (see the [Shizuku guide](https://shizuku.rikka.app/guide/setup/)).
 
 ## Status
 

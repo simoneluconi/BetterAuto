@@ -22,6 +22,7 @@ import com.simoneluconi.betterauto.aap.AapSession
 import com.simoneluconi.betterauto.aap.AapTls
 import com.simoneluconi.betterauto.aap.ConnectionProblem
 import com.simoneluconi.betterauto.audio.CarAudio
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VehicleData
@@ -56,6 +57,7 @@ class AapService : Service() {
         CarAudio.init(this)
         // The car's vendor channel reads the Exlap switch and credentials from here
         ExlapSettings.get(this)
+        ShizukuAudio.init()
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(detached, filter, RECEIVER_EXPORTED) else registerReceiver(detached, filter)
@@ -198,7 +200,8 @@ class AapService : Service() {
             .setContentIntent(
                 PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             )
-        if (CarAudio.hasProjection) {
+        // Moved through Shizuku or copied with the capture consent: either way the car has the sound
+        if (CarAudio.hasProjection || CarAudio.movesAudio) {
             builder.setContentText(getString(R.string.notification_text))
         } else {
             // Without capture consent (declined, or not pre-approved via ADB) offer a way to grant it later

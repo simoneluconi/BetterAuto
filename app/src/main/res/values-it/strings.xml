@@ -96,6 +96,9 @@
     <string name="home_plug_in">Collega il telefono all\'auto con il cavo USB</string>
     <string name="setup_title">Configurazione</string>
     <string name="setup_progress">%1$d di %2$d pronti</string>
+    <string name="setup_all_ready">Tutto pronto</string>
+    <string name="setup_todo">%1$d da fare</string>
+    <string name="setup_count">%1$d/%2$d</string>
     <string name="step_ready">Pronto</string>
     <string name="step_todo">Da fare</string>
     <string name="step_optional">Facoltativo</string>
@@ -107,8 +110,17 @@
     <string name="step_audio_text_todo">Consenti l\'accesso all\'audio per sentire la musica in auto.</string>
     <string name="step_audio_text_ask">Funziona già, ma Android chiede il permesso a ogni collegamento. Per saltarlo, esegui una volta da un computer:</string>
     <string name="step_audio_text_done">Tutto pronto: la musica passa all\'auto da sola quando ti colleghi.</string>
+    <string name="step_audio_text_shizuku">Tutto pronto, tramite Shizuku: il suono passa all\'auto senza richieste e senza icona di condivisione schermo.</string>
     <string name="step_android_auto_title">Android Auto disattivato</string>
     <string name="step_android_auto_text_todo">Android Auto è attivo e si prende la connessione con l\'auto. Apri la sua pagina e tocca Disattiva. Se il telefono non lo permette, esegui da un computer:</string>
+    <string name="step_shizuku_title">Shizuku (facoltativo)</string>
+    <string name="step_shizuku_purpose">Con Shizuku, BetterAuto sposta il suono del telefono verso l\'auto come l\'Android Auto ufficiale: niente richiesta di permesso, niente icona di condivisione schermo, l\'altoparlante del telefono non viene messo in muto, e suonano anche le app che vietano la copia. Con il cavo USB serve un telefono con root: senza root, Shizuku si ferma appena il telefono si collega all\'auto, e BetterAuto torna a copiare il suono.</string>
+    <string name="step_shizuku_text_missing">Senza, il suono viene copiato, con questi limiti. Shizuku è gratuito sul Play Store.</string>
+    <string name="step_shizuku_text_stopped">Installato ma non avviato: aprilo e avvialo. Senza root si ferma a ogni riavvio del telefono e ogni volta che il telefono si collega all\'auto col cavo.</string>
+    <string name="step_shizuku_text_allow">Avviato: consenti a BetterAuto di usarlo.</string>
+    <string name="step_shizuku_text_ready">Avviato, e BetterAuto ha il permesso di usarlo.</string>
+    <string name="action_get_shizuku">Scarica Shizuku</string>
+    <string name="action_open_shizuku">Apri Shizuku</string>
     <string name="step_android_auto_text_done">L\'auto si collega a BetterAuto.</string>
     <string name="action_allow">Consenti</string>
     <string name="action_open_settings">Apri impostazioni</string>

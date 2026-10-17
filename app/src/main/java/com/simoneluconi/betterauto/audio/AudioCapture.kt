@@ -12,8 +12,6 @@ import com.simoneluconi.betterauto.EventLog
 import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.roundToInt
-import kotlin.random.Random
 
 /**
  * Captures what media apps play on the phone, at the head unit's sample rate.
@@ -30,8 +28,6 @@ import kotlin.random.Random
 class AudioCapture(projection: MediaProjection, private val sink: AudioSink) {
     private val format = sink.format
     private val chunkFrames = format.sampleRate / CHUNKS_PER_SECOND
-    private val bytesPerSample = format.bits / 8
-    private val fullScale = ((1L shl (format.bits - 1)) - 1).toFloat()
     private val record: AudioRecord
     private val floatCapture: Boolean
 
@@ -96,24 +92,13 @@ class AudioCapture(projection: MediaProjection, private val sink: AudioSink) {
 
     private fun loopFloat() {
         val samples = FloatArray(chunkFrames * format.channels)
-        val maxValue = fullScale.toInt()
+        val quantizer = PcmQuantizer(format)
         while (running) {
             val n = record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
             if (n <= 0) continue
             val timestamp = SystemClock.elapsedRealtimeNanos() / 1000
-            val out = ByteArray(n * bytesPerSample)
-            var peak = 0f
-            for (i in 0 until n) {
-                val s = samples[i].coerceIn(-1f, 1f)
-                peak = max(peak, abs(s))
-                // TPDF dither: sum of two uniform values, 2 LSB peak-to-peak, decorrelates the error from the music
-                val dither = Random.nextFloat() - Random.nextFloat()
-                val value = (s * fullScale + dither).roundToInt().coerceIn(-maxValue - 1, maxValue)
-                val base = i * bytesPerSample
-                for (b in 0 until bytesPerSample) out[base + b] = (value shr (8 * b)).toByte()
-            }
-            // Silence check before dither, so dither noise alone never counts as sound
-            sink.onPcm(out, timestamp, peak < SILENCE)
+            val (out, silent) = quantizer.quantize(samples, n)
+            sink.onPcm(out, timestamp, silent)
         }
     }
 
@@ -131,15 +116,12 @@ class AudioCapture(projection: MediaProjection, private val sink: AudioSink) {
                 peak = max(peak, abs(sample))
                 i += 2
             }
-            sink.onPcm(buffer.copyOf(n), timestamp, peak < SILENCE * 32768f)
+            sink.onPcm(buffer.copyOf(n), timestamp, peak < PcmQuantizer.SILENCE * 32768f)
         }
     }
 
-    private companion object {
+    companion object {
         /** 20 ms chunks: low latency, still few messages per second. */
         const val CHUNKS_PER_SECOND = 50
-
-        /** About -78 dBFS. */
-        const val SILENCE = 4f / 32768f
     }
 }
