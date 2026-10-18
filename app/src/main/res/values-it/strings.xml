@@ -306,7 +306,7 @@
     <string name="vehicle_data_offered">Tipi di dati condivisi</string>
     <string name="vehicle_exlap">Dati aggiuntivi (Exlap)</string>
     <string name="exlap_title">Dati gruppo Volkswagen (Exlap)</string>
-    <string name="exlap_hint">Le autoradio VW, Audi, SEAT, Škoda e Porsche possono condividere dati aggiuntivi del veicolo tramite Exlap, mostrati in auto in Veicolo, Tutti i dati. BetterAuto li legge soltanto e non manda mai comandi all\'auto. Serve un accesso Exlap: la password resta su questo telefono, cifrata.</string>
+    <string name="exlap_hint">Le autoradio VW, Audi, SEAT, Škoda e Porsche possono condividere dati aggiuntivi del veicolo tramite Exlap, mostrati in auto in Veicolo.</string>
     <string name="exlap_enable">Usa Exlap</string>
     <string name="exlap_user">Utente</string>
     <string name="exlap_password">Password</string>

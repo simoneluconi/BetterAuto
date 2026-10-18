@@ -306,7 +306,7 @@
     <string name="vehicle_data_offered">Kinds of data shared</string>
     <string name="vehicle_exlap">Extra data (Exlap)</string>
     <string name="exlap_title">Volkswagen group data (Exlap)</string>
-    <string name="exlap_hint">VW, Audi, SEAT, Škoda and Porsche head units can share extra vehicle data through Exlap, shown in the car under Vehicle, All data. BetterAuto only reads it and never sends commands to the car. It needs an Exlap login: the password stays on this phone, encrypted.</string>
+    <string name="exlap_hint">VW, Audi, SEAT, Škoda and Porsche head units can share extra vehicle data through Exlap, shown in the car under Vehicle.</string>
     <string name="exlap_enable">Use Exlap</string>
     <string name="exlap_user">User</string>
     <string name="exlap_password">Password</string>
