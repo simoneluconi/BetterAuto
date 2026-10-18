@@ -181,6 +181,8 @@ class BluetoothChannel(
         thread(name = "aap-bluetooth-confirm") {
             val done = ShizukuAudio.confirmPairing(context, carAddress)
             EventLog.log(if (done) "Bluetooth: pairing confirmed through Shizuku" else "Bluetooth: confirm the pairing on the phone")
+            // The car asks for contacts and messages right after: answered before it does, so no dialogs either
+            if (done && ShizukuAudio.allowCarAccess(context, carAddress)) EventLog.log("Bluetooth: contacts and messages allowed for the car")
         }
     }
 

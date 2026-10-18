@@ -28,6 +28,9 @@ interface IAudioRouter {
     /** Answers the pairing in progress with this device, as the user would in Android's dialog. */
     boolean confirmPairing(String address, boolean accept) = 6;
 
+    /** Lets the car read contacts and messages, as the user would allow in the dialogs that follow a pairing. */
+    boolean allowCarAccess(String address) = 7;
+
     /** Called by Shizuku when the app unbinds for good (fixed transaction id from the Shizuku API). */
     void destroy() = 16777114;
 }

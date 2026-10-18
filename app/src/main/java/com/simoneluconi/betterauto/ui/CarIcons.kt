@@ -36,6 +36,8 @@ object CarIcons {
     val Previous = icon("M5 19V5", filled = listOf("M19 20L9 12l10-8v16z"))
     val Next = icon("M19 5v14", filled = listOf("M5 4l10 8-10 8V4z"))
     val Play = icon(filled = listOf("M7 4l13 8-13 8V4z"))
+    val FastForward = icon(filled = listOf("M2 5l10 7-10 7V5z", "M12 5l10 7-10 7V5z"))
+    val FastRewind = icon(filled = listOf("M22 5l-10 7 10 7V5z", "M12 5L2 12l10 7V5z"))
     val Pause = icon(
         filled = listOf(
             "M6.7 4h2.1a1.2 1.2 0 0 1 1.2 1.2v13.6a1.2 1.2 0 0 1-1.2 1.2H6.7a1.2 1.2 0 0 1-1.2-1.2V5.2A1.2 1.2 0 0 1 6.7 4z",

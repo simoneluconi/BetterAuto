@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
+import com.simoneluconi.betterauto.media.KeyScrub
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
@@ -107,16 +108,23 @@ class Projection(val context: Context) {
         val target = presentation ?: return@post
         // Media keys (steering wheel) act on the player directly, whatever has focus
         when (keyCode) {
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                if (down) NowPlaying.playPause()
+            // Play and pause as their own keys mean exactly that (some cars send them besides play/pause);
+            // play with no player around starts the last music app, as the screen's play button does
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (down) if (NowPlaying.isPlaying) NowPlaying.pause() else NowPlaying.resume()
                 return@post
             }
-            KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                if (down) NowPlaying.next()
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (down) NowPlaying.resume()
                 return@post
             }
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                if (down) NowPlaying.previous()
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (down) NowPlaying.pause()
+                return@post
+            }
+            // A short press changes track, holding runs through it (decided on release)
+            KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                if (down) KeyScrub.press(forward = keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) else KeyScrub.release()
                 return@post
             }
             // Steering wheel voice button

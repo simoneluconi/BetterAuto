@@ -22,7 +22,6 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
 import com.simoneluconi.betterauto.voice.VoiceAssistant
 import com.simoneluconi.betterauto.voice.VoiceState
-import com.simoneluconi.betterauto.exlap.ExlapSettings
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
@@ -34,11 +33,14 @@ import kotlin.concurrent.thread
  * Simulates head unit input and car state, for testing without a car:
  *   adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --ei rotary 1
  *   ... --ei key 23          press a key (23 = center, 4 = back)
+ *   ... --ei holdKey 87 --ei holdMs 4000   hold a key (87 next, 88 previous: runs through the track)
  *   ... --ez night true      the car's night-mode sensor (used when the theme is Auto)
  *   ... --es theme night     force the theme: day, night or auto
  *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
  *   ... --es tcp 192.0.2.10:5277  start a session with a head unit listening on the network (port 5277 if left out)
  *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
+ *   ... --es shizuku bluetooth  answer a pairing that is not happening through Shizuku: logs whether the shell
+ *                            side reaches Bluetooth ("false" is right, an exception is not)
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto
@@ -55,8 +57,6 @@ import kotlin.concurrent.thread
  *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
  *   ... --es rail "MAP:GROUP_1,VEHICLE:GROUP_1"  arrange the app bar (missing items keep their default;
  *                            "default" resets it)
- *   ... --es exlap_user USER --es exlap_password secret
- *                            set Exlap credentials and enable the feature (omit password to keep the saved one)
  *   ... --es problem certificate_rejected  the phone notification for a car that refused the connection
  *                            (any ConnectionProblem name; --ei code -3 and --es carMaker Volkswagen fill the
  *                            details, "off" removes it)
@@ -94,6 +94,9 @@ class DebugInputReceiver : BroadcastReceiver() {
         when (intent.getStringExtra("shizuku")) {
             "allow" -> ShizukuAudio.requestPermission()
             "probe" -> thread(name = "debug-shizuku") { probeShizuku(context) }
+            "bluetooth" -> thread(name = "debug-shizuku") {
+                EventLog.log("Debug: Shizuku Bluetooth answered ${ShizukuAudio.confirmPairing(context, "00:11:22:33:44:55")}")
+            }
         }
         intent.getStringExtra("units")?.let { name ->
             UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -102,13 +105,6 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("temperature")?.let { name ->
             TemperatureUnit.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setTemperatureUnit(it) }
-        }
-
-        intent.getStringExtra("exlap_user")?.let { user ->
-            val exlap = ExlapSettings.get(context)
-            val pw = intent.getStringExtra("exlap_password")
-            if (pw != null) exlap.setCredentials(user, pw) else exlap.renameUser(user)
-            exlap.setEnabled(true)
         }
 
         intent.getStringExtra("section")?.let { name ->
@@ -163,6 +159,16 @@ class DebugInputReceiver : BroadcastReceiver() {
             CarNotifications.simulate(intent.getStringExtra("from") ?: "Giulia", text, intent.getBooleanExtra("group", false))
         }
         intent.getStringExtra("screen")?.let { CarState.simulatedScreen.value = it.takeUnless { s -> s == "off" } }
+
+        // Next/previous held: straight to the scrubbing, which needs no car screen (the music player is enough)
+        val holdKey = intent.getIntExtra("holdKey", 0)
+        if (holdKey == android.view.KeyEvent.KEYCODE_MEDIA_NEXT || holdKey == android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS) {
+            com.simoneluconi.betterauto.media.KeyScrub.press(forward = holdKey == android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                { com.simoneluconi.betterauto.media.KeyScrub.release() },
+                intent.getIntExtra("holdMs", 3000).toLong(),
+            )
+        }
 
         val projection = Projection.active ?: return
         val rotary = intent.getIntExtra("rotary", 0)

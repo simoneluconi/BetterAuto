@@ -113,7 +113,8 @@ class AapService : Service() {
             val address = intent.getStringExtra(EXTRA_DEVICE)
             if (intent.getBooleanExtra(EXTRA_AUTO, false) && (session != null || connecting != null || pendingRetry != null)) {
                 // The car came into range while the phone is already with it (or with another, by cable)
-                if (session == null && connecting == null) stopSelf()
+                // Nothing to do, but a retry may be waiting: the service must stay for it
+                if (session == null && connecting == null && pendingRetry == null) stopSelf()
                 return START_NOT_STICKY
             }
             cancelRetry()

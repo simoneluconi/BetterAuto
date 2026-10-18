@@ -25,7 +25,6 @@ object ShizukuAudio {
     enum class State { NOT_INSTALLED, NOT_RUNNING, NOT_ALLOWED, READY }
 
     private const val PERMISSION_REQUEST = 4242
-    private const val SERVICE_VERSION = 3
 
     private val _changes = MutableStateFlow(0)
     /** Bumps when Shizuku starts, stops or answers a permission request: re-read [state]. */
@@ -72,7 +71,14 @@ object ShizukuAudio {
         .daemon(false)
         .processNameSuffix("audio")
         .debuggable(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
-        .version(SERVICE_VERSION)
+        .version(serviceVersion(context))
+
+    /**
+     * Shizuku keeps the service process running until its version changes: tied to when the app was
+     * installed, so that an update always runs its own shell-side code, not the previous one's.
+     */
+    private fun serviceVersion(context: Context): Int =
+        runCatching { (context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / 1000).toInt() }.getOrDefault(1)
 
     /** Starts the shell-user service and waits for it; null when Shizuku is not ready or it does not come up. */
     fun connect(context: Context, timeoutMs: Long = 5000): Connection? {
@@ -121,7 +127,19 @@ object ShizukuAudio {
 
     /** Confirms the pairing in progress with [address] without Android's dialog; false without Shizuku. */
     fun confirmPairing(context: Context, address: String): Boolean =
-        state(context) == State.READY && withService(context) { it.confirmPairing(address, true) } == true
+        state(context) == State.READY && withService(context) { service ->
+            service.confirmPairing(address, true).also { done ->
+                if (!done) EventLog.log("Bluetooth: Shizuku could not confirm (${runCatching { service.status() }.getOrDefault("?")})")
+            }
+        } == true
+
+    /** Contacts and messages for the car without Android's two dialogs; false without Shizuku. */
+    fun allowCarAccess(context: Context, address: String): Boolean =
+        state(context) == State.READY && withService(context) { service ->
+            service.allowCarAccess(address).also { done ->
+                if (!done) EventLog.log("Bluetooth: Shizuku could not allow the car's access (${runCatching { service.status() }.getOrDefault("?")})")
+            }
+        } == true
 
     /**
      * Runs [block] on the shell service, binding it for the call only, without touching an audio routing

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.media.KeyScrub
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.media.Track
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -463,9 +464,12 @@ private fun Transport(track: Track, playSize: Dp) {
         ) {
             CarIcon(CarIcons.Previous, colors.text, Modifier.size(skipSize * 0.5f))
         }
+        // While a held car key runs through the track the player pauses at each jump: show where it goes
+        // instead of play and pause flickering
+        val running by KeyScrub.running.collectAsStateWithLifecycle()
         // Circle while playing, rounded square while paused
         val corner by animateIntAsState(
-            targetValue = if (track.playing) 50 else 28,
+            targetValue = if (track.playing || running != 0) 50 else 28,
             animationSpec = spring(dampingRatio = 0.5f, stiffness = 300f),
             label = "playCorner",
         )
@@ -482,8 +486,14 @@ private fun Transport(track: Track, playSize: Dp) {
                 .size(playSize),
             contentAlignment = Alignment.Center,
         ) {
-            Crossfade(track.playing, animationSpec = tween(180), label = "playIcon") { playing ->
-                CarIcon(if (playing) CarIcons.Pause else CarIcons.Play, colors.onAlbum, Modifier.size(playSize * 0.4f))
+            val icon = when {
+                running > 0 -> CarIcons.FastForward
+                running < 0 -> CarIcons.FastRewind
+                track.playing -> CarIcons.Pause
+                else -> CarIcons.Play
+            }
+            Crossfade(icon, animationSpec = tween(180), label = "playIcon") {
+                CarIcon(it, colors.onAlbum, Modifier.size(playSize * 0.4f))
             }
         }
         Box(

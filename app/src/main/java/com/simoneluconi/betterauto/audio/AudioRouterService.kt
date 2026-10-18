@@ -2,6 +2,7 @@ package com.simoneluconi.betterauto.audio
 
 import android.content.AttributionSource
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.ContextWrapper
@@ -144,10 +145,45 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     /** Needs BLUETOOTH_PRIVILEGED, which the shell user holds: called as this process, with the shell's identity. */
     override fun confirmPairing(address: String, accept: Boolean): Boolean = asShell {
         runCatching {
-            val adapter = shellContext.getSystemService(BluetoothManager::class.java)?.adapter ?: return@runCatching false
-            adapter.getRemoteDevice(address).setPairingConfirmation(accept)
-        }.getOrDefault(false)
+            shellBluetooth().getRemoteDevice(address).setPairingConfirmation(accept)
+        }.onSuccess { lastStatus = "pairing answered: $it" }
+            .onFailure { lastStatus = "pairing not answered: $it" }
+            .getOrDefault(false)
     }
+
+    /** System APIs (BLUETOOTH_PRIVILEGED): by reflection, like the audio policy ones. */
+    override fun allowCarAccess(address: String): Boolean = asShell {
+        runCatching {
+            val device = shellBluetooth().getRemoteDevice(address)
+            val allowed = BluetoothDevice::class.java.getField("ACCESS_ALLOWED").getInt(null)
+            listOf("setPhonebookAccessPermission", "setMessageAccessPermission").map { name ->
+                BluetoothDevice::class.java.getMethod(name, Int::class.javaPrimitiveType).invoke(device, allowed) == true
+            }.all { it }
+        }.onSuccess { lastStatus = "car access allowed: $it" }
+            .onFailure { lastStatus = "car access not allowed: $it" }
+            .getOrDefault(false)
+    }
+
+    /**
+     * The Bluetooth adapter as the shell user. A process started by Shizuku skips the app startup that hooks
+     * Bluetooth up ("BluetoothServiceManager is null"), so that is done here once; and the manager is built
+     * on the shell's identity, which the Bluetooth service checks against the calling uid.
+     */
+    private fun shellBluetooth(): BluetoothAdapter {
+        if (!bluetoothHooked) {
+            runCatching {
+                val serviceManager = Class.forName("android.os.BluetoothServiceManager")
+                Class.forName("android.bluetooth.BluetoothFrameworkInitializer")
+                    .getMethod("setBluetoothServiceManager", serviceManager)
+                    .invoke(null, serviceManager.getDeclaredConstructor().newInstance())
+            } // already hooked up by this process: fine
+            bluetoothHooked = true
+        }
+        val manager = BluetoothManager::class.java.getDeclaredConstructor(Context::class.java).newInstance(shellContext)
+        return manager.adapter ?: error("no Bluetooth adapter")
+    }
+
+    private var bluetoothHooked = false
 
     /** `cmd wifi` takes it from the shell user, which this process is; the phone forgets it when it restarts. */
     override fun setDualWifi(on: Boolean): String = runCatching {
