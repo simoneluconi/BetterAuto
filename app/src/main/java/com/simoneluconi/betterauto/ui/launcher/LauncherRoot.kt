@@ -262,11 +262,21 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 )
             }
             VoiceScrim(Modifier.fillMaxSize())
-            VoiceOverlay(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
+            // Centered over the screen beside the app bar, where the driver looks, not over the whole frame
+            val besideRail = when {
+                current != null -> Modifier
+                left -> Modifier.padding(start = RAIL_WIDTH)
+                else -> Modifier.padding(bottom = RAIL_HEIGHT)
+            }
+            VoiceOverlay(Modifier.align(Alignment.BottomCenter).then(besideRail).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
             // No banner over a call, nor on the notifications screen itself
             if (shownCall == null && section != Section.NOTIFICATIONS) {
                 // At the very top, over the status bar, where it hides the least
-                NotificationBanner(settings, Modifier.align(Alignment.TopCenter).padding(top = 10.dp, start = 24.dp, end = 24.dp))
+                NotificationBanner(
+                    settings,
+                    Modifier.align(Alignment.TopCenter).then(if (left) Modifier.padding(start = RAIL_WIDTH) else Modifier)
+                        .padding(top = 10.dp, start = 24.dp, end = 24.dp),
+                )
             }
             if (debug) DebugOverlay(Modifier.align(Alignment.TopEnd).padding(top = 88.dp, end = 28.dp))
         }

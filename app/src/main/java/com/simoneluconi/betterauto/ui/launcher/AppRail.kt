@@ -112,7 +112,7 @@ fun AppRail(
             else drawLine(colors.line, Offset(0f, 0f), Offset(size.width, 0f), stroke)
         }
         .padding(16.dp)
-    BoxWithConstraints(if (vertical) surface.fillMaxHeight().width(112.dp) else surface.fillMaxWidth().height(104.dp)) {
+    BoxWithConstraints(if (vertical) surface.fillMaxHeight().width(RAIL_WIDTH) else surface.fillMaxWidth().height(RAIL_HEIGHT)) {
         // Media apps take the room left by the sections, never pushing Settings out of the screen
         val length = if (vertical) maxHeight else maxWidth
         val free = ((length - SLOT * (buttons.size + 1) - DIVIDER) / SLOT).toInt().coerceIn(0, MAX_APPS)
@@ -306,3 +306,7 @@ private fun RailDivider(vertical: Boolean) {
             .background(colors.line, RoundedCornerShape(1.dp))
     )
 }
+
+/** The app bar's size on the left and at the bottom: what floats over the screen centers beside it. */
+internal val RAIL_WIDTH = 112.dp
+internal val RAIL_HEIGHT = 104.dp
