@@ -4,8 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BetterAuto</title>
-<!-- Home Assistant sign-in: this page is BetterAuto's client_id, the app gets the answer back here -->
-<link rel="redirect_uri" href="betterauto://ha-auth">
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
@@ -14,8 +12,8 @@
 <body>
 <h1>BetterAuto</h1>
 <p>The phone side of Android Auto: its own car launcher, streamed to the car.</p>
-<p>This page identifies BetterAuto when you sign in to your Home Assistant from the app.
-Nothing is stored here.</p>
+<p>The pages under <code>auth/</code> identify BetterAuto when you sign in to a service from the app,
+one per service. Nothing is stored here.</p>
 <p><a href="https://github.com/simoneluconi/BetterAuto">Source code on GitHub</a></p>
 </body>
 </html>
