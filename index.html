@@ -4,16 +4,146 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BetterAuto</title>
+<meta name="description" content="A car launcher for Android Auto screens, with the Android Auto protocol written from scratch.">
+<meta property="og:title" content="BetterAuto">
+<meta property="og:description" content="A car launcher for Android Auto screens, with the Android Auto protocol written from scratch.">
+<meta property="og:image" content="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/01_home_music.jpg">
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+  /* The car's own palettes: night by default, day when the device is light */
+  :root {
+    --bg: #090B0E; --surface: #14171C; --surface2: #1C2128; --line: #2A303A;
+    --text: #F3F5F8; --text2: #A9B1BE; --accent: #5EA8FF;
+    --shadow: 0 24px 60px rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #E7EBF0; --surface: #FFFFFF; --surface2: #F1F3F6; --line: #D3D9E1;
+      --text: #0F1318; --text2: #4A5462; --accent: #0B63CE;
+      --shadow: 0 24px 60px rgba(15, 19, 24, .18);
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 600px) { .wrap { padding: 0 16px; } }
+
+  header { padding: 72px 0 40px; text-align: center; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--text2); font-size: 14px; font-weight: 600;
+  }
+  .badge svg { width: 18px; height: 18px; }
+  h1 { font-size: clamp(44px, 8vw, 76px); line-height: 1.02; margin: 22px 0 14px; font-weight: 800; letter-spacing: -.02em; }
+  .tagline { font-size: clamp(18px, 2.4vw, 22px); color: var(--text2); max-width: 40rem; margin: 0 auto; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px; border-radius: 999px;
+    font-weight: 700; background: var(--surface); border: 1px solid var(--line); color: var(--text);
+  }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .button:hover { text-decoration: none; filter: brightness(1.08); }
+  .button svg { width: 20px; height: 20px; }
+
+  .repo { margin: 18px 0 0; font-size: 15px; font-weight: 600; }
+  .screen {
+    margin: 48px auto 0; max-width: 980px; padding: 10px; border-radius: 28px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .screen img { display: block; width: 100%; height: auto; border-radius: 20px; }
+
+  section { padding: 56px 0 8px; }
+  h2 { font-size: 26px; font-weight: 800; margin: 0 0 22px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 22px; }
+  .card svg { width: 30px; height: 30px; color: var(--accent); }
+  .card h3 { font-size: 20px; margin: 14px 0 6px; }
+  .card p { margin: 0; color: var(--text2); }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+  .gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 8px; }
+  .gallery img { display: block; width: 100%; height: auto; border-radius: 18px; }
+  .gallery figcaption { padding: 10px 10px 6px; color: var(--text2); font-weight: 600; font-size: 15px; }
+
+  .note {
+    margin-top: 56px; padding: 18px 22px; border-radius: 20px; background: var(--surface2);
+    border: 1px solid var(--line); color: var(--text2); font-size: 15px;
+  }
+  footer { padding: 40px 0 56px; color: var(--text2); font-size: 14px; text-align: center; }
+  footer a { color: var(--text2); text-decoration: underline; }
 </style>
 </head>
 <body>
-<h1>BetterAuto</h1>
-<p>The phone side of Android Auto: its own car launcher, streamed to the car.</p>
-<p>The pages under <code>auth/</code> identify BetterAuto when you sign in to a service from the app,
-one per service. Nothing is stored here.</p>
-<p><a href="https://github.com/simoneluconi/BetterAuto">Source code on GitHub</a></p>
+<!-- Stroke icons: the same 24 px drawings as the app's car icons -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-car" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18v2H3z"/><path d="M5 11h14"/></g></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></g></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></g></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/></g></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></g></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></g></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></g></symbol>
+  </defs>
+</svg>
+
+<header class="wrap">
+  <span class="badge"><svg><use href="#i-car"/></svg>Open source · Experimental</span>
+  <h1>BetterAuto</h1>
+  <p class="tagline">Your own car launcher on the Android Auto screen. Calm, big and easy to read at a glance,
+    with the Android Auto protocol written from scratch.</p>
+  <div class="actions">
+    <a class="button primary" href="https://github.com/simoneluconi/BetterAuto"><svg><use href="#i-code"/></svg>GitHub repository</a>
+    <a class="button" href="https://github.com/simoneluconi/BetterAuto#readme"><svg><use href="#i-book"/></svg>How it works</a>
+  </div>
+  <p class="repo"><a href="https://github.com/simoneluconi/BetterAuto">github.com/simoneluconi/BetterAuto</a></p>
+  <div class="screen">
+    <img src="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/01_home_music.jpg"
+         alt="The BetterAuto home screen on a car display, with the music player" width="1920" height="1080">
+  </div>
+</header>
+
+<main class="wrap">
+  <section aria-labelledby="what">
+    <h2 id="what">Made for the road</h2>
+    <div class="grid">
+      <div class="card"><svg><use href="#i-home"/></svg><h3>A home of widgets</h3><p>Only what helps while driving, arranged the way you like.</p></div>
+      <div class="card"><svg><use href="#i-music"/></svg><h3>Your music</h3><p>Whatever plays on the phone, with big controls and its own colors.</p></div>
+      <div class="card"><svg><use href="#i-phone"/></svg><h3>Calls and messages</h3><p>Contacts, calls and notifications, readable without looking twice.</p></div>
+      <div class="card"><svg><use href="#i-car"/></svg><h3>Your car</h3><p>What the car shares, in plain words.</p></div>
+      <div class="card"><svg><use href="#i-mic"/></svg><h3>Voice</h3><p>Hands on the wheel: the car's microphone, understood by the phone.</p></div>
+      <div class="card"><svg><use href="#i-moon"/></svg><h3>Day and night</h3><p>Follows the car's lights, on any screen shape. Touch or rotary knob.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="look">
+    <h2 id="look">A look</h2>
+    <div class="gallery">
+      <figure><img loading="lazy" src="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/17_vehicle.jpg" alt="Vehicle overview" width="1920" height="1080"><figcaption>Vehicle</figcaption></figure>
+      <figure><img loading="lazy" src="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/21_voice_calling.jpg" alt="Calling a contact by voice" width="1920" height="1080"><figcaption>Voice</figcaption></figure>
+      <figure><img loading="lazy" src="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/10_call_active.jpg" alt="A call in progress" width="1920" height="1080"><figcaption>Calls</figcaption></figure>
+      <figure><img loading="lazy" src="https://raw.githubusercontent.com/simoneluconi/BetterAuto/main/docs/screenshots/12_home_night.jpg" alt="The home screen at night" width="1920" height="1080"><figcaption>At night</figcaption></figure>
+    </div>
+    <p style="color:var(--text2);margin:16px 4px 0">Screenshots from a test bench, with made-up data.
+      More in the <a href="https://github.com/simoneluconi/BetterAuto#readme">README</a>.</p>
+  </section>
+
+  <p class="note">A personal, experimental project, not affiliated with or endorsed by Google.
+    Android Auto is a trademark of Google LLC. Where it works and how to try it are explained in the
+    <a href="https://github.com/simoneluconi/BetterAuto#readme">README</a>.</p>
+</main>
+
+<footer class="wrap">
+  <a href="https://github.com/simoneluconi/BetterAuto">github.com/simoneluconi/BetterAuto</a>
+  · This site also hosts the pages BetterAuto uses to sign in to services.
+</footer>
 </body>
 </html>
