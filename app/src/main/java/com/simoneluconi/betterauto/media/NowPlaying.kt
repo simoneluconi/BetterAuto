@@ -41,8 +41,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -105,6 +111,18 @@ object NowPlaying {
 
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /**
+     * The app the Music section is tied to: [track]'s. It outlives the track by a few seconds, so a player
+     * briefly dropping its session (between tracks, on a restart) doesn't make the app bar jump.
+     */
+    @kotlin.OptIn(ExperimentalCoroutinesApi::class)
+    val followedApp: StateFlow<String?> = track
+        .map { it?.packageName }
+        .distinctUntilChanged()
+        .transformLatest { if (it == null) delay(FOLLOWED_GRACE_MS); emit(it) }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+    private const val FOLLOWED_GRACE_MS = 5_000L
     private lateinit var appContext: Context
     private var users = 0
     private var sessionManager: MediaSessionManager? = null
@@ -378,7 +396,7 @@ object NowPlaying {
         val packageName = c.connectedToken?.packageName ?: return
         val metadata = c.mediaMetadata
         val playing = c.isPlaying
-        updateArt(metadata, "${metadata.albumTitle}|${metadata.title}")
+        updateArt(metadata)
         val app = MediaApps.info(appContext, packageName)
         if (playing) LauncherSettings.get(appContext).markRecent(packageName)
         val timeline = c.currentTimeline
@@ -388,7 +406,7 @@ object NowPlaying {
             EventLog.log("Now playing: queue of ${timeline.windowCount} items, playing #${active + 1}")
         }
 
-        _track.value = Track(
+        val next = Track(
             packageName = packageName,
             appLabel = app?.label ?: packageName,
             appIcon = app?.icon,
@@ -416,8 +434,21 @@ object NowPlaying {
             },
             canSeek = c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
         )
-        rememberArtist(_track.value?.artist)
+        // Players report the same state over and over: an equal one keeps the old object, so the screens and
+        // the car's media status don't start over for nothing
+        if (!sameState(_track.value, next)) _track.value = next
+        rememberArtist(next.artist)
     }
+
+    /** Equal but for the position, which only moves on as [Track.positionAt] already predicts. */
+    private fun sameState(old: Track?, new: Track): Boolean {
+        if (old == null) return false
+        if (old != new.copy(positionMs = old.positionMs, positionUpdatedAt = old.positionUpdatedAt)) return false
+        return kotlin.math.abs(old.positionAt(new.positionUpdatedAt) - new.positionMs) <= POSITION_SLACK_MS
+    }
+
+    /** A report this close to the predicted position is the same playback, not a seek. */
+    private const val POSITION_SLACK_MS = 100L
 
     private val artists = ArrayDeque<String>()
 
@@ -504,7 +535,7 @@ object NowPlaying {
      * Album art and accent color, computed once per artwork the player sends, off the main thread.
      * Covers of thousands of pixels from local players are brought down to a size the screen can use.
      */
-    private fun updateArt(metadata: MediaMetadata, track: String) {
+    private fun updateArt(metadata: MediaMetadata) {
         val data = metadata.artworkData
         val uri = metadata.artworkUri
         val key: Any? = data ?: uri

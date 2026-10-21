@@ -198,6 +198,7 @@ private fun PhoneApps(item: AppsSetting, settings: LauncherSettings) {
             }
         }
     }
+    item.note?.let { CarLabel(stringResource(it), 14.sp, colors.text2, maxLines = 2) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

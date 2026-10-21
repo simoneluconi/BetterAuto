@@ -38,6 +38,14 @@ class UnitsTest {
     }
 
     @Test
+    fun consumptionAndVoltage() {
+        assertEquals("6,4 l/100 km", metric.consumption(6.4))
+        assertEquals("39.2 mpg", imperial.consumption(6.0))
+        assertEquals("47.1 mpg", Units(imperial = true, fahrenheit = false, locale = Locale.UK).consumption(6.0))
+        assertEquals("14,2 V", metric.voltage(14.2))
+    }
+
+    @Test
     fun autoFollowsThePhoneAndAChoiceOverridesIt() {
         val auto = Units.resolve(UnitSystem.AUTO, TemperatureUnit.AUTO, phoneImperial = true, phoneFahrenheit = false)
         assertTrue(auto.imperial)

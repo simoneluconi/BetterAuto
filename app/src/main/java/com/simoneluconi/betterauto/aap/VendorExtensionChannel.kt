@@ -1,12 +1,22 @@
 package com.simoneluconi.betterauto.aap
 
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.exlap.ExlapClient
 import com.simoneluconi.betterauto.exlap.ExlapSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * A car maker's own channel. Its payload is raw bytes, without the usual 2-byte message id; the only one
- * we speak is VW's Exlap ([ExlapClient]), and only when it is enabled in the phone settings.
+ * we speak is VW's Exlap ([ExlapClient]), and only when it is enabled in the phone settings. What Exlap
+ * follows tracks what the screens need ([VehicleData.demand]); a drop is applied only after a while, so
+ * going in and out of the vehicle screen does not churn subscriptions.
  */
 class VendorExtensionChannel(
     session: AapSession,
@@ -19,11 +29,24 @@ class VendorExtensionChannel(
         ?.takeIf { vendorName.contains("exlap", ignoreCase = true) }
         ?.let { settings -> ExlapClient(settings.credentials(), { settings.status.value = it }, ::sendRaw) }
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onOpened() {
         when {
             exlap == null -> EventLog.log("Vendor extension \"$vendorName\" opened, not used")
             ExlapSettings.current?.enabled?.value != true -> EventLog.log("Exlap: off in the phone settings")
-            else -> exlap.start()
+            else -> {
+                exlap.setDemand(VehicleData.demand.value)
+                exlap.start()
+                scope.launch {
+                    var applied = VehicleData.demand.value
+                    VehicleData.demand.collectLatest { wanted ->
+                        if (wanted < applied) delay(DEMAND_LINGER_MS)
+                        exlap.setDemand(wanted)
+                        applied = wanted
+                    }
+                }
+            }
         }
     }
 
@@ -37,6 +60,7 @@ class VendorExtensionChannel(
     }
 
     override fun close() {
+        scope.cancel()
         exlap?.stop()
     }
 
@@ -44,5 +68,10 @@ class VendorExtensionChannel(
     private fun sendRaw(text: String) {
         val bytes = text.toByteArray(Charsets.UTF_8)
         send(u16(bytes, 0), bytes.copyOfRange(2, bytes.size))
+    }
+
+    private companion object {
+        /** How long values no screen shows any more keep coming, in case the driver goes straight back. */
+        const val DEMAND_LINGER_MS = 30_000L
     }
 }

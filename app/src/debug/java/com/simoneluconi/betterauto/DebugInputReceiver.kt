@@ -5,13 +5,16 @@ import android.content.Context
 import android.content.Intent
 import aap_protobuf.service.inputsource.message.PointerActionOuterClass.PointerAction
 import aap_protobuf.service.inputsource.message.TouchEventOuterClass.TouchEvent
+import aap_protobuf.shared.InstrumentClusterInputOuterClass.InstrumentClusterInput.InstrumentClusterAction
 import com.simoneluconi.betterauto.aap.ConnectionProblem
+import com.simoneluconi.betterauto.aap.PhoneStatusChannel
 import com.simoneluconi.betterauto.aap.VideoChannel
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.TemperatureUnit
 import com.simoneluconi.betterauto.car.UnitSystem
-import com.simoneluconi.betterauto.car.Timed
 import com.simoneluconi.betterauto.car.VehicleData
+import com.simoneluconi.betterauto.car.VehicleField
+import com.simoneluconi.betterauto.car.VehicleSource
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
@@ -49,12 +52,17 @@ import kotlin.concurrent.thread
  *   ... --es section music   open a section: home, music, map, phone or settings
  *   ... --es layout trio     home layout: single, split or trio
  *   ... --ez musicPanel true music section with the library panel (false = full-screen player)
- *   ... --es call ringing    pretend call: ringing, dialing, active, holding, ended or off
+ *   ... --es call ringing    pretend call: ringing, dialing, active, holding, ended or off; it also goes to the
+ *                            car's phone status channel (cluster), and the call screen's mute and hold change it
+ *   ... --es cluster call    a button pressed on the car's display, as the phone status channel gets it:
+ *                            call or enter answers a ringing call (any InstrumentClusterAction name)
  *   ... --es notify "Text"   pretend message (add --es from "Name" and --ez group true for a group chat)
  *   ... --ez demo true       show only pretend notifications (screenshots without personal data)
  *   ... --ez clearDemo true  remove the pretend notifications
  *   ... --es vehicle demo    pretend car data on the vehicle screen ("off" clears it, "diagnostics" opens the codes);
- *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them)
+ *                            --es dtc "P0300,P0171" sets the fault codes ("" clears them);
+ *                            --es passenger on: someone in the front passenger seat ("rear": only in the back,
+ *                            "off": the driver alone, "none": no occupancy reported), for the notification privacy
  *   ... --es rail "MAP:GROUP_1,VEHICLE:GROUP_1"  arrange the app bar (missing items keep their default;
  *                            "default" resets it)
  *   ... --es problem certificate_rejected  the phone notification for a car that refused the connection
@@ -144,6 +152,12 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("call")?.let { name ->
             Calls.simulate(CallPhase.entries.firstOrNull { it.name.equals(name, ignoreCase = true) })
         }
+        intent.getStringExtra("cluster")?.let { name ->
+            InstrumentClusterAction.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
+                EventLog.log("Phone status: input $it (debug)")
+                PhoneStatusChannel.onClusterAction(it)
+            }
+        }
         when (intent.getStringExtra("vehicle")) {
             "demo" -> VehicleData.simulate()
             "off" -> VehicleData.clear()
@@ -151,7 +165,17 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         intent.getStringExtra("dtc")?.let { codes ->
             val list = codes.split(',', ' ').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
-            VehicleData.update { it.copy(diagnostics = Timed(list)) }
+            VehicleData.publish(VehicleSource.DEMO, VehicleField.FaultCodes of list)
+        }
+        // Pretend occupancy, as a car source would report it: drives the notification privacy on Auto
+        intent.getStringExtra("passenger")?.let { who ->
+            val (front, rear) = when (who) {
+                "on" -> true to false
+                "rear" -> false to true
+                "off" -> false to false
+                else -> null to null
+            }
+            VehicleData.publish(VehicleSource.DEMO, VehicleField.PassengerPresent of front, VehicleField.RearOccupied of rear)
         }
         if (intent.getBooleanExtra("clearDemo", false)) CarNotifications.clearSimulated()
         if (intent.hasExtra("demo")) CarNotifications.demoOnly = intent.getBooleanExtra("demo", false)

@@ -34,10 +34,16 @@ class AapProtocolTest {
         assertEquals("TLSv1.2", headUnit.session.protocol)
 
         val fromHeadUnit = "service discovery".toByteArray()
-        assertArrayEquals(fromHeadUnit, phone.decrypt(wrap(headUnit, fromHeadUnit)))
+        val record = wrap(headUnit, fromHeadUnit)
+        val opened = phone.decrypt(record, 0, record.size)
+        assertArrayEquals(fromHeadUnit, ByteArray(opened.remaining()).also { opened.get(it) })
 
-        val fromPhone = ByteArray(Aap.MAX_FRAME_PAYLOAD) { it.toByte() }
-        assertArrayEquals(fromPhone, unwrap(headUnit, phone.encrypt(fromPhone)))
+        // A frame's id and payload are sealed from separate buffers, into one record
+        val id = byteArrayOf(0, 5)
+        val fromPhone = ByteArray(Aap.MAX_FRAME_PAYLOAD - 2) { it.toByte() }
+        val sealed = ByteBuffer.allocate(phone.sealedSize(id.size + fromPhone.size))
+        phone.encrypt(arrayOf(ByteBuffer.wrap(id), ByteBuffer.wrap(fromPhone)), sealed)
+        assertArrayEquals(id + fromPhone, unwrap(headUnit, sealed.array().copyOf(sealed.position())))
     }
 
     @Test
@@ -75,6 +81,45 @@ class AapProtocolTest {
         assertEquals(Aap.FLAG_BULK or Aap.FLAG_ENCRYPTED, raw[1].toInt())
         val record = raw.copyOfRange(4, 4 + u16(raw, 2))
         assertArrayEquals(byteArrayOf(0, 5, 1, 2, 3), unwrap(headUnit, record))
+    }
+
+    @Test
+    fun largeEncryptedMessageIsSealedFrameByFrame() {
+        val phone = phoneTls()
+        val headUnit = headUnitEngine()
+        var toPhone = pump(headUnit, ByteArray(0))
+        while (!phone.handshakeComplete) toPhone = pump(headUnit, phone.handshake(toPhone))
+
+        val pipe = LoopbackTransport()
+        val payload = ByteArray(40_000) { (it * 13).toByte() }
+        FrameCodec(pipe, phone).write(AapMessage(3, 0x8001, payload, encrypted = true))
+
+        // Each frame holds one record of its slice of [id][payload]
+        val raw = pipe.peek()
+        val opened = ByteArrayOutputStream()
+        var at = 0
+        while (at < raw.size) {
+            val first = (raw[at + 1].toInt() and Aap.FLAG_BULK) == Aap.FLAG_FIRST
+            val headerSize = if (first) 8 else 4
+            val size = u16(raw, at + 2)
+            opened.write(unwrap(headUnit, raw.copyOfRange(at + headerSize, at + headerSize + size)))
+            at += headerSize + size
+        }
+        assertArrayEquals(byteArrayOf(0x80.toByte(), 0x01) + payload, opened.toByteArray())
+    }
+
+    @Test
+    fun messagesReadInARowKeepTheirOwnPayload() {
+        val pipe = LoopbackTransport()
+        val codec = FrameCodec(pipe, phoneTls())
+        codec.write(AapMessage(1, 2, byteArrayOf(1, 2, 3), encrypted = false))
+        codec.write(AapMessage(1, 3, byteArrayOf(9, 8), encrypted = false))
+
+        val first = codec.read()
+        val second = codec.read()
+        assertArrayEquals(byteArrayOf(1, 2, 3), first.payload)
+        assertArrayEquals(byteArrayOf(9, 8), second.payload)
+        assertEquals(3, second.id)
     }
 
     @Test(expected = IOException::class)
@@ -164,7 +209,7 @@ class AapProtocolTest {
             readPos += len
         }
 
-        override fun write(data: ByteArray) = buffer.write(data)
+        override fun write(data: ByteArray, off: Int, len: Int) = buffer.write(data, off, len)
 
         override fun close() = Unit
     }

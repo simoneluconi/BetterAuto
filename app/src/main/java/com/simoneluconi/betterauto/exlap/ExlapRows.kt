@@ -17,7 +17,13 @@ fun exlapRows(values: Collection<ExlapValue>): List<Pair<String, String>> =
     }
 
 /** "vehicleSpeed" -> "Vehicle speed", "System_activeSource" -> "System active source". */
-fun readable(name: String): String =
-    name.replace(Regex("([a-z0-9])([A-Z])"), "$1 $2").replace('_', ' ').trim().lowercase().replaceFirstChar { it.uppercase() }
+fun readable(name: String): String = Labels.getOrPut(name) {
+    name.replace(WordStart, "$1 $2").replace('_', ' ').trim().lowercase().replaceFirstChar { it.uppercase() }
+}
+
+private val WordStart = Regex("([a-z0-9])([A-Z])")
+
+/** The car offers a fixed set of names, and rows are rebuilt on every update: each name is worked out once. */
+private val Labels = java.util.concurrent.ConcurrentHashMap<String, String>()
 
 private val DESCRIPTIVE = setOf("unit", "state")

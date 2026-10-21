@@ -1,6 +1,7 @@
 package com.simoneluconi.betterauto.exlap
 
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.car.VehicleDemand
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.StringReader
@@ -12,8 +13,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Client side of VW's Exlap (vehicle data as XML), read only: with [credentials] it logs in, lists what
- * the car offers to that user, subscribes to all of it and feeds [data]. It never calls the car's actions.
- * Without credentials it only asks what the server is.
+ * the car offers to that user, reads every object once (logged, to see what a car really sends) and
+ * then follows, by subscription, only the objects the screens need now ([setDemand]): who is aboard
+ * always, the overview's values while the vehicle screen is open, everything while its full list is.
+ * It never calls the car's actions. Without credentials it only asks what the server is.
  *
  * Every answer is matched to its request by id, so a user with fewer rights (objects answered with
  * noMatchingUrl, failed subscriptions) only gets less data, never a stuck session.
@@ -29,18 +32,26 @@ class ExlapClient(
     private val data: ExlapData = ExlapData,
     private val sessionId: String = randomSessionId(),
 ) {
-    private enum class Step { PROTOCOL, CHALLENGE, LOGIN, DIR, INTERFACE, SUBSCRIBE, BYE }
+    private enum class Step { PROTOCOL, CHALLENGE, LOGIN, DIR, INTERFACE, GET, SUBSCRIBE, UNSUBSCRIBE, BYE }
+
+    private class Pending(val step: Step, val url: String? = null)
 
     private val documents = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-    private val pending = HashMap<Int, Step>()
+    private val pending = HashMap<Int, Pending>()
     private var nextRequestId = 1
     private var beacons = 0
     private val members = ArrayList<ExlapValue>()
     private val objects = ArrayList<String>()
     private var refusedObjects = 0
-    private var refusedSubscriptions = 0
+    private val subscribed = LinkedHashSet<String>()
+    private val refusedSubscriptions = HashSet<String>()
+    private var loggedRefusals = 0
+    private var demand = VehicleDemand.NONE
+    /** Every object has been read once: from now on subscriptions follow the demand. */
+    private var ready = false
     private var buffer = ""
 
+    @Synchronized
     fun start() {
         onStatus(ExlapStatus(if (credentials == null) ExlapState.NO_CREDENTIALS else ExlapState.CONNECTING))
         EventLog.log("Exlap: connecting${if (credentials == null) ", no credentials (probe only)" else ""}")
@@ -49,7 +60,16 @@ class ExlapClient(
 
     fun stop() = data.clear()
 
+    /** What the screens need now; the subscriptions change to match once the first read is done. */
+    @Synchronized
+    fun setDemand(value: VehicleDemand) {
+        if (value == demand) return
+        demand = value
+        if (ready) follow()
+    }
+
     /** Text from the channel: it may hold several top-level elements, or only part of one. */
+    @Synchronized
     fun onText(text: String) {
         buffer += text
         while (true) {
@@ -83,17 +103,17 @@ class ExlapClient(
             // The server greets each new session; then the protocol and its capabilities are negotiated
             "Status" -> if (element.getElementsByTagName("Init").length > 0) request(Step.PROTOCOL, "<Protocol version=\"1\" returnCapabilities=\"true\"/>")
             "Rsp" -> {
-                val step = element.getAttribute("id").toIntOrNull()?.let { pending.remove(it) } ?: return
-                onResponse(step, element, element.getAttribute("status").ifEmpty { null })
+                val request = element.getAttribute("id").toIntOrNull()?.let { pending.remove(it) } ?: return
+                onResponse(request, element, element.getAttribute("status").ifEmpty { null })
             }
-            // Subscribed values, pushed up to 10 times a second
+            // Subscribed values, pushed as they change (at most every SUBSCRIPTION_INTERVAL_MS)
             "Dat" -> onData(element)
         }
     }
 
-    private fun onResponse(step: Step, rsp: Element, error: String?) {
+    private fun onResponse(request: Pending, rsp: Element, error: String?) {
         fun first(tag: String) = rsp.getElementsByTagName(tag).item(0) as Element?
-        when (step) {
+        when (request.step) {
             Step.PROTOCOL -> {
                 first("Capabilities")?.let { EventLog.log("Exlap: ${it.getAttribute("service")} ${it.getAttribute("version")}") }
                 if (credentials == null) request(Step.BYE, "<Bye/>") else request(Step.CHALLENGE, "<Authenticate phase=\"challenge\"/>")
@@ -107,13 +127,23 @@ class ExlapClient(
             }
             Step.DIR -> onUrlList(first("UrlList"), error)
             Step.INTERFACE -> onInterface(rsp, error)
+            Step.GET -> {
+                val found = rsp.getElementsByTagName("ObjectData")
+                for (i in 0 until found.length) (found.item(i) as Element).let { readValues(it.getAttribute("url").ifEmpty { request.url.orEmpty() }, it) }
+                if (pending.values.none { it.step == Step.GET }) firstReadDone()
+            }
             Step.SUBSCRIBE -> {
-                if (error != null) refusedSubscriptions++
-                if (pending.values.none { it == Step.SUBSCRIBE } && refusedSubscriptions > 0) {
-                    EventLog.log("Exlap: $refusedSubscriptions subscriptions refused for this user")
+                // Refused once, not asked again in this session
+                if (error != null) request.url?.let {
+                    subscribed -= it
+                    refusedSubscriptions += it
+                }
+                if (pending.values.none { it.step == Step.SUBSCRIBE } && refusedSubscriptions.size > loggedRefusals) {
+                    loggedRefusals = refusedSubscriptions.size
+                    EventLog.log("Exlap: $loggedRefusals subscriptions refused for this user")
                 }
             }
-            Step.BYE -> Unit
+            Step.UNSUBSCRIBE, Step.BYE -> Unit
         }
     }
 
@@ -135,10 +165,13 @@ class ExlapClient(
 
     private fun onUrlList(urlList: Element?, error: String?) {
         val matches = urlList?.getElementsByTagName("Match")
-        val urls = (0 until (matches?.length ?: 0)).map { (matches!!.item(it) as Element).getAttribute("url") }.filter { it.isNotEmpty() }
-        EventLog.log("Exlap: ${urls.size} objects offered${error?.let { " ($it)" } ?: ""}: ${urls.joinToString()}")
+        val all = (0 until (matches?.length ?: 0)).map { matches!!.item(it) as Element }.filter { it.getAttribute("url").isNotEmpty() }
+        // Functions are the car's actions: never called, so not even described
+        val (functions, data) = all.partition { it.getAttribute("type") == "function" }
+        val urls = data.map { it.getAttribute("url") }
+        EventLog.log("Exlap: ${urls.size} objects offered, ${functions.size} functions${error?.let { " ($it)" } ?: ""}: ${urls.joinToString()}")
         if (urls.isEmpty()) return finishSchema()
-        // Each object's members and units first, then the subscriptions
+        // Each object's members and units first, then one read of everything
         urls.forEach { request(Step.INTERFACE, "<Interface url=\"${escape(it)}\"/>", log = false) }
     }
 
@@ -153,46 +186,122 @@ class ExlapClient(
             var member = obj.firstChild
             while (member != null) {
                 (member as? Element)?.takeIf { it.getAttribute("name").isNotEmpty() }?.let {
-                    members += ExlapValue(url, it.getAttribute("name"), null, it.getAttribute("unit").ifEmpty { null }, it.getAttribute("description").ifEmpty { null })
+                    members += ExlapValue(
+                        url, it.getAttribute("name"), null, it.getAttribute("unit").ifEmpty { null },
+                        it.getAttribute("description").ifEmpty { null }, it.tagName,
+                    )
                 }
                 member = member.nextSibling
             }
         }
-        if (pending.values.none { it == Step.INTERFACE }) finishSchema()
+        if (pending.values.none { it.step == Step.INTERFACE }) finishSchema()
     }
 
     private fun finishSchema() {
         data.setSchema(members)
         val refused = if (refusedObjects > 0) ", $refusedObjects not readable with this user" else ""
-        EventLog.log("Exlap: subscribing to ${objects.size} objects, ${members.size} values$refused")
+        EventLog.log("Exlap: reading ${objects.size} objects once, ${members.size} values$refused")
         onStatus(ExlapStatus(ExlapState.LOGGED_IN, members.size))
-        // Subscribe only asks the car to push updates, it changes nothing
-        objects.forEach { request(Step.SUBSCRIBE, "<Subscribe url=\"${escape(it)}\" timeStamp=\"true\"/>", log = false) }
+        if (objects.isEmpty()) return firstReadDone()
+        // Get only reads, it changes nothing
+        objects.forEach { request(Step.GET, "<Get url=\"${escape(it)}\"/>", log = false, url = it) }
+    }
+
+    private fun firstReadDone() {
+        data.flush()
+        logFirstValues()
+        ready = true
+        follow()
+    }
+
+    /** Subscribes to what the demand needs and drops the rest. Subscribe only asks the car to push updates. */
+    private fun follow() {
+        val wanted = objects.filter { ExlapMapping.neededAt(it) <= demand && it !in refusedSubscriptions }.toSet()
+        val added = wanted - subscribed
+        val removed = subscribed - wanted
+        if (added.isEmpty() && removed.isEmpty()) return
+        for (url in removed) request(Step.UNSUBSCRIBE, "<Unsubscribe url=\"${escape(url)}\"/>", log = false, url = url)
+        for (url in added) request(Step.SUBSCRIBE, "<Subscribe url=\"${escape(url)}\" ival=\"$SUBSCRIPTION_INTERVAL_MS\"/>", log = false, url = url)
+        subscribed -= removed
+        subscribed += added
+        EventLog.log("Exlap: following ${subscribed.size} objects (${demand.name.lowercase(Locale.ROOT)})")
+    }
+
+    /**
+     * Once per session: the first value of every object, those we turn into vehicle data apart from the
+     * rest, so a log from a drive shows what this car sends. Objects that may hold personal data
+     * (places, VIN, phone, media) are named without their values.
+     */
+    private fun logFirstValues() {
+        val byUrl = data.current().values.groupBy { it.url }
+        val (mapped, other) = objects.partition { ExlapMapping.isMapped(it) }
+        logLines("first values, mapped", mapped.map { describe(it, byUrl[it].orEmpty()) })
+        logLines("first values, not mapped yet", other.map { describe(it, byUrl[it].orEmpty()) })
+    }
+
+    private fun describe(url: String, values: List<ExlapValue>): String {
+        if (ExlapMapping.isPrivate(url)) return "$url=(hidden)"
+        fun text(v: ExlapValue) = (v.value?.take(MAX_LOGGED_VALUE) ?: "-") + (v.unit?.let { " $it" } ?: "")
+        val single = values.singleOrNull()
+        return when {
+            values.isEmpty() -> "$url=?"
+            single != null && single.name.equals(url, ignoreCase = true) -> "$url=${text(single)}"
+            else -> "$url{${values.joinToString { "${it.name}=${text(it)}" }}}"
+        }
+    }
+
+    private fun logLines(title: String, items: List<String>) {
+        if (items.isEmpty()) return
+        val lines = ArrayList<StringBuilder>()
+        for (item in items) {
+            val last = lines.lastOrNull()
+            if (last == null || last.length + item.length > MAX_LOG_LINE) lines += StringBuilder(item) else last.append("; ").append(item)
+        }
+        lines.forEachIndexed { i, line -> EventLog.log("Exlap: $title (${i + 1}/${lines.size}): $line") }
     }
 
     private fun onData(dat: Element) {
-        readValues(dat)
+        readValues(dat.getAttribute("url"), dat)
         val nested = dat.getElementsByTagName("Dat")
-        for (i in 0 until nested.length) readValues(nested.item(i) as Element)
+        for (i in 0 until nested.length) (nested.item(i) as Element).let { readValues(it.getAttribute("url"), it) }
         data.flush()
     }
 
-    private fun readValues(dat: Element) {
-        val url = dat.getAttribute("url")
-        var child = dat.firstChild
+    private fun readValues(url: String, container: Element) {
+        if (url.isNotEmpty()) readMembers(url, container, "")
+    }
+
+    /** Simple members by name; objects and lists inside an object flattened as "obj.member", "list[0].member". */
+    private fun readMembers(url: String, parent: Element, prefix: String) {
+        var child = parent.firstChild
         while (child != null) {
-            (child as? Element)?.takeIf { it.getAttribute("name").isNotEmpty() }?.let {
-                val state = it.getAttribute("state")
-                val value = if (state == "nodata" || state == "error") null else it.getAttribute("val").ifEmpty { null }
-                data.update(url, it.getAttribute("name"), value)
+            (child as? Element)?.let { e ->
+                val name = e.getAttribute("name")
+                when {
+                    name.isEmpty() -> Unit
+                    e.tagName == "List" -> {
+                        var index = 0
+                        var item = e.firstChild
+                        while (item != null) {
+                            if (item is Element && item.tagName == "Elem") readMembers(url, item, "$prefix$name[${index++}].")
+                            item = item.nextSibling
+                        }
+                    }
+                    e.tagName == "Obj" || e.tagName == "Alt" -> readMembers(url, e, "$prefix$name.")
+                    else -> {
+                        val state = e.getAttribute("state")
+                        val value = if (state == "nodata" || state == "error") null else e.getAttribute("val").ifEmpty { null }
+                        data.update(url, prefix + name, value)
+                    }
+                }
             }
             child = child.nextSibling
         }
     }
 
-    private fun request(step: Step, body: String, log: Boolean = true) {
+    private fun request(step: Step, body: String, log: Boolean = true, url: String? = null) {
         val id = nextRequestId++
-        pending[id] = step
+        pending[id] = Pending(step, url)
         if (log) EventLog.log("Exlap: -> $body")
         send("<ExlapStatement session_id=\"$sessionId\"><Req id=\"$id\">$body</Req></ExlapStatement>")
     }
@@ -212,6 +321,10 @@ class ExlapClient(
 
     companion object {
         private const val MAX_BUFFER = 1 shl 20
+        /** Fast objects (speed, rpm) are pushed at most 4 times a second; slow ones come as they change. */
+        private const val SUBSCRIPTION_INTERVAL_MS = 250
+        private const val MAX_LOG_LINE = 900
+        private const val MAX_LOGGED_VALUE = 40
         private val TOP_LEVEL = Regex("""<ExlapStatement\b[\s\S]*?</ExlapStatement>|<ExlapBeacon\b[\s\S]*?</ExlapBeacon>|<ExlapConnection\w+\b[^>]*/>""")
 
         /** SHA-256 of user:password:nonce:cnonce, each field cut at 44 characters as the server does. */

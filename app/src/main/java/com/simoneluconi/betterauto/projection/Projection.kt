@@ -16,6 +16,7 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.KeyScrub
 import com.simoneluconi.betterauto.media.NowPlaying
+import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.voice.VoiceAssistant
@@ -43,6 +44,7 @@ class Projection(val context: Context) {
             virtualDisplay = display
             presentation = LauncherPresentation(context, display.display).also { it.show() }
             NowPlaying.acquire(context) // released by stop(), which checks for a presentation
+            CarNotifications.acquire()
             EventLog.log("Projection started: ${width}x$height @ $densityDpi dpi")
         } catch (e: Exception) {
             EventLog.log("Projection failed: $e")
@@ -54,9 +56,19 @@ class Projection(val context: Context) {
         presentation?.window?.decorView?.invalidate()
     }
 
+    /** False while the car shows its own screen: the launcher stops drawing; true brings it back up to date. */
+    fun setActive(active: Boolean) = main.post {
+        val target = presentation ?: return@post
+        target.setActive(active)
+        if (active) target.window?.decorView?.invalidate()
+    }
+
     fun stop() = main.post {
         if (active === this) active = null
-        if (presentation != null) NowPlaying.release()
+        if (presentation != null) {
+            NowPlaying.release()
+            CarNotifications.release()
+        }
         presentation?.dismiss()
         presentation = null
         virtualDisplay?.release()

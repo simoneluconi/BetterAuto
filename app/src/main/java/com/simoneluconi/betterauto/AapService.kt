@@ -14,10 +14,11 @@ import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.simoneluconi.betterauto.aap.AapSession
 import com.simoneluconi.betterauto.aap.AapTls
 import com.simoneluconi.betterauto.aap.ConnectionProblem
@@ -34,6 +35,7 @@ import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
 import com.simoneluconi.betterauto.transport.wireless.WirelessConnector
 import com.simoneluconi.betterauto.transport.wireless.WirelessState
 import com.simoneluconi.betterauto.transport.wireless.WirelessStep
+import com.simoneluconi.betterauto.voice.Speech
 import java.io.IOException
 import kotlin.concurrent.thread
 
@@ -86,7 +88,7 @@ class AapService : Service() {
         ShizukuAudio.init()
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(detached, filter, RECEIVER_EXPORTED) else registerReceiver(detached, filter)
+        ContextCompat.registerReceiver(this, detached, filter, ContextCompat.RECEIVER_EXPORTED)
     }
 
     /** Closing stops the encoder and the projection: off the main thread. The session thread then reports the end. */
@@ -311,12 +313,7 @@ class AapService : Service() {
 
     /** Turns the user's capture consent into a MediaProjection that feeds the car's media channel. */
     private fun startAudioCapture(intent: Intent) {
-        val data = if (Build.VERSION.SDK_INT >= 33) {
-            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_RESULT_DATA)
-        }
+        val data = IntentCompat.getParcelableExtra(intent, EXTRA_RESULT_DATA, Intent::class.java)
         if (data == null) {
             if (session == null) stopSelf()
             return
@@ -357,6 +354,7 @@ class AapService : Service() {
         EventLog.status = null
         CarState.reset()
         VehicleData.onDisconnected()
+        Speech.release()
         if (endedLink == Link.NETWORK && retryAfterWirelessEnd()) return
         stopSelf()
     }
@@ -498,9 +496,4 @@ class AapService : Service() {
 }
 
 internal fun Intent.accessoryExtra(): UsbAccessory? =
-    if (Build.VERSION.SDK_INT >= 33) {
-        getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
-    }
+    IntentCompat.getParcelableExtra(this, UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)

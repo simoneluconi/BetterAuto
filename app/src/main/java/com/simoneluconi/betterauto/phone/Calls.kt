@@ -40,6 +40,8 @@ data class CallInfo(
     val muted: Boolean,
     /** Other calls going on at the same time (call waiting, a call on hold). */
     val others: Int,
+    /** Part of a conference call. */
+    val conference: Boolean = false,
 )
 
 /**
@@ -50,6 +52,10 @@ data class CallInfo(
 object Calls {
     private val _current = MutableStateFlow<CallInfo?>(null)
     val current: StateFlow<CallInfo?> = _current
+
+    private val _all = MutableStateFlow<List<CallInfo>>(emptyList())
+    /** Every call going on, [current] first: the car's own displays list them all. */
+    val all: StateFlow<List<CallInfo>> = _all
 
     /** The driver put the call screen away; it comes back for the next ringing call. */
     val minimized = MutableStateFlow(false)
@@ -91,7 +97,7 @@ object Calls {
     internal fun onCallAdded(call: Call) {
         calls += call
         call.registerCallback(callback, main)
-        EventLog.log("Call ${call.tag()} added: ${stateName(call.stateCompat())}, ${call.details.handle?.schemeSpecificPart?.let(::mask)}")
+        EventLog.log("Call ${call.tag()} added: ${stateName(call.stateCompat())}, ${call.details.handle?.schemeSpecificPart?.let(::maskNumber)}")
         if (call.stateCompat() == Call.STATE_RINGING) minimized.value = false
         publish()
     }
@@ -143,16 +149,16 @@ object Calls {
         EventLog.log("Calls: simulated call ${phase ?: "removed"}")
         simulated = info
         if (phase == CallPhase.RINGING) minimized.value = false
-        _current.value = info
-        if (phase == CallPhase.ENDED) main.postDelayed({ if (_current.value === info) _current.value = null }, ENDED_SHOW_MS)
+        show(listOfNotNull(info))
+        if (info?.phase == CallPhase.ENDED) clearLater(info)
     }
 
     private fun updateSimulated(change: (CallInfo) -> CallInfo?): Boolean {
         val sim = simulated?.takeIf { _current.value === it } ?: return false
         val next = change(sim)
         simulated = next
-        _current.value = next
-        if (next?.phase == CallPhase.ENDED) main.postDelayed({ if (_current.value === next) _current.value = null }, ENDED_SHOW_MS)
+        show(listOfNotNull(next))
+        if (next?.phase == CallPhase.ENDED) clearLater(next)
         return true
     }
 
@@ -204,7 +210,7 @@ object Calls {
             EventLog.log("Calls: cannot call, CALL_PHONE not granted")
             return
         }
-        EventLog.log("Calls: placing call to ${mask(number)}")
+        EventLog.log("Calls: placing call to ${maskNumber(number)}")
         runCatching {
             context.getSystemService(TelecomManager::class.java)
                 .placeCall(Uri.fromParts("tel", number, null), Bundle())
@@ -225,12 +231,30 @@ object Calls {
             val last = lastShown
             if (last != null && last.phase != CallPhase.ENDED) {
                 val ended = last.copy(phase = CallPhase.ENDED)
-                _current.value = ended
+                show(listOf(ended))
                 lastShown = ended
-                main.postDelayed({ if (_current.value === ended) _current.value = null }, ENDED_SHOW_MS)
+                clearLater(ended)
             }
             return
         }
+        val others = calls.filter { it !== call && it.stateCompat() != Call.STATE_DISCONNECTED }
+        val info = info(call, others.size)
+        show(listOf(info) + others.map { info(it, others.size) })
+        lastShown = info
+    }
+
+    /** These calls are shown, the first one being [current]. */
+    private fun show(list: List<CallInfo>) {
+        _current.value = list.firstOrNull()
+        _all.value = list
+    }
+
+    /** A "call ended" goes away after a moment, unless something else was shown since. */
+    private fun clearLater(ended: CallInfo) {
+        main.postDelayed({ if (_current.value === ended) show(emptyList()) }, ENDED_SHOW_MS)
+    }
+
+    private fun info(call: Call, others: Int): CallInfo {
         val details = call.details
         val number = details.handle?.schemeSpecificPart
         val contact = number?.let { contactFor(it) }
@@ -241,7 +265,7 @@ object Calls {
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> CallPhase.ENDED
             else -> CallPhase.DIALING
         }
-        val info = CallInfo(
+        return CallInfo(
             id = System.identityHashCode(call),
             phase = phase,
             name = contact?.name ?: details.callerDisplayName?.takeIf { it.isNotBlank() }
@@ -253,10 +277,9 @@ object Calls {
             connectedAt = details.connectTimeMillis.takeIf { it > 0 } ?: 0L,
             canHold = details.can(Call.Details.CAPABILITY_HOLD) || details.can(Call.Details.CAPABILITY_SUPPORT_HOLD),
             muted = muted,
-            others = calls.count { it !== call && it.stateCompat() != Call.STATE_DISCONNECTED },
+            others = others,
+            conference = call.parent != null || details.hasProperty(Call.Details.PROPERTY_CONFERENCE),
         )
-        _current.value = info
-        lastShown = info
     }
 
     /** Contact for a number, looked up once in the background; the call is republished when found. */
@@ -278,9 +301,6 @@ object Calls {
 
     private fun Call.tag() = Integer.toHexString(System.identityHashCode(this))
 
-    /** Numbers are personal data: the log keeps only the last digits. */
-    private fun mask(number: String) = if (number.length <= 3) number else "…" + number.takeLast(3)
-
     private fun stateName(state: Int) = when (state) {
         Call.STATE_NEW -> "new"
         Call.STATE_RINGING -> "ringing"
@@ -299,3 +319,6 @@ object Calls {
 
     private const val ENDED_SHOW_MS = 2500L
 }
+
+/** Numbers are personal data: the log keeps only the last digits. */
+fun maskNumber(number: String) = if (number.length <= 3) number else "…" + number.takeLast(3)

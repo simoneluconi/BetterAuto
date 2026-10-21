@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -222,16 +223,15 @@ class WirelessConnector(private val context: Context) : Closeable {
             _status.value = state
         }
 
-        private const val PREFS = "wireless"
         private const val KEY_DEVICE = "device"
         private const val KEY_DUAL_WIFI = "dual_wifi"
 
         /** Stay on the phone's own WiFi while on the head unit's: set through Shizuku before each join. */
         fun dualWifi(context: Context): Boolean =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_DUAL_WIFI, false)
+            context.wirelessPrefs().getBoolean(KEY_DUAL_WIFI, false)
 
         fun setDualWifi(context: Context, value: Boolean) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_DUAL_WIFI, value) }
+            context.wirelessPrefs().edit { putBoolean(KEY_DUAL_WIFI, value) }
         }
 
         /** Runtime permissions wireless needs on this Android version. */
@@ -249,10 +249,13 @@ class WirelessConnector(private val context: Context) : Closeable {
 
         /** The head unit or dongle the driver picked, by Bluetooth address. */
         fun savedDevice(context: Context): String? =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DEVICE, null)
+            context.wirelessPrefs().getString(KEY_DEVICE, null)
 
         fun saveDevice(context: Context, address: String) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_DEVICE, address) }
+            context.wirelessPrefs().edit { putString(KEY_DEVICE, address) }
         }
     }
 }
+
+/** The wireless settings: the head unit, dual WiFi, auto-connect. */
+internal fun Context.wirelessPrefs(): SharedPreferences = getSharedPreferences("wireless", Context.MODE_PRIVATE)

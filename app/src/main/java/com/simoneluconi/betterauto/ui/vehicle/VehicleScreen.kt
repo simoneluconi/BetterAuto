@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,14 +44,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.car.FaultCode
-import com.simoneluconi.betterauto.exlap.ExlapData
-import com.simoneluconi.betterauto.exlap.exlapRows
 import com.simoneluconi.betterauto.car.FaultCodes
 import com.simoneluconi.betterauto.car.FaultSeverity
 import com.simoneluconi.betterauto.car.GearPosition
 import com.simoneluconi.betterauto.car.HeadLights
 import com.simoneluconi.betterauto.car.TurnSignal
 import com.simoneluconi.betterauto.car.VehicleData
+import com.simoneluconi.betterauto.car.VehicleDemand
 import com.simoneluconi.betterauto.car.VehicleSnapshot
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
@@ -99,6 +99,11 @@ fun VehicleScreen(modifier: Modifier = Modifier) {
     val snapshot by VehicleData.snapshot.collectAsStateWithLifecycle()
     val diagnosticsOpen by VehicleScreenState.showDiagnostics.collectAsStateWithLifecycle()
     val allData by VehicleScreenState.showAllData.collectAsStateWithLifecycle()
+    // What is on screen decides what sources that can choose (a car maker's protocol) keep fetching
+    DisposableEffect(allData) {
+        val release = VehicleData.request(if (allData) VehicleDemand.DETAIL else VehicleDemand.OVERVIEW)
+        onDispose { release() }
+    }
 
     Column(
         modifier
@@ -237,15 +242,11 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
     val yes = stringResource(R.string.vehicle_yes)
     val no = stringResource(R.string.vehicle_no)
     val units = rememberUnits()
-    val exlap by ExlapData.values.collectAsStateWithLifecycle()
     fun yn(value: Boolean?) = value?.let { if (it) yes else no }
     val list = ArrayList<VehicleCard>()
 
-    // Everything extra a VW car shares over Exlap (read only): one card, same label/value rows as the rest
-    val exlapRows = exlapRows(exlap.values)
-    if (exlapRows.isNotEmpty()) {
-        list += VehicleCard(CarIcons.Engine, stringResource(R.string.vehicle_exlap), exlapRows, null)
-    }
+    // What a source shares beyond the common values (e.g. a car maker's own protocol): one card per source
+    for (extra in s.extras) list += VehicleCard(CarIcons.Engine, stringResource(extra.label), extra.rows, null)
 
     // Faults first: the reason to come here from the engine light
     s.diagnostics?.let { d ->
@@ -312,6 +313,41 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
                 h.value.currentC?.let { stringResource(R.string.vehicle_climate_cabin) to units.temperature(it) },
             ),
             h.at,
+        )
+    }
+    s.engine?.let { e ->
+        list += VehicleCard(
+            CarIcons.Engine, stringResource(R.string.vehicle_engine),
+            listOfNotNull(
+                e.value.oilC?.let { stringResource(R.string.vehicle_oil_temperature) to units.temperature(it, decimals = 0) },
+                e.value.coolantC?.let { stringResource(R.string.vehicle_coolant_temperature) to units.temperature(it, decimals = 0) },
+                e.value.batteryV?.let { stringResource(R.string.vehicle_battery_voltage) to units.voltage(it) },
+            ),
+            e.at,
+        )
+    }
+    s.consumption?.let { c ->
+        list += VehicleCard(
+            CarIcons.Fuel, stringResource(R.string.vehicle_consumption),
+            listOfNotNull(
+                c.value.shortTermL100km?.let { stringResource(R.string.vehicle_consumption_trip) to units.consumption(it) },
+                c.value.longTermL100km?.let { stringResource(R.string.vehicle_consumption_long) to units.consumption(it) },
+            ),
+            c.at,
+        )
+    }
+    s.service?.let { sv ->
+        fun due(km: Double?, days: Int?) = listOfNotNull(
+            km?.let { units.distance(it) },
+            days?.let { context.getString(R.string.vehicle_days, it) },
+        ).joinToString(" · ").ifEmpty { null }
+        list += VehicleCard(
+            CarIcons.Settings, stringResource(R.string.vehicle_service),
+            listOfNotNull(
+                due(sv.value.oilKm, sv.value.oilDays)?.let { stringResource(R.string.vehicle_service_oil) to it },
+                due(sv.value.inspectionKm, sv.value.inspectionDays)?.let { stringResource(R.string.vehicle_service_inspection) to it },
+            ),
+            sv.at,
         )
     }
     s.doors?.let { d ->
@@ -403,14 +439,15 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
             m.at,
         )
     }
-    if (s.passengerPresent != null || s.tollCardPresent != null) {
+    if (s.passengerPresent != null || s.rearOccupied != null || s.tollCardPresent != null) {
         list += VehicleCard(
             CarIcons.Contacts, stringResource(R.string.vehicle_other),
             listOfNotNull(
                 yn(s.passengerPresent?.value)?.let { stringResource(R.string.vehicle_passenger) to it },
+                yn(s.rearOccupied?.value)?.let { stringResource(R.string.vehicle_rear_seats) to it },
                 yn(s.tollCardPresent?.value)?.let { stringResource(R.string.vehicle_toll_card) to it },
             ),
-            listOfNotNull(s.passengerPresent?.at, s.tollCardPresent?.at).maxOrNull(),
+            listOfNotNull(s.passengerPresent?.at, s.rearOccupied?.at, s.tollCardPresent?.at).maxOrNull(),
         )
     }
     // What the car says about itself, always available once connected

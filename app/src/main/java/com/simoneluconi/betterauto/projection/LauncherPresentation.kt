@@ -59,6 +59,16 @@ class LauncherPresentation(context: Context, display: Display) :
         super.onStop()
     }
 
+    /**
+     * Stopped while the car shows its own screen: Compose's frame clock follows the lifecycle, so nothing
+     * recomposes, animates or draws for frames the encoder would throw away. Back to resumed, it catches up at once.
+     */
+    fun setActive(active: Boolean) {
+        val current = lifecycleRegistry.currentState
+        if (!current.isAtLeast(Lifecycle.State.CREATED)) return // not shown yet, or already gone
+        lifecycleRegistry.currentState = if (active) Lifecycle.State.RESUMED else Lifecycle.State.CREATED
+    }
+
     fun dispatchTouch(event: MotionEvent) {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) focus.clearFocus()
         window?.decorView?.dispatchTouchEvent(event)

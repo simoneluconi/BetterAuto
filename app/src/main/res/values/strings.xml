@@ -420,4 +420,19 @@
     <string name="voice_example_play">“play %1$s”</string>
     <string name="voice_example_call">“call %1$s”</string>
     <string name="voice_example_pause">“pause”</string>
+    <string name="settings_bar_apps_note">The app playing in Music gets no button of its own: the Music button already opens it.</string>
+    <string name="vehicle_source_car">Car sensors</string>
+    <string name="vehicle_source_demo">Pretend data</string>
+    <string name="vehicle_engine">Engine</string>
+    <string name="vehicle_oil_temperature">Oil temperature</string>
+    <string name="vehicle_coolant_temperature">Coolant temperature</string>
+    <string name="vehicle_battery_voltage">Battery</string>
+    <string name="vehicle_consumption">Consumption</string>
+    <string name="vehicle_consumption_trip">This trip</string>
+    <string name="vehicle_consumption_long">Long term</string>
+    <string name="vehicle_service">Service</string>
+    <string name="vehicle_service_oil">Oil change in</string>
+    <string name="vehicle_service_inspection">Inspection in</string>
+    <string name="vehicle_days">%1$d d</string>
+    <string name="vehicle_rear_seats">Rear seats taken</string>
 </resources>

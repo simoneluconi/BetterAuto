@@ -10,7 +10,6 @@ import aap_protobuf.service.media.sink.message.VideoConfigurationOuterClass.Vide
 import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.car.Viewport
 import aap_protobuf.service.media.sink.message.VideoFrameRateTypeOuterClass.VideoFrameRateType
-import aap_protobuf.service.media.source.message.AckOuterClass.Ack
 import aap_protobuf.service.media.video.message.VideoFocusModeOuterClass.VideoFocusMode
 import aap_protobuf.service.media.video.message.VideoFocusNotificationOuterClass.VideoFocusNotification
 import aap_protobuf.service.media.video.message.VideoFocusRequestNotificationOuterClass.VideoFocusRequestNotification
@@ -74,10 +73,7 @@ class VideoChannel(
             MediaMessageId.MEDIA_MESSAGE_CONFIG_VALUE -> onConfig(Config.parseFrom(msg.payload))
             MediaMessageId.MEDIA_MESSAGE_VIDEO_FOCUS_NOTIFICATION_VALUE ->
                 onFocus(VideoFocusNotification.parseFrom(msg.payload))
-            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> {
-                val ack = Ack.parseFrom(msg.payload)
-                window.release(if (ack.hasAck()) ack.ack.coerceAtLeast(1) else 1)
-            }
+            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> window.release(ackedMessages(msg.payload))
             else -> EventLog.log("Video: unhandled message ${msg.id} (${msg.payload.size} bytes)")
         }
     }
@@ -118,6 +114,8 @@ class VideoChannel(
             running == null -> maybeStartStreaming()
             else -> running.setPaused(false)
         }
+        // Nobody sees the launcher meanwhile: it stops drawing too, not only the encoder
+        if (running != null) projection.setActive(focused)
     }
 
     @Synchronized
@@ -126,7 +124,7 @@ class VideoChannel(
         if (closed || !focused || encoder != null) return
 
         val (width, height) = cfg.size()
-        val fps = if (cfg.frameRate == VideoFrameRateType.VIDEO_FPS_60) 60 else 30
+        val fps = cfg.fps()
         val newEncoder = VideoEncoder(width, height, fps, bitrate = width * height * fps / 8)
         encoder = newEncoder
         statsStart = System.nanoTime()
@@ -138,6 +136,7 @@ class VideoChannel(
         )
         newEncoder.start(
             onCodecConfig = { send(MediaMessageId.MEDIA_MESSAGE_CODEC_CONFIG_VALUE, it) },
+            frameHeadroom = MEDIA_TIMESTAMP_BYTES,
             onFrame = ::sendFrame,
         )
         CarState.viewport.value = cfg.viewport()
@@ -212,7 +211,8 @@ class VideoChannel(
         maybeStartStreaming()
     }
 
-    private fun sendFrame(data: ByteArray, timestampUs: Long) {
+    /** [payload]: the frame after [MEDIA_TIMESTAMP_BYTES] of room for its timestamp. */
+    private fun sendFrame(payload: ByteArray, timestampUs: Long) {
         // The car is showing its own screen (reversing camera, its menus): nothing to decode there
         if (!focused) return
         sendingSince = System.nanoTime()
@@ -220,16 +220,13 @@ class VideoChannel(
             // Wait for the head unit to catch up instead of flooding its decoder
             window.tryAcquire(WINDOW_TIMEOUT_MS, TimeUnit.MILLISECONDS)
 
-            val payload = ByteArray(8 + data.size)
-            putU32(payload, 0, (timestampUs ushr 32).toInt())
-            putU32(payload, 4, timestampUs.toInt())
-            data.copyInto(payload, 8)
+            putMediaTimestamp(payload, timestampUs)
             send(MediaMessageId.MEDIA_MESSAGE_DATA_VALUE, payload)
         } finally {
             sendingSince = 0L
         }
         slowLinkLogged = false
-        updateStats(data.size)
+        updateStats(payload.size - MEDIA_TIMESTAMP_BYTES)
     }
 
     private fun updateStats(bytes: Int) {
@@ -301,9 +298,11 @@ fun VideoConfiguration.viewport(): Viewport {
     return if (insets == null) area else area.copy(insets = Edges(insets.left, insets.top, insets.right, insets.bottom))
 }
 
+fun VideoConfiguration.fps(): Int = if (frameRate == VideoFrameRateType.VIDEO_FPS_60) 60 else 30
+
 fun VideoConfiguration.describe(): String {
     val (w, h) = size()
-    val fps = if (frameRate == VideoFrameRateType.VIDEO_FPS_60) 60 else 30
+    val fps = fps()
     val ui = if (hasUiConfig()) ", ui margins ${uiConfig.margins.describe()} insets ${uiConfig.contentInsets.describe()}" else ""
     return "${w}x$h $fps fps, density $density, margins ${widthMargin}x$heightMargin$ui"
 }

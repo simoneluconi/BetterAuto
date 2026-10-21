@@ -84,31 +84,42 @@ class AapTls(pem: Collection<String>) {
         return out.toByteArray()
     }
 
-    fun encrypt(plain: ByteArray): ByteArray {
-        val src = ByteBuffer.wrap(plain)
-        val dst = ByteBuffer.allocate(engine.session.packetBufferSize)
-        val out = ByteArrayOutputStream()
-        while (src.hasRemaining()) {
-            dst.clear()
-            val result = engine.wrap(src, dst)
-            if (result.status != Status.OK) throw IOException("TLS wrap: ${result.status}")
-            out.write(dst.array(), 0, dst.position())
-        }
-        return out.toByteArray()
-    }
+    /** Record overhead, known once the handshake is done (before it no record is sealed). */
+    private val packetBufferSize by lazy { engine.session.packetBufferSize }
+    private var plainIn: ByteBuffer = ByteBuffer.allocate(0)
 
-    fun decrypt(data: ByteArray): ByteArray {
-        val src = ByteBuffer.wrap(data)
-        val dst = ByteBuffer.allocate(engine.session.applicationBufferSize)
-        val out = ByteArrayOutputStream()
-        while (src.hasRemaining()) {
-            dst.clear()
-            val result = engine.unwrap(src, dst)
-            if (result.status != Status.OK) throw IOException("TLS unwrap: ${result.status}")
-            out.write(dst.array(), 0, dst.position())
+    /** Room [encrypt] needs in its output for [plainBytes]: a record per 16 KiB of plaintext. */
+    fun sealedSize(plainBytes: Int): Int = packetBufferSize * (plainBytes / MAX_RECORD_PLAINTEXT + 1)
+
+    /** Seals what remains in [srcs] (one frame's bytes, in pieces) as TLS records into [dst], from its position. */
+    fun encrypt(srcs: Array<ByteBuffer>, dst: ByteBuffer) {
+        while (srcs.any { it.hasRemaining() }) {
+            val result = engine.wrap(srcs, dst)
+            if (result.status != Status.OK) throw IOException("TLS wrap: ${result.status}")
             if (result.bytesConsumed() == 0) break
         }
-        return out.toByteArray()
+    }
+
+    /**
+     * Opens the TLS records in [len] bytes of [data] from [off]. The plaintext is between position and limit
+     * of the returned buffer, which the next call reuses.
+     */
+    fun decrypt(data: ByteArray, off: Int, len: Int): ByteBuffer {
+        val src = ByteBuffer.wrap(data, off, len)
+        var dst = plainIn
+        if (dst.capacity() == 0) dst = ByteBuffer.allocate(engine.session.applicationBufferSize)
+        dst.clear()
+        while (src.hasRemaining()) {
+            val result = engine.unwrap(src, dst)
+            when (result.status) {
+                Status.OK -> if (result.bytesConsumed() == 0) break
+                // Several records in one frame: grow, keeping what is already open
+                Status.BUFFER_OVERFLOW -> dst = ByteBuffer.allocate(dst.capacity() * 2).put(dst.flip() as ByteBuffer)
+                else -> throw IOException("TLS unwrap: ${result.status}")
+            }
+        }
+        plainIn = dst
+        return dst.flip() as ByteBuffer
     }
 
     val protocol: String get() = engine.session.protocol
@@ -143,6 +154,7 @@ class AapTls(pem: Collection<String>) {
 
     companion object {
         private val EMPTY: ByteBuffer = ByteBuffer.allocate(0)
+        private const val MAX_RECORD_PLAINTEXT = 16 * 1024
         private val KEY_PASSWORD = "betterauto".toCharArray()
 
         private val PEM_EXTENSIONS = setOf("pem", "crt", "cer", "key")

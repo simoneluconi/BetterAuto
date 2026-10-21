@@ -67,6 +67,8 @@ class AppsSetting(
     private val stored: (LauncherSettings) -> StateFlow<List<String>>,
     private val listedMeansSelected: Boolean,
     private val toggleStored: (LauncherSettings, String) -> Unit,
+    /** A line under the chips, when picking needs explaining. */
+    @param:StringRes val note: Int? = null,
 ) : SettingItem {
     fun apps(context: Context, settings: LauncherSettings): List<String> = candidates(context, settings)
 
@@ -176,6 +178,7 @@ object SettingsCatalog {
             "bar_apps", R.string.settings_bar_apps, R.string.settings_no_apps,
             { context, _ -> MediaApps.installed(context) },
             { it.pinnedApps }, listedMeansSelected = true, LauncherSettings::togglePinned,
+            note = R.string.settings_bar_apps_note,
         ),
 
         SettingHeader("status_bar", R.string.settings_section_status_bar),
@@ -232,7 +235,12 @@ object SettingsCatalog {
         SettingHeader("notifications", R.string.settings_section_notifications),
         ChoiceSetting("quiet_mode", R.string.settings_quiet_mode, onOff, { it.quietMode }, LauncherSettings::setQuietMode),
         ChoiceSetting(
-            "notification_privacy", R.string.settings_notification_privacy, onOff,
+            "notification_privacy", R.string.settings_notification_privacy,
+            listOf(
+                SettingOption(NotificationPrivacy.AUTO, R.string.option_auto),
+                SettingOption(NotificationPrivacy.OFF, R.string.option_off),
+                SettingOption(NotificationPrivacy.ON, R.string.option_on),
+            ),
             { it.notificationPrivacy }, LauncherSettings::setNotificationPrivacy,
         ),
         ChoiceSetting(

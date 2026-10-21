@@ -34,8 +34,8 @@ class UsbAccessoryTransport(private val fd: ParcelFileDescriptor) : Transport {
     }
 
     @Synchronized
-    override fun write(data: ByteArray) {
-        output.write(data)
+    override fun write(data: ByteArray, off: Int, len: Int) {
+        output.write(data, off, len)
     }
 
     override fun close() {

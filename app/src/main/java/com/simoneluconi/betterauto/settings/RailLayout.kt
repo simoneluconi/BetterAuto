@@ -50,6 +50,14 @@ object RailLayout {
 
     fun place(entries: List<RailEntry>, item: RailItem, slot: RailSlot) =
         entries.map { if (it.item == item) it.copy(slot = slot) else it }
+
+    /**
+     * Media apps for the bar, before trimming to the room there is: pinned first, then recent ones, or
+     * [suggested] while there is no history. The app the Music section follows ([followed]) is left out,
+     * pinned or not: its button would only open Music again.
+     */
+    fun mediaApps(pinned: List<String>, recent: List<String>, followed: String?, suggested: () -> List<String>): List<String> =
+        (pinned + recent.filter { it !in pinned }).ifEmpty { suggested() }.filter { it != followed }
 }
 
 /** How the clock in the status bar is shown. */

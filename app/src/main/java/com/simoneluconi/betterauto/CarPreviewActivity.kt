@@ -8,6 +8,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.simoneluconi.betterauto.media.NowPlaying
+import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.ui.launcher.LauncherRoot
 
 /** Development aid: the car launcher full screen on the phone, to iterate on the UI without a head unit. */
@@ -26,10 +27,12 @@ class CarPreviewActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         NowPlaying.acquire(this)
+        CarNotifications.acquire()
     }
 
     override fun onStop() {
         NowPlaying.release()
+        CarNotifications.release()
         super.onStop()
     }
 }

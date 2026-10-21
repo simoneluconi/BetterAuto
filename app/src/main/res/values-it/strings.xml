@@ -420,4 +420,19 @@
     <string name="voice_example_play">«metti %1$s»</string>
     <string name="voice_example_call">«chiama %1$s»</string>
     <string name="voice_example_pause">«metti in pausa»</string>
+    <string name="settings_bar_apps_note">L\'app che suona in Musica non ha un pulsante a parte: lo apre già il pulsante Musica.</string>
+    <string name="vehicle_source_car">Sensori dell\'auto</string>
+    <string name="vehicle_source_demo">Dati di prova</string>
+    <string name="vehicle_engine">Motore</string>
+    <string name="vehicle_oil_temperature">Temperatura olio</string>
+    <string name="vehicle_coolant_temperature">Temperatura liquido refrigerante</string>
+    <string name="vehicle_battery_voltage">Batteria</string>
+    <string name="vehicle_consumption">Consumi</string>
+    <string name="vehicle_consumption_trip">Questo viaggio</string>
+    <string name="vehicle_consumption_long">Lungo periodo</string>
+    <string name="vehicle_service">Manutenzione</string>
+    <string name="vehicle_service_oil">Cambio olio tra</string>
+    <string name="vehicle_service_inspection">Tagliando tra</string>
+    <string name="vehicle_days">%1$d gg</string>
+    <string name="vehicle_rear_seats">Sedili posteriori occupati</string>
 </resources>

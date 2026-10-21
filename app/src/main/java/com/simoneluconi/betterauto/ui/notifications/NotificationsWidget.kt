@@ -54,8 +54,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.notifications.CarNotification
 import com.simoneluconi.betterauto.notifications.CarNotifications
+import com.simoneluconi.betterauto.notifications.NotificationContent
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -88,6 +90,8 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
     val list = rememberVisibleNotifications(settings)
     var openKey by remember { mutableStateOf<String?>(null) }
     val open = list.firstOrNull { it.key == openKey }
+    // Once for the whole panel, not per row
+    val hidden = contentHidden()
 
     BoxWithConstraints(
         modifier
@@ -101,12 +105,12 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     !connected -> PanelMessage(stringResource(R.string.notif_no_access))
-                    open != null -> Detail(open, settings, onClose = { openKey = null })
+                    open != null -> Detail(open, settings, hidden, onClose = { openKey = null })
                     list.isEmpty() -> PanelMessage(stringResource(R.string.notif_empty))
-                    compact -> CompactList(list) { openKey = it.key }
+                    compact -> CompactList(list, hidden) { openKey = it.key }
                     else -> LazyColumnWithBar(state = rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(list, key = { it.key }) { n ->
-                            NotificationRow(n, Modifier.contentFocus(enabled = primary && n === list.first())) { openKey = n.key }
+                            NotificationRow(n, hidden, Modifier.contentFocus(enabled = primary && n === list.first())) { openKey = n.key }
                         }
                     }
                 }
@@ -168,28 +172,35 @@ private fun HeaderButton(
 
 /** Small widget slot: the newest notification only, and how many more there are. */
 @Composable
-private fun CompactList(list: List<CarNotification>, onOpen: (CarNotification) -> Unit) {
+private fun CompactList(list: List<CarNotification>, hidden: Boolean, onOpen: (CarNotification) -> Unit) {
     val colors = LocalCarColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        NotificationRow(list.first()) { onOpen(list.first()) }
+        NotificationRow(list.first(), hidden) { onOpen(list.first()) }
         if (list.size > 1) CarLabel(stringResource(R.string.notif_more, list.size - 1), 18.sp, colors.text2, Modifier.padding(start = 8.dp))
     }
 }
 
-/** The privacy setting: what notifications say is not shown at all; who, which app and when stay. */
+/**
+ * The privacy setting: what notifications say is not shown at all; who, which app and when stay. On Auto
+ * it follows who the car says is aboard, so a notification on screen changes as someone gets in or out.
+ */
 @Composable
 private fun contentHidden(): Boolean {
     val context = LocalContext.current
-    val hidden by remember { LauncherSettings.get(context).notificationPrivacy }.collectAsStateWithLifecycle()
-    return hidden
+    val mode by remember { LauncherSettings.get(context).notificationPrivacy }.collectAsStateWithLifecycle()
+    val othersOnBoard by VehicleData.othersOnBoard.collectAsStateWithLifecycle()
+    return NotificationContent.hidden(mode, othersOnBoard)
 }
 
+/** The line under a notification's title: the sender in a group, then the last message unless [hidden]. */
+private fun previewOf(n: CarNotification, hidden: Boolean): String =
+    listOfNotNull(n.last?.sender?.takeIf { n.isGroup }, n.last?.text?.takeUnless { hidden }).joinToString(": ")
+
 @Composable
-private fun NotificationRow(n: CarNotification, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun NotificationRow(n: CarNotification, hidden: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(20.dp)
-    val last = n.last
-    val preview = listOfNotNull(last?.sender?.takeIf { n.isGroup }, last?.text?.takeUnless { contentHidden() }).joinToString(": ")
+    val preview = previewOf(n, hidden)
     Row(
         modifier
             .fillMaxWidth()
@@ -239,7 +250,7 @@ private fun NotificationAvatar(n: CarNotification, size: androidx.compose.ui.uni
 }
 
 @Composable
-private fun Detail(n: CarNotification, settings: LauncherSettings, onClose: () -> Unit) {
+private fun Detail(n: CarNotification, settings: LauncherSettings, hidden: Boolean, onClose: () -> Unit) {
     val colors = LocalCarColors.current
     Column(
         Modifier
@@ -263,7 +274,7 @@ private fun Detail(n: CarNotification, settings: LauncherSettings, onClose: () -
         val listState = rememberLazyListState()
         LaunchedEffect(n.messages.size) { if (n.messages.isNotEmpty()) listState.scrollToItem(n.messages.lastIndex) }
         // With the privacy setting on, no messages at all: the actions stay at the bottom
-        if (contentHidden()) Spacer(Modifier.weight(1f)) else LazyColumnWithBar(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (hidden) Spacer(Modifier.weight(1f)) else LazyColumnWithBar(Modifier.weight(1f), state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(n.messages) { message ->
                 Column(
                     Modifier
@@ -344,7 +355,6 @@ fun NotificationBanner(settings: LauncherSettings, modifier: Modifier = Modifier
         exit = slideOutVertically { -it } + fadeOut(),
     ) {
         val current = shown ?: lastShown ?: return@AnimatedVisibility
-        val last = current.last
         // A card like the others, lifted by a deep shadow; the only color is the album accent bar
         val shape = RoundedCornerShape(28.dp)
         Row(
@@ -366,7 +376,7 @@ fun NotificationBanner(settings: LauncherSettings, modifier: Modifier = Modifier
                     CarLabel(current.title, 24.sp, colors.text, Modifier.weight(1f, fill = false), weight = FontWeight.ExtraBold)
                     CarLabel(current.appLabel, 17.sp, colors.text2, weight = FontWeight.Bold)
                 }
-                val preview = listOfNotNull(last?.sender?.takeIf { current.isGroup }, last?.text?.takeUnless { contentHidden() }).joinToString(": ")
+                val preview = previewOf(current, contentHidden())
                 if (preview.isNotEmpty()) CarLabel(preview, 22.sp, colors.text, weight = FontWeight.Medium, maxLines = 2)
             }
         }

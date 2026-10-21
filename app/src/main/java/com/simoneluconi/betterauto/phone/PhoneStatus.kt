@@ -20,7 +20,6 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
-import android.text.format.DateFormat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -28,13 +27,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 data class PhoneStatus(
-    val time: String,
-    val date: String,
-    /** The moment [time] and [date] describe, for other formats. */
+    /** The current minute: the status bar formats it as the driver chose. */
     val at: LocalDateTime = LocalDateTime.now(),
     val batteryPercent: Int?,
     val charging: Boolean,
@@ -47,17 +53,79 @@ data class PhoneStatus(
     val secondSignalLevel: Int? = null,
 )
 
+/** The mobile network of the phone's SIMs. */
+data class Signal(
+    /** 0..4, null when unknown (no SIM, airplane mode). */
+    val level: Int?,
+    /** 5G, 4G+, 4G, H+, 3G, E...; null when unknown or not allowed to read it (phone permission). */
+    val network: String? = null,
+    /** The other SIM's bars, 0..4, with two SIMs; [level] and [network] are the SIM used for data. */
+    val secondLevel: Int? = null,
+)
+
+/**
+ * Signal bars and network type, shared by everyone who shows them (the status bar, the car's phone status
+ * channel): the telephony listeners are registered once while someone collects, and stopped after the last.
+ */
+object PhoneSignal {
+    @Volatile
+    private var shared: StateFlow<Signal>? = null
+
+    fun of(context: Context): StateFlow<Signal> = shared ?: synchronized(this) {
+        shared ?: create(context.applicationContext).also { shared = it }
+    }
+
+    private fun create(context: Context): StateFlow<Signal> = callbackFlow {
+        // On the main thread, like the telephony callbacks: no locking around the current value
+        val (telephony, second) = simTelephony(context)
+        var signal = current(context, telephony, second)
+        trySend(signal)
+        fun update(change: (Signal) -> Signal) {
+            signal = change(signal)
+            trySend(signal)
+        }
+        val stopSignal = telephony?.let { watchSignal(context, it) { level -> update { s -> s.copy(level = level) } } }
+        val stopNetwork = telephony?.let { watchNetwork(context, it) { label -> update { s -> s.copy(network = label) } } }
+        val stopSecond = second?.let { watchSignal(context, it) { level -> update { s -> s.copy(secondLevel = level) } } }
+        awaitClose {
+            stopSignal?.invoke()
+            stopNetwork?.invoke()
+            stopSecond?.invoke()
+        }
+    }.stateIn(
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        SharingStarted.WhileSubscribed(),
+        simTelephony(context).let { (telephony, second) -> current(context, telephony, second) },
+    )
+
+    private fun current(context: Context, telephony: TelephonyManager?, second: TelephonyManager?): Signal {
+        val network = if (canReadPhoneState(context)) {
+            @SuppressLint("MissingPermission")
+            val type = runCatching { telephony?.dataNetworkType }.getOrNull()
+            type?.let { networkLabel(it) }
+        } else {
+            null
+        }
+        return Signal(
+            level = runCatching { telephony?.signalStrength?.level }.getOrNull(),
+            network = network,
+            secondLevel = second?.let { runCatching { it.signalStrength?.level }.getOrNull() ?: 0 },
+        )
+    }
+}
+
 /**
  * Clock and phone indicators for the status bar, driven by the system's own events: the minute tick,
- * the battery, the signal strength and the default network. Nothing is polled.
+ * the battery, the signal strength ([PhoneSignal]) and the default network. Nothing is polled.
  */
 @Composable
 fun rememberPhoneStatus(): PhoneStatus {
     val context = LocalContext.current.applicationContext
     var status by remember { mutableStateOf(initial(context)) }
+    val signal by PhoneSignal.of(context).collectAsStateWithLifecycle()
     DisposableEffect(context) {
         val main = Handler(Looper.getMainLooper())
-        val clock = receiver { status = status.withClock(context) }
+        val clock = receiver { status = status.copy(at = LocalDateTime.now()) }
         val battery = receiver { intent -> status = status.withBattery(intent) }
         register(context, clock, IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
@@ -65,11 +133,6 @@ fun rememberPhoneStatus(): PhoneStatus {
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
         })
         register(context, battery, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-
-        val (telephony, second) = simTelephony(context)
-        val stopSignal = telephony?.let { watchSignal(context, it) { level -> status = status.copy(signalLevel = level) } }
-        val stopNetwork = telephony?.let { watchNetwork(context, it) { label -> status = status.copy(network = label) } }
-        val stopSecond = second?.let { watchSignal(context, it) { level -> status = status.copy(secondSignalLevel = level) } }
 
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         val network = object : ConnectivityManager.NetworkCallback() {
@@ -86,49 +149,24 @@ fun rememberPhoneStatus(): PhoneStatus {
         onDispose {
             context.unregisterReceiver(clock)
             context.unregisterReceiver(battery)
-            stopSignal?.invoke()
-            stopNetwork?.invoke()
-            stopSecond?.invoke()
             runCatching { connectivity?.unregisterNetworkCallback(network) }
         }
     }
-    return status
+    return remember(status, signal) {
+        status.copy(signalLevel = signal.level, network = signal.network, secondSignalLevel = signal.secondLevel)
+    }
 }
-
-private val Time24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val Time12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm")
-private val DayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM")
 
 private fun initial(context: Context): PhoneStatus {
     val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-    val (telephony, second) = simTelephony(context)
-    val signal = runCatching { telephony?.signalStrength?.level }.getOrNull()
     val connectivity = context.getSystemService(ConnectivityManager::class.java)
     val wifi = runCatching {
         connectivity?.getNetworkCapabilities(connectivity.activeNetwork)
             ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
     }.getOrDefault(false)
-    val network = if (canReadPhoneState(context)) {
-        @SuppressLint("MissingPermission")
-        val type = runCatching { telephony?.dataNetworkType }.getOrNull()
-        type?.let { networkLabel(it) }
-    } else {
-        null
-    }
-    val status = PhoneStatus(
-        time = "", date = "", batteryPercent = null, charging = false, signalLevel = signal, onWifi = wifi, network = network,
-        secondSignalLevel = second?.let { runCatching { it.signalStrength?.level }.getOrNull() ?: 0 },
-    )
-    return (battery?.let { status.withBattery(it) } ?: status).withClock(context)
-}
-
-private fun PhoneStatus.withClock(context: Context): PhoneStatus {
-    val now = LocalDateTime.now()
-    return copy(
-        time = now.format(if (DateFormat.is24HourFormat(context)) Time24 else Time12),
-        date = now.format(DayFormat),
-        at = now,
-    )
+    // The signal fields come from PhoneSignal
+    val status = PhoneStatus(batteryPercent = null, charging = false, signalLevel = null, onWifi = wifi)
+    return battery?.let { status.withBattery(it) } ?: status
 }
 
 private fun PhoneStatus.withBattery(intent: Intent): PhoneStatus {
@@ -146,11 +184,7 @@ private inline fun receiver(crossinline onReceive: (Intent) -> Unit) = object : 
 
 /** System broadcasts only the system can send: exporting the receiver gives nothing away. */
 private fun register(context: Context, receiver: BroadcastReceiver, filter: IntentFilter) {
-    if (Build.VERSION.SDK_INT >= 33) {
-        context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-    } else {
-        context.registerReceiver(receiver, filter)
-    }
+    ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
 }
 
 /** Signal bars from the telephony service, on the main thread; returns how to stop watching. */

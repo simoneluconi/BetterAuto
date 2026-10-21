@@ -51,6 +51,14 @@ object Speech {
         tts?.stop()
     }
 
+    /** The car is gone: the speech engine is let go (its own process stays up while bound) and comes back on the next reply. */
+    fun release() {
+        tts?.shutdown()
+        tts = null
+        ready = false
+        pending = null
+    }
+
     /** Two short rising tones: listening starts. */
     fun chime() = tones(listOf(660.0, 990.0))
 

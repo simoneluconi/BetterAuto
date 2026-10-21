@@ -3,7 +3,6 @@ package com.simoneluconi.betterauto.aap
 import aap_protobuf.service.mediaplayback.MediaPlaybackStatusMessageIdOuterClass.MediaPlaybackStatusMessageId
 import aap_protobuf.service.mediaplayback.message.MediaPlaybackMetadataOuterClass.MediaPlaybackMetadata
 import aap_protobuf.service.mediaplayback.message.MediaPlaybackStatusOuterClass.MediaPlaybackStatus
-import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.google.protobuf.ByteString
@@ -19,7 +18,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 
 /**
  * Now playing for the car's own displays (instrument cluster, driver info screen): everything the
@@ -102,18 +100,7 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
         val coverKey = "$key|${image.width}x${image.height}"
         if (coverKey == artKey) return art
         val encoded = withContext(Dispatchers.Default) {
-            runCatching {
-                val bitmap = image.asAndroidBitmap()
-                val scale = minOf(1f, COVER_PX.toFloat() / maxOf(bitmap.width, bitmap.height))
-                val scaled = if (scale < 1f) {
-                    Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
-                } else {
-                    bitmap
-                }
-                val out = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 88, out)
-                ByteString.copyFrom(out.toByteArray())
-            }.getOrNull()
+            runCatching { image.asAndroidBitmap().toCarJpeg(COVER_PX, 88) }.getOrNull()
         }
         artKey = coverKey
         art = encoded

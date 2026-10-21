@@ -19,13 +19,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -34,6 +34,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -394,11 +398,14 @@ private fun Progress(track: Track) {
         delay(SEEK_HOLD_MS)
         pendingSeek = null
     }
-    val reported = track.positionAt(now)
-    val pending = pendingSeek?.let { (target, at) -> target + if (track.playing) (now - at).coerceAtLeast(0) else 0 }
-        ?.takeIf { kotlin.math.abs(it - reported) > SEEK_MATCH_MS }
-    val position = dragFraction?.let { (it * track.durationMs).toLong() } ?: pending ?: reported
-    val fraction = if (track.durationMs > 0) position.toFloat() / track.durationMs else 0f
+    // Read where it is drawn, not here: a tick of the clock only redraws the bar, the time under it changes once a second
+    fun position(): Long {
+        val reported = track.positionAt(now)
+        val pending = pendingSeek?.let { (target, at) -> target + if (track.playing) (now - at).coerceAtLeast(0) else 0 }
+            ?.takeIf { kotlin.math.abs(it - reported) > SEEK_MATCH_MS }
+        return dragFraction?.let { (it * track.durationMs).toLong() } ?: pending ?: reported
+    }
+    val shownSeconds by remember(track) { derivedStateOf { position() / 1000 } }
 
     // Touchscreens: a tap along the bar (or on the times under it) seeks there, dragging the knob seeks on release
     val seek = if (track.canSeek && track.durationMs > 0) {
@@ -427,23 +434,25 @@ private fun Progress(track: Track) {
     } else {
         Modifier
     }
-    val knob = if (dragFraction != null) 28.dp else 20.dp
+    val rail = colors.text.copy(alpha = 0.16f)
+    val fill = colors.album
     Column(seek.onSizeChanged { barWidthPx = it.width }) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(8.dp).background(colors.text.copy(alpha = 0.16f), RoundedCornerShape(50)))
-            if (track.durationMs > 0) {
-                Box(Modifier.fillMaxWidth(fraction).height(8.dp).background(colors.album, RoundedCornerShape(50)))
-                // Knob centred on the playback position, positioned on the full-width track so it never gets squeezed
-                Box(
-                    Modifier
-                        .offset(x = maxWidth * fraction.coerceIn(0f, 1f) - knob / 2)
-                        .size(knob)
-                        .background(colors.album, CircleShape)
-                )
+        Box(
+            Modifier.fillMaxWidth().height(20.dp).drawBehind {
+                val barHeight = 8.dp.toPx()
+                val top = (size.height - barHeight) / 2
+                val radius = CornerRadius(barHeight / 2)
+                drawRoundRect(rail, Offset(0f, top), Size(size.width, barHeight), radius)
+                if (track.durationMs <= 0) return@drawBehind
+                val x = size.width * (position().toFloat() / track.durationMs).coerceIn(0f, 1f)
+                drawRoundRect(fill, Offset(0f, top), Size(x, barHeight), radius)
+                // Knob centred on the playback position, bigger while dragged
+                val knob = (if (dragFraction != null) 28.dp else 20.dp).toPx()
+                drawCircle(fill, knob / 2, Offset(x, size.height / 2))
             }
-        }
+        )
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            CarLabel(formatTime(position), 19.sp, colors.text2, tabularNumbers = true)
+            CarLabel(formatTime(shownSeconds * 1000), 19.sp, colors.text2, tabularNumbers = true)
             if (track.durationMs > 0) CarLabel(formatTime(track.durationMs), 19.sp, colors.text2, tabularNumbers = true)
         }
     }

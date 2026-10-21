@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -336,11 +337,12 @@ private fun anythingOpen(s: VehicleSnapshot): Boolean {
 @Composable
 private fun CarDrawing(s: VehicleSnapshot, modifier: Modifier) {
     val colors = LocalCarColors.current
-    val blink by rememberInfiniteTransition(label = "turn").animateFloat(
-        0.25f, 1f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "turnBlink",
-    )
     val doors = s.doors?.value
     val lights = s.lights?.value
+    val left = lights?.hazard == true || lights?.turn == TurnSignal.LEFT
+    val right = lights?.hazard == true || lights?.turn == TurnSignal.RIGHT
+    // Animated only while a signal is on: an idle transition would redraw (and re-encode) the screen every frame
+    val blink = if (left || right) turnBlink() else null
     Canvas(modifier) {
         val u = size.width / 100f
         fun p(x: Float, y: Float) = Offset(x * u, y * u)
@@ -387,15 +389,19 @@ private fun CarDrawing(s: VehicleSnapshot, modifier: Modifier) {
             drawRoundRect(head ?: line.copy(alpha = 0.5f), p(x, 11f), Size(10f * u, 4f * u), CornerRadius(2f * u))
         }
         // Turn signals and hazards, blinking at the corners
-        val left = lights?.hazard == true || lights?.turn == TurnSignal.LEFT
-        val right = lights?.hazard == true || lights?.turn == TurnSignal.RIGHT
+        val alpha = blink?.value ?: 1f
         for ((on, x) in listOf(left to 22f, right to 78f)) {
             if (!on) continue
-            drawCircle(WarningAmber.copy(alpha = blink), 4f * u, p(x, 22f))
-            drawCircle(WarningAmber.copy(alpha = blink), 4f * u, p(x, 178f))
+            drawCircle(WarningAmber.copy(alpha = alpha), 4f * u, p(x, 22f))
+            drawCircle(WarningAmber.copy(alpha = alpha), 4f * u, p(x, 178f))
         }
     }
 }
+
+@Composable
+private fun turnBlink(): State<Float> = rememberInfiniteTransition(label = "turn").animateFloat(
+    0.25f, 1f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "turnBlink",
+)
 
 private fun trapezoid(a: Offset, b: Offset, c: Offset, d: Offset) = Path().apply {
     moveTo(a.x, a.y)

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import com.simoneluconi.betterauto.settings.RailEntry
 import com.simoneluconi.betterauto.settings.RailItem
+import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.RailSlot
 import com.simoneluconi.betterauto.ui.CarLabel
 import androidx.compose.foundation.background
@@ -79,8 +80,8 @@ private fun buttons(layout: List<RailEntry>): List<RailButtonSpec> = buildList {
 }
 
 /**
- * Sections (as the driver arranged them, some grouped) plus pinned/recent media apps, on the left
- * (wide screens) or at the bottom. Settings always closes the bar. [onOpenGroup] shows a group's items.
+ * Sections (as the driver arranged them, some grouped) plus pinned/recent media apps (not the one Music
+ * follows), on the left (wide screens) or at the bottom. Settings always closes the bar. [onOpenGroup] shows a group's items.
  */
 @Composable
 fun AppRail(
@@ -94,6 +95,7 @@ fun AppRail(
     val context = LocalContext.current
     val pinned by settings.pinnedApps.collectAsStateWithLifecycle()
     val recent by settings.recentApps.collectAsStateWithLifecycle()
+    val followed by NowPlaying.followedApp.collectAsStateWithLifecycle()
     val layout by settings.railLayout.collectAsStateWithLifecycle()
     val buttons = remember(layout) { buttons(layout) }
     // The knob starts from the current section's button (or its group), else from the first one
@@ -116,9 +118,9 @@ fun AppRail(
         // Media apps take the room left by the sections, never pushing Settings out of the screen
         val length = if (vertical) maxHeight else maxWidth
         val free = ((length - SLOT * (buttons.size + 1) - DIVIDER) / SLOT).toInt().coerceIn(0, MAX_APPS)
-        val apps = remember(pinned, recent, free) {
-            val chosen = (pinned + recent.filter { it !in pinned }).ifEmpty { MediaApps.suggested(context) }
-            chosen.mapNotNull { MediaApps.info(context, it) }.take(free)
+        val apps = remember(pinned, recent, followed, free) {
+            RailLayout.mediaApps(pinned, recent, followed) { MediaApps.suggested(context) }
+                .mapNotNull { MediaApps.info(context, it) }.take(free)
         }
         val items: @Composable (spacerModifier: Modifier) -> Unit = { spacerModifier ->
             for (button in buttons) {

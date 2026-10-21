@@ -20,6 +20,9 @@ interface AudioSink {
 
     /** Called on the capture thread with one chunk of PCM; [silent] when the chunk carries no sound. */
     fun onPcm(data: ByteArray, timestampUs: Long, silent: Boolean)
+
+    /** Read on the capture thread: whether a silent chunk is of any use now; when not, capture skips it. */
+    val wantsSilence: Boolean
 }
 
 /**

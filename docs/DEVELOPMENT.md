@@ -115,12 +115,16 @@ picks one, `-Serial <id>` picks the phone.
 
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
-  active, holding, ended or off; the call screen buttons work on it).
+  active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the
+  car's phone status channel (instrument cluster), logged as `Phone status: …`; `--es cluster call`
+  pretends the car's display pressed a button (call or enter answers a ringing call).
   Pretend messages: `--es notify "Text" --es from "Name"` (add `--ez group true` for a group chat);
   `--ez demo true` shows only pretend notifications, for screenshots without personal data
   (see `docs/screenshots`).
   Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
-  `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes.
+  `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes;
+  `--es passenger on` pretends someone sits beside the driver (`rear`, `off`, `none`), which the
+  notification privacy follows when it is on Auto.
   App bar: `--es rail "MAP:GROUP_1,VEHICLE:GROUP_1"` arranges it (`default` resets it).
   Voice: `--es voice probe [--es phrase "chiama Mario Rossi"]` checks the phone's on-device speech
   recognizer with a synthesized phrase fed as raw audio, like the car's microphone; `--es voice mic`
@@ -129,6 +133,21 @@ picks one, `-Serial <id>` picks the phone.
   microphone. The bench Pi announces a microphone but sends no audio, so use `phone` there.
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
+
+## Vehicle data sources
+
+The screens read only canonical fields (`car/VehicleField`: one meaning, one metric unit each). Every
+protocol is a `VehicleSource` that maps its own names to those fields and publishes them to
+`VehicleData`; `VehicleMerger` picks each field from a live source first, the higher priority among
+live ones (the Android Auto sensor channel over a car maker's protocol), else the newest last-known
+value. A new protocol is one more source class with its mapping; values it can't map yet go to the
+"All data" page as raw rows under the source's name.
+
+Exlap (`exlap/`) reads every object once at login (logged as `Exlap: first values, ...`, objects with
+personal data named without values), then subscribes only to what the screens need
+(`VehicleData.demand`): seat occupancy always, the overview's objects while the vehicle screen is open,
+everything while "All data" is (dropped 30 s after leaving). `ExlapMapping` holds the object names and
+their sources.
 
 ## Shizuku (optional audio routing)
 

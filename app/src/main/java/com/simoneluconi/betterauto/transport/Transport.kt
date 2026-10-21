@@ -10,5 +10,6 @@ interface Transport : Closeable {
     /** Blocks until exactly [len] bytes are read; throws [java.io.EOFException] on disconnect. */
     fun readFully(buf: ByteArray, off: Int = 0, len: Int = buf.size)
 
-    fun write(data: ByteArray)
+    /** Writes [len] bytes of [data] from [off] in one go (the USB accessory sends each write as one transfer). */
+    fun write(data: ByteArray, off: Int = 0, len: Int = data.size)
 }

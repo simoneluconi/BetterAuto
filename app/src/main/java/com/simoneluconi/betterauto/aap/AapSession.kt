@@ -37,7 +37,7 @@ import java.util.concurrent.Executors
  *   HU <-> ENCAPSULATED_SSL ...    (TLS handshake, HU is the client)
  *   HU -> AUTH_COMPLETE            phone -> SERVICE_DISCOVERY_REQUEST (encrypted from here on)
  *   HU -> SERVICE_DISCOVERY_RESPONSE: the channels (video, audio, input, sensors...) the car offers
- *   next: CHANNEL_OPEN_REQUEST per channel, then media setup and the video stream (TODO)
+ *   then CHANNEL_OPEN_REQUEST for every channel we serve, and each channel runs its own flow
  */
 class AapSession(
     private val transport: Transport,
@@ -229,6 +229,7 @@ class AapSession(
         }
         service.hasVendorExtensionService() -> VendorExtensionChannel(this, service.id, service.vendorExtensionService.name)
         service.hasBluetoothService() -> BluetoothChannel(this, service.id, service.bluetoothService, projection.context)
+        service.hasPhoneStatusService() -> PhoneStatusChannel(this, service.id, projection.context)
         else -> null
     }
 

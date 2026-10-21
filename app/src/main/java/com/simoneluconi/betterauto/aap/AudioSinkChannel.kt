@@ -9,7 +9,6 @@ import aap_protobuf.service.media.shared.message.SetupOuterClass.Setup
 import aap_protobuf.service.media.shared.message.StartOuterClass.Start
 import aap_protobuf.service.media.shared.message.StopOuterClass.Stop
 import aap_protobuf.service.media.sink.MediaMessageIdOuterClass.MediaMessageId
-import aap_protobuf.service.media.source.message.AckOuterClass.Ack
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.audio.AudioSink
 import com.simoneluconi.betterauto.audio.CarAudio
@@ -18,7 +17,6 @@ import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.NowPlaying
 import android.os.Handler
 import android.os.Looper
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -83,7 +81,8 @@ class AudioSinkChannel(
     private var lastSoundAt = 0L
     private var queuedBytes = 0
 
-    // Sender thread stats
+    // Sender thread: the chunks of the message being built, and stats
+    private val batch = ArrayList<ByteArray>()
     private var statsMessages = 0
     private var statsBytes = 0L
     private var statsDropped = 0L
@@ -100,10 +99,7 @@ class AudioSinkChannel(
     override fun onChannelMessage(msg: AapMessage) {
         when (msg.id) {
             MediaMessageId.MEDIA_MESSAGE_CONFIG_VALUE -> onConfig(Config.parseFrom(msg.payload))
-            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> {
-                val ack = Ack.parseFrom(msg.payload)
-                window.release(if (ack.hasAck()) ack.ack.coerceAtLeast(1) else 1)
-            }
+            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> window.release(ackedMessages(msg.payload))
             else -> EventLog.log("Media audio: unhandled message ${msg.id} (${msg.payload.size} bytes)")
         }
     }
@@ -164,6 +160,9 @@ class AudioSinkChannel(
         }
     }
 
+    /** Silence matters only inside a stream (it keeps the car's timing); outside one [onPcm] drops it anyway. */
+    override val wantsSilence: Boolean get() = streaming
+
     /** Capture thread: never blocks, only decides start/stop and queues PCM. */
     override fun onPcm(data: ByteArray, timestampUs: Long, silent: Boolean) {
         val now = timestampUs / 1000
@@ -199,7 +198,8 @@ class AudioSinkChannel(
     private fun sendLoop() {
         try {
             while (running) {
-                when (val item = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue) {
+                // Waits for as long as nothing is queued: close() interrupts it
+                when (val item = queue.take()) {
                     StartStream -> startStream()
                     is StopStream -> stopStream(item.releaseFocus)
                     is Pcm -> sendBatch(item)
@@ -218,23 +218,28 @@ class AudioSinkChannel(
         }
         val waitedMs = (System.nanoTime() - waitStart) / 1_000_000
 
-        // Everything captured while waiting goes out in this one message
-        val batch = ByteArrayOutputStream(maxBatchBytes)
-        batch.write(first.data)
-        while (batch.size() < maxBatchBytes) {
+        // Everything captured while waiting goes out in this one message, copied once into it
+        batch.clear()
+        batch += first.data
+        var size = first.data.size
+        while (size < maxBatchBytes) {
             val next = queue.peekFirst() as? Pcm ?: break
             if (!queue.remove(next)) break
-            batch.write(next.data)
+            batch += next.data
+            size += next.data.size
         }
-        synchronized(this) { queuedBytes -= batch.size() }
+        synchronized(this) { queuedBytes -= size }
 
-        val pcm = batch.toByteArray()
-        val payload = ByteArray(8 + pcm.size)
-        putU32(payload, 0, (first.timestampUs ushr 32).toInt())
-        putU32(payload, 4, first.timestampUs.toInt())
-        pcm.copyInto(payload, 8)
+        val payload = ByteArray(MEDIA_TIMESTAMP_BYTES + size)
+        putMediaTimestamp(payload, first.timestampUs)
+        var at = MEDIA_TIMESTAMP_BYTES
+        for (chunk in batch) {
+            chunk.copyInto(payload, at)
+            at += chunk.size
+        }
+        batch.clear()
         send(MediaMessageId.MEDIA_MESSAGE_DATA_VALUE, payload)
-        recordStats(pcm.size, waitedMs)
+        recordStats(size, waitedMs)
     }
 
     /**

@@ -10,7 +10,6 @@ import android.os.Process
 import android.os.SystemClock
 import com.simoneluconi.betterauto.EventLog
 import kotlin.concurrent.thread
-import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -94,9 +93,7 @@ class AudioCapture(projection: MediaProjection, private val sink: AudioSink, usa
         while (running) {
             val n = record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
             if (n <= 0) continue
-            val timestamp = SystemClock.elapsedRealtimeNanos() / 1000
-            val (out, silent) = quantizer.quantize(samples, n)
-            sink.onPcm(out, timestamp, silent)
+            quantizer.deliver(sink, samples, n, SystemClock.elapsedRealtimeNanos() / 1000)
         }
     }
 
@@ -106,15 +103,7 @@ class AudioCapture(projection: MediaProjection, private val sink: AudioSink, usa
         while (running) {
             val n = record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
             if (n <= 0) continue
-            val timestamp = SystemClock.elapsedRealtimeNanos() / 1000
-            var peak = 0
-            var i = 0
-            while (i + 1 < n) {
-                val sample = ((buffer[i].toInt() and 0xff) or (buffer[i + 1].toInt() shl 8)).toShort().toInt()
-                peak = max(peak, abs(sample))
-                i += 2
-            }
-            sink.onPcm(buffer.copyOf(n), timestamp, peak < PcmQuantizer.SILENCE * 32768f)
+            PcmQuantizer.deliver16(sink, buffer, n, SystemClock.elapsedRealtimeNanos() / 1000)
         }
     }
 

@@ -179,6 +179,7 @@ private fun AppsRow(item: AppsSetting, settings: LauncherSettings) {
                 }
             }
         }
+        item.note?.let { CarLabel(stringResource(it), 19.sp, colors.text2, maxLines = 2) }
     }
 }
 

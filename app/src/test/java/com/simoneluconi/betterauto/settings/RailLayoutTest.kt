@@ -40,4 +40,25 @@ class RailLayoutTest {
         val down = RailLayout.move(RailLayout.Default, RailItem.HOME, 1)
         assertEquals(listOf(RailItem.MUSIC, RailItem.HOME), down.take(2).map { it.item })
     }
+
+    @Test
+    fun mediaAppsLeaveOutTheOneMusicFollows() {
+        val none = { emptyList<String>() }
+        // Pinned first, then recent ones not pinned
+        assertEquals(listOf("b", "a", "c"), RailLayout.mediaApps(listOf("b"), listOf("a", "b", "c"), null, none))
+        // The followed app goes, recent or pinned; the others keep their order
+        assertEquals(listOf("b", "c"), RailLayout.mediaApps(listOf("b"), listOf("a", "b", "c"), "a", none))
+        assertEquals(listOf("a", "c"), RailLayout.mediaApps(listOf("b"), listOf("a", "b", "c"), "b", none))
+        // An app nobody listed changes nothing
+        assertEquals(listOf("a"), RailLayout.mediaApps(emptyList(), listOf("a"), "x", none))
+    }
+
+    @Test
+    fun suggestionsOnlyWithoutHistory() {
+        val suggested = { listOf("s1", "s2") }
+        assertEquals(listOf("s1", "s2"), RailLayout.mediaApps(emptyList(), emptyList(), null, suggested))
+        assertEquals(listOf("s2"), RailLayout.mediaApps(emptyList(), emptyList(), "s1", suggested))
+        // The only recent app playing in Music: no suggestions in its place
+        assertEquals(emptyList<String>(), RailLayout.mediaApps(emptyList(), listOf("a"), "a", suggested))
+    }
 }

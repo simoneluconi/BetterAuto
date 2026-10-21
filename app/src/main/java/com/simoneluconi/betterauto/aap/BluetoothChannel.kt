@@ -18,6 +18,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.audio.ShizukuAudio
@@ -148,7 +150,7 @@ class BluetoothChannel(
             addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         }
         // System broadcasts, protected: exporting the receiver lets nobody else in
-        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(listener, filter, Context.RECEIVER_EXPORTED) else context.registerReceiver(listener, filter)
+        ContextCompat.registerReceiver(context, listener, filter, ContextCompat.RECEIVER_EXPORTED)
         receiver = listener
         val started = runCatching { device.createBond() }.getOrDefault(false)
         EventLog.log("Bluetooth: pairing with the car ${if (started) "started" else "could not start"}")
@@ -220,12 +222,7 @@ class BluetoothChannel(
     override fun close() = stopListening()
 
     private fun deviceOf(intent: Intent): BluetoothDevice? =
-        if (Build.VERSION.SDK_INT >= 33) {
-            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-        }
+        IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
 
     private companion object {
         /** Codes shown on both screens first, then typed ones. */

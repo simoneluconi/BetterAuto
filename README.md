@@ -63,13 +63,15 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
   players…), with cover art, colors taken from the album, library browsing and big controls.
 - 🔊 **Car audio over the USB cable**, uncompressed PCM, captured from the phone and reduced to the
   car's format only at the very end, with dithering.
-- 🚘 **Now playing on the car's own displays** (instrument cluster, driver info screen) when the car
-  supports it.
+- 🚘 **Now playing, calls and phone signal on the car's own displays** (instrument cluster, driver
+  info screen) when the car supports it.
 - 📞 **Phone**: recents, favorites, contacts with A–Z jump, keypad, and a call screen to answer,
   hang up, mute and hold (call audio goes through the car's Bluetooth, as with Android Auto).
-- 🔔 **Notifications** grouped by chat, with filters per app and for group chats, and a quiet mode.
+- 🔔 **Notifications** grouped by chat, with filters per app and for group chats, a quiet mode, and
+  a privacy mode that hides what they say (on Auto, only while the car reports a passenger).
 - 🚗 **Vehicle**: everything the car shares (tyre pressure, range, odometer, climate, gear, doors…),
-  fault codes explained in plain words, and an engine-light shortcut in the top bar.
+  fault codes explained in plain words, and an engine-light shortcut in the top bar. On VW group cars
+  the extra data of Exlap fills in what the standard Android Auto sensors leave out.
 - 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
   calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
 - 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the

@@ -96,9 +96,12 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     /** AudioRecord -> pipe until stopped or until the app closes its end. */
     private fun pump(source: AudioRecord, sink: ParcelFileDescriptor) {
         val float = source.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
-        val bytes = ByteArray(BUFFER_BYTES)
-        val samples = FloatArray(BUFFER_BYTES / 4)
-        val floatBytes = ByteBuffer.allocate(BUFFER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        // The app reads 20 ms at a time: reading the same here wakes this process half as often as 4 KiB did
+        val chunk = source.sampleRate / CHUNKS_PER_SECOND * source.channelCount * (if (float) 4 else 2)
+        val bytes = ByteArray(chunk)
+        val samples = FloatArray(chunk / 4)
+        val floatBytes = ByteBuffer.allocate(chunk).order(ByteOrder.LITTLE_ENDIAN)
+        val floatView = floatBytes.asFloatBuffer()
         ParcelFileDescriptor.AutoCloseOutputStream(sink).use { out ->
             try {
                 while (running) {
@@ -106,8 +109,8 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
                         // Float keeps the mix untouched; the app dithers it down to the car's bit depth
                         val n = source.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                         if (n < 0) break
-                        floatBytes.clear()
-                        floatBytes.asFloatBuffer().put(samples, 0, n)
+                        floatView.clear()
+                        floatView.put(samples, 0, n)
                         out.write(floatBytes.array(), 0, n * 4)
                     } else {
                         val n = source.read(bytes, 0, bytes.size)
@@ -275,6 +278,9 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         const val ROUTE_FLAG_LOOP_BACK = 0x2
 
         const val BUFFER_BYTES = 4096
+
+        /** Same chunk as the app's reader (AudioCapture.CHUNKS_PER_SECOND): this class runs in the shell process. */
+        const val CHUNKS_PER_SECOND = 50
 
         /** The package of the shell user this process runs as. */
         const val SHELL_PACKAGE = "com.android.shell"

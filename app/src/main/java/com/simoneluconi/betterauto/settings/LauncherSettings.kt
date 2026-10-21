@@ -21,6 +21,9 @@ enum class WidgetType { MUSIC, MAP, NOTIFICATIONS }
 /** How contact names are written and sorted: "Mario Rossi" or "Rossi Mario". */
 enum class NameOrder { FIRST_LAST, LAST_FIRST }
 
+/** Whether notifications hide what they say: Auto follows who the car says is aboard. */
+enum class NotificationPrivacy { AUTO, OFF, ON }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -224,11 +227,23 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         prefs.edit { putBoolean(key, value) }
     }
 
-    private val _notificationPrivacy = boolFlow(KEY_NOTIFICATION_PRIVACY, false)
-    /** Notifications show who and which app, not what they say (passengers, screen recordings). */
-    val notificationPrivacy: StateFlow<Boolean> = _notificationPrivacy
+    private val _notificationPrivacy = MutableStateFlow(loadNotificationPrivacy())
+    /**
+     * Notifications show who and which app, not what they say (passengers, screen recordings): always,
+     * never, or (Auto) while the car says someone besides the driver is aboard.
+     */
+    val notificationPrivacy: StateFlow<NotificationPrivacy> = _notificationPrivacy
 
-    fun setNotificationPrivacy(value: Boolean) = saveBool(KEY_NOTIFICATION_PRIVACY, value, _notificationPrivacy)
+    fun setNotificationPrivacy(value: NotificationPrivacy) = saveEnum(KEY_NOTIFICATION_PRIVACY_MODE, value, _notificationPrivacy)
+
+    /**
+     * Auto, unless the driver turned the earlier on/off setting on. Its off was the default, and Auto shows
+     * contents just the same while the car doesn't say who is aboard.
+     */
+    private fun loadNotificationPrivacy(): NotificationPrivacy {
+        if (prefs.contains(KEY_NOTIFICATION_PRIVACY_MODE)) return enumOf(KEY_NOTIFICATION_PRIVACY_MODE, NotificationPrivacy.AUTO)
+        return if (prefs.getBoolean(KEY_NOTIFICATION_PRIVACY, false)) NotificationPrivacy.ON else NotificationPrivacy.AUTO
+    }
 
     fun setQuietMode(value: Boolean) {
         _quietMode.value = value
@@ -322,7 +337,9 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MUSIC_TAB = "music_tab"
         private const val KEY_NAME_ORDER = "name_order"
         private const val KEY_QUIET = "quiet_mode"
+        /** The earlier on/off privacy setting, read only to keep an explicit choice. */
         private const val KEY_NOTIFICATION_PRIVACY = "notification_privacy"
+        private const val KEY_NOTIFICATION_PRIVACY_MODE = "notification_privacy_mode"
         private const val KEY_RAIL = "rail_layout"
         private const val KEY_CLOCK = "clock_style"
         private const val KEY_DATE = "date_style"

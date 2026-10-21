@@ -107,22 +107,13 @@ class ShizukuCapture(
                 val timestamp = SystemClock.elapsedRealtimeNanos() / 1000
                 view.rewind()
                 view.get(samples)
-                val (out, silent) = quantizer.quantize(samples, samples.size)
-                sink.onPcm(out, timestamp, silent)
+                quantizer.deliver(sink, samples, samples.size, timestamp)
             }
         } else {
             val bytes = ByteArray(chunkFrames * format.channels * 2)
             while (running) {
                 stream.readFully(bytes)
-                val timestamp = SystemClock.elapsedRealtimeNanos() / 1000
-                var peak = 0
-                var i = 0
-                while (i + 1 < bytes.size) {
-                    val sample = ((bytes[i].toInt() and 0xff) or (bytes[i + 1].toInt() shl 8)).toShort().toInt()
-                    peak = maxOf(peak, kotlin.math.abs(sample))
-                    i += 2
-                }
-                sink.onPcm(bytes.copyOf(), timestamp, peak < PcmQuantizer.SILENCE * 32768f)
+                PcmQuantizer.deliver16(sink, bytes, bytes.size, SystemClock.elapsedRealtimeNanos() / 1000)
             }
         }
     }

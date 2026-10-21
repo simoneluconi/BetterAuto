@@ -19,7 +19,6 @@ import com.simoneluconi.betterauto.EventLog
  * lets BetterAuto start its service from the background at that moment. Android 12 or newer.
  */
 object WirelessAutoConnect {
-    private const val PREFS = "wireless"
     private const val KEY_AUTO = "auto_connect"
     /** The device the system watches for us now, to set it up once and move it when another is picked. */
     private const val KEY_WATCHED = "auto_connect_device"
@@ -28,17 +27,17 @@ object WirelessAutoConnect {
 
     /** On unless the user turned it off (or declined Android's dialog). */
     fun enabled(context: Context): Boolean =
-        supported() && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_AUTO, true)
+        supported() && context.wirelessPrefs().getBoolean(KEY_AUTO, true)
 
     fun watched(context: Context): String? =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WATCHED, null)
+        context.wirelessPrefs().getString(KEY_WATCHED, null)
 
     private fun setWatched(context: Context, address: String?) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putString(KEY_WATCHED, address) }
+        context.wirelessPrefs().edit { putString(KEY_WATCHED, address) }
     }
 
     private fun setEnabled(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_AUTO, value) }
+        context.wirelessPrefs().edit { putBoolean(KEY_AUTO, value) }
     }
 
     /**

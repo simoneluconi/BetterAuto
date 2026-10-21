@@ -83,26 +83,12 @@ object ShizukuAudio {
     /** Starts the shell-user service and waits for it; null when Shizuku is not ready or it does not come up. */
     fun connect(context: Context, timeoutMs: Long = 5000): Connection? {
         if (state(context) != State.READY) return null
-        val ready = CountDownLatch(1)
-        var router: IAudioRouter? = null
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                if (binder != null && binder.pingBinder()) router = IAudioRouter.Stub.asInterface(binder)
-                ready.countDown()
-            }
-
-            override fun onServiceDisconnected(name: ComponentName?) {
-                EventLog.log("Shizuku: audio service gone")
-            }
-        }
-        val args = serviceArgs(context)
-        Shizuku.bindUserService(args, connection)
-        if (!ready.await(timeoutMs, TimeUnit.MILLISECONDS) || router == null) {
+        val bound = bind(context, owner = true, timeoutMs) { EventLog.log("Shizuku: audio service gone") }
+        if (bound == null) {
             EventLog.log("Shizuku: audio service did not start")
-            runCatching { Shizuku.unbindUserService(args, connection, true) }
             return null
         }
-        return Connection(router!!) { runCatching { Shizuku.unbindUserService(args, connection, true) } }
+        return Connection(bound.router, bound::unbind)
     }
 
     /** Turns dual WiFi on or back to the phone's default through the shell service; false if it did not take. */
@@ -146,6 +132,19 @@ object ShizukuAudio {
      * that may be running; null when it does not come up or the call fails.
      */
     private fun <T> withService(context: Context, block: (IAudioRouter) -> T): T? {
+        val bound = bind(context, owner = false, 5000) ?: return null
+        try {
+            return runCatching { block(bound.router) }.getOrNull()
+        } finally {
+            bound.unbind()
+        }
+    }
+
+    /**
+     * Binds the shell service and waits for it, null if it does not come up. [owner]: the binding that moves
+     * the audio, whose unbind ends the service; any other leaves it running, it may be moving the car's audio.
+     */
+    private fun bind(context: Context, owner: Boolean, timeoutMs: Long, onGone: () -> Unit = {}): Bound? {
         val ready = CountDownLatch(1)
         var router: IAudioRouter? = null
         val connection = object : ServiceConnection {
@@ -154,16 +153,23 @@ object ShizukuAudio {
                 ready.countDown()
             }
 
-            override fun onServiceDisconnected(name: ComponentName?) = Unit
+            override fun onServiceDisconnected(name: ComponentName?) = onGone()
         }
         val args = serviceArgs(context)
         Shizuku.bindUserService(args, connection)
-        try {
-            val service = (if (ready.await(5000, TimeUnit.MILLISECONDS)) router else null) ?: return null
-            return runCatching { block(service) }.getOrNull()
-        } finally {
-            // Unbind without removing it: the same service may be moving the car's audio
-            runCatching { Shizuku.unbindUserService(args, connection, false) }
+        val bound = (if (ready.await(timeoutMs, TimeUnit.MILLISECONDS)) router else null)?.let { Bound(it, args, connection, owner) }
+        if (bound == null) runCatching { Shizuku.unbindUserService(args, connection, owner) }
+        return bound
+    }
+
+    private class Bound(
+        val router: IAudioRouter,
+        private val args: Shizuku.UserServiceArgs,
+        private val connection: ServiceConnection,
+        private val remove: Boolean,
+    ) {
+        fun unbind() {
+            runCatching { Shizuku.unbindUserService(args, connection, remove) }
         }
     }
 

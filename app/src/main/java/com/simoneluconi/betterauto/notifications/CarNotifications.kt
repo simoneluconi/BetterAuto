@@ -61,12 +61,31 @@ object CarNotifications {
     /** False until notification access is granted and the listener is connected. */
     val connected = MutableStateFlow(false)
 
+    @Volatile
     private var listener: NotificationListenerService? = null
 
-    // Parsing loads icons and avatars: one worker, in order, off the main thread. [byKey] lives there only.
+    // Parsing loads icons and avatars: one worker, in order, off the main thread. [byKey] and [users] live there only.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val worker = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val byKey = LinkedHashMap<String, CarNotification>()
+
+    /** Car screens showing notifications. With none, a notification is only noted for the settings, not parsed. */
+    private var users = 0
+
+    /** A car screen starts showing notifications: the ones already on the phone are read now. */
+    fun acquire() {
+        worker.launch { if (users++ == 0) listener?.let(::reload) }
+    }
+
+    /** The car screen is gone: nothing is kept until the next one. */
+    fun release() {
+        worker.launch {
+            if (--users > 0) return@launch
+            users = 0
+            byKey.clear()
+            publish()
+        }
+    }
 
     /** Development: show only pretend notifications, e.g. for screenshots without personal data. */
     @Volatile
@@ -138,12 +157,16 @@ object CarNotifications {
         listener = service
         connected.value = true
         worker.launch {
-            byKey.clear()
-            val active = runCatching { service.activeNotifications }.getOrNull().orEmpty()
-            for (sbn in active) parse(service, sbn)?.let { byKey[it.key] = it }
-            EventLog.log("Notifications: listener connected, ${byKey.size} of ${active.size} kept")
-            publish()
+            if (users > 0) reload(service) else EventLog.log("Notifications: listener connected")
         }
+    }
+
+    private fun reload(service: NotificationListenerService) {
+        byKey.clear()
+        val active = runCatching { service.activeNotifications }.getOrNull().orEmpty()
+        for (sbn in active) parse(service, sbn)?.let { byKey[it.key] = it }
+        EventLog.log("Notifications: ${byKey.size} of ${active.size} kept for the car")
+        publish()
     }
 
     internal fun onDisconnected() {
@@ -154,6 +177,13 @@ object CarNotifications {
 
     internal fun onPosted(service: NotificationListenerService, sbn: StatusBarNotification) {
         worker.launch {
+            if (users == 0) {
+                // No car: the app only goes on the settings' list, without loading icons or reading messages
+                if (worthShowing(service, sbn) && hasContent(sbn.notification)) {
+                    LauncherSettings.get(service).markNotificationApp(sbn.packageName)
+                }
+                return@launch
+            }
             val parsed = parse(service, sbn) ?: return@launch
             val previous = byKey[parsed.key]
             byKey.remove(parsed.key)
@@ -181,13 +211,28 @@ object CarNotifications {
         _all.value = byKey.values.sortedByDescending { it.time }
     }
 
+    /** The cheap checks: a conversation or an alert, not ongoing, media, system or silent. */
+    private fun worthShowing(service: NotificationListenerService, sbn: StatusBarNotification): Boolean {
+        val n = sbn.notification ?: return false
+        if (sbn.packageName == service.packageName || sbn.packageName in SystemPackages) return false
+        if (n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE or Notification.FLAG_GROUP_SUMMARY) != 0) return false
+        if (n.category in SkippedCategories) return false
+        if (n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) return false
+        return important(service, sbn)
+    }
+
+    /** Something to read, without parsing it: a title, a text, lines or chat messages. */
+    private fun hasContent(n: Notification?): Boolean {
+        val extras = n?.extras ?: return false
+        return !extras.getCharSequence(Notification.EXTRA_TITLE).isNullOrBlank() ||
+            !extras.getCharSequence(Notification.EXTRA_TEXT).isNullOrBlank() ||
+            extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.isNotEmpty() == true ||
+            extras.containsKey(Notification.EXTRA_MESSAGES)
+    }
+
     private fun parse(service: NotificationListenerService, sbn: StatusBarNotification): CarNotification? {
+        if (!worthShowing(service, sbn)) return null
         val n = sbn.notification ?: return null
-        if (sbn.packageName == service.packageName || sbn.packageName in SystemPackages) return null
-        if (n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE or Notification.FLAG_GROUP_SUMMARY) != 0) return null
-        if (n.category in SkippedCategories) return null
-        if (n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) return null
-        if (!important(service, sbn)) return null
 
         val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
         val extras = n.extras

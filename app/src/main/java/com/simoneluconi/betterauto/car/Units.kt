@@ -40,11 +40,22 @@ data class Units(val imperial: Boolean, val fahrenheit: Boolean, val locale: Loc
     fun airPressure(kpa: Double): String =
         if (imperial) "%.2f inHg".format(locale, kpa / KPA_PER_INHG) else "%.0f hPa".format(locale, kpa * 10)
 
+    /** Fuel used: l/100 km, or miles per gallon (the UK's own gallon there). */
+    fun consumption(litresPer100km: Double): String = when {
+        !imperial -> "%.1f l/100 km".format(locale, litresPer100km)
+        litresPer100km <= 0 -> "– mpg"
+        else -> "%.1f mpg".format(locale, (if (locale.country == "GB") MPG_UK_TIMES_L100 else MPG_US_TIMES_L100) / litresPer100km)
+    }
+
+    fun voltage(volts: Double): String = "%.1f V".format(locale, volts)
+
     companion object {
         private const val KM_PER_MILE = 1.609344
         private const val PSI_PER_BAR = 14.5037738
         private const val M_PER_FOOT = 0.3048
         private const val KPA_PER_INHG = 3.386389
+        private const val MPG_US_TIMES_L100 = 235.214583
+        private const val MPG_UK_TIMES_L100 = 282.480936
 
         /** The driver's choice; for Auto, what the phone uses ([phoneImperial], [phoneFahrenheit]). */
         fun resolve(

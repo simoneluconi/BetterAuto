@@ -3,11 +3,13 @@ package com.simoneluconi.betterauto
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.io.FileOutputStream
+import java.io.Writer
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Protocol log shown in the app and mirrored to logcat (tag "BetterAuto"). Also kept in a file in the
@@ -19,8 +21,9 @@ object EventLog {
     /** Each file holds 1 MB (several car trips); the current one and two older ones are kept, 3 MB at most. */
     private const val MAX_FILE_BYTES = 1L * 1024 * 1024
     private const val KEPT_FILES = 3
-    private val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
     private val dateTimeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+    /** Where the time starts in a [dateTimeFormat] stamp: the app's log shows the time only. */
+    private const val TIME_START = 11
 
     private val lines = ArrayDeque<String>()
     private val lineListeners = CopyOnWriteArrayList<(String) -> Unit>()
@@ -29,6 +32,11 @@ object EventLog {
     @Volatile
     private var file: File? = null
     private val writer = Executors.newSingleThreadExecutor { Thread(it, "event-log").apply { isDaemon = true } }
+    private val queued = AtomicInteger()
+
+    // The open file, on the writer thread only: one open per file, not one per line
+    private var out: Writer? = null
+    private var outBytes = 0L
 
     /** Name of the connected head unit, null when idle. */
     @Volatile
@@ -46,20 +54,38 @@ object EventLog {
 
     fun log(message: String) {
         Log.i(TAG, message)
-        val now = LocalDateTime.now()
-        val line = "${now.format(timeFormat)} $message"
+        val stamp = LocalDateTime.now().format(dateTimeFormat)
+        val line = "${stamp.substring(TIME_START)} $message"
         synchronized(lines) {
             lines.addLast(line)
             if (lines.size > MAX_LINES) lines.removeFirst()
         }
         lineListeners.forEach { it(line) }
-        file?.let { target -> writer.execute { append(target, "${now.format(dateTimeFormat)} $message\n") } }
+        file?.let { target ->
+            queued.incrementAndGet()
+            writer.execute { append(target, "$stamp $message\n") }
+        }
     }
 
     private fun append(target: File, text: String) {
-        runCatching {
-            if (target.length() > MAX_FILE_BYTES) rotate(target)
-            target.appendText(text)
+        try {
+            if (outBytes > MAX_FILE_BYTES) {
+                runCatching { out?.close() }
+                out = null
+                rotate(target)
+            }
+            val writer = out ?: FileOutputStream(target, true).bufferedWriter().also {
+                out = it
+                outBytes = target.length()
+            }
+            writer.write(text)
+            outBytes += text.length
+            // Flushed as soon as no other line waits: in the file within milliseconds, a burst costs one write
+            if (queued.decrementAndGet() == 0) writer.flush()
+        } catch (_: Exception) {
+            queued.set(0)
+            runCatching { out?.close() }
+            out = null
         }
     }
 

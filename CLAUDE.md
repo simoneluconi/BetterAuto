@@ -26,25 +26,25 @@ anything copied from closed-source apps.
   self-signed development pair (`phone_cert.pem`, `phone_key.pem`) is public. Anything else put there
   (e.g. a certificate to try a factory head unit) is ignored by `.gitignore` and must never be committed;
   neither must the deletion of our pair. Check `git status` on that folder before every commit.
-- **Exlap credentials** (VW group vehicle data) are typed by the user in the phone settings, stored
-  encrypted with the Android Keystore. They never go in code, logs, docs or commits.
+- **Exlap credentials** (VW group vehicle data) are built into `ExlapSettings`: they are publicly known,
+  so the user keeps them in the code on purpose. Leave them there, but never echo them in logs or docs.
 
 ## Map of the code (`app/src/main/java/com/simoneluconi/betterauto/`)
 
 | Package | What lives there |
 |---|---|
 | `transport/` | Byte pipe to the head unit: `Transport` interface, `UsbAccessoryTransport`, `TcpTransport`. `wireless/`: `WirelessConnector` (Bluetooth RFCOMM bootstrap `WirelessBootstrap`, WiFi join `WifiJoin`, TCP), auto-connect (`WirelessAutoConnect` + `WirelessCompanionService`, companion device manager). Retries and the setup timeout live in `AapService` |
-| `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `VendorExtensionChannel`, `BluetoothChannel` (pairs the phone with the car for calls; confirmed through Shizuku when there)), `ConnectionProblem` (why a car refused us) |
+| `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `PhoneStatusChannel` (calls and signal for the cluster), `VendorExtensionChannel`, `BluetoothChannel` (pairs the phone with the car for calls; confirmed through Shizuku when there)), `ConnectionProblem` (why a car refused us) |
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
 | `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI |
 | `audio/` | Phone audio to the car: `CarAudio` picks the way. With Shizuku ready, `ShizukuCapture` + `AudioRouterService` (an AIDL user service running as the shell user, audio policy loopback mix, system APIs by reflection) *move* it; otherwise `AudioCapture` *copies* it (MediaProjection) and `PhoneSpeakerMute` mutes the phone. `PcmQuantizer` (float → dithered PCM) is shared. Also the car microphone |
 | `media/` | `NowPlaying` (follows the active media session), media apps, library browsing |
-| `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery) |
+| `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery; `PhoneSignal` shares the telephony listeners) |
 | `notifications/` | Notifications shown in the car |
 | `voice/` | Voice commands: on-device speech recognition, `CommandParser`, `VoiceAssistant` |
-| `car/` | Data from the car: `VehicleData`/`CarState`, `FaultCodes`, `Units` (metric/imperial, °C/°F), `Viewport` |
-| `exlap/` | VW group Exlap (extra vehicle data, read only): `ExlapClient` (protocol), `ExlapSettings`, `ExlapData`, `ExlapRows`, `ExlapPhoneSettings` (phone-only settings card) |
+| `car/` | Data from the car: `VehicleData`/`CarState`, `FaultCodes`, `Units` (metric/imperial, °C/°F), `Viewport`. Vehicle values are canonical `VehicleField`s published by `VehicleSource`s (AA sensors, Exlap, demo) and merged by `VehicleMerger`; the UI never reads a protocol directly |
+| `exlap/` | VW group Exlap (extra vehicle data, read only): `ExlapClient` (protocol), `ExlapSettings`, `ExlapData` (+ `ExlapVehicleSource`), `ExlapMapping` (object names to canonical fields), `ExlapRows`, `ExlapPhoneSettings` (phone-only settings card) |
 | `settings/` | `LauncherSettings` (persisted, StateFlows), `SettingsCatalog` (one declaration shown both in the car and on the phone), `RailLayout` |
 | `ui/` | The car launcher: `launcher/` (root, status bar, app rail, focus zones, settings screen), `widgets/` (music), `phone/`, `vehicle/`, `notifications/`, `voice/`, `theme/`, shared bits (`CarFocus`, `CarText`, `CarIcons`, `Scrollbar`, `AlphabetJump`) |
 | `MainActivity`, `PhoneSettings` | The phone app: setup steps, log, settings (the catalog plus phone-only sections) |
@@ -134,7 +134,7 @@ the catalog.
   accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
   wireless Android Auto.
 - Channels the cars offer that are not implemented yet: guidance/system audio,
-  navigation status, phone status, notifications, media browser, radio.
+  navigation status, notifications, media browser, radio.
 - Wireless with an AAWireless dongle: it often drops the first session while it sets up its USB link to
   the car (retried automatically), and sends an empty control message 0 right before it hangs up (not
   understood yet). On a bench without a car it may never switch its WiFi on.

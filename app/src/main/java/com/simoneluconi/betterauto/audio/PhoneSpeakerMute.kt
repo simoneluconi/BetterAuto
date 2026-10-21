@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
-import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 
@@ -39,11 +39,7 @@ object PhoneSpeakerMute {
                     }
                 }
             }
-            if (Build.VERSION.SDK_INT >= 33) {
-                app.registerReceiver(r, IntentFilter(VOLUME_CHANGED), Context.RECEIVER_EXPORTED)
-            } else {
-                app.registerReceiver(r, IntentFilter(VOLUME_CHANGED))
-            }
+            ContextCompat.registerReceiver(app, r, IntentFilter(VOLUME_CHANGED), ContextCompat.RECEIVER_EXPORTED)
             receiver = r
         }
         EventLog.log("Phone speaker muted while audio goes to the car")

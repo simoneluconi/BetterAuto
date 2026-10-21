@@ -13,7 +13,8 @@ import java.net.Socket
 class TcpTransport(private val socket: Socket, private val onClose: () -> Unit = {}) : Transport {
     override val kind = "TCP"
 
-    private val input = socket.getInputStream()
+    // Frames arrive as header, then body: buffered, each costs one read from the socket, not two or three
+    private val input = socket.getInputStream().buffered(64 * 1024)
     private val output = socket.getOutputStream()
 
     override fun readFully(buf: ByteArray, off: Int, len: Int) {
@@ -28,16 +29,16 @@ class TcpTransport(private val socket: Socket, private val onClose: () -> Unit =
     private var lastSlowLog = 0L
 
     @Synchronized
-    override fun write(data: ByteArray) {
+    override fun write(data: ByteArray, off: Int, len: Int) {
         val start = System.nanoTime()
-        output.write(data)
+        output.write(data, off, len)
         output.flush()
         // A write only blocks when the link backs up: the sign of a slow or stalling WiFi
         val end = System.nanoTime()
         val tookMs = (end - start) / 1_000_000
         if (tookMs >= SLOW_WRITE_MS && end - lastSlowLog > 1_000_000_000L) {
             lastSlowLog = end
-            EventLog.log("TCP: sending ${data.size} bytes took $tookMs ms, the link is backing up")
+            EventLog.log("TCP: sending $len bytes took $tookMs ms, the link is backing up")
         }
     }
 

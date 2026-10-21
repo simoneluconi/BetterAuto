@@ -41,7 +41,6 @@ import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
 import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
-import com.simoneluconi.betterauto.ui.vehicle.hasFaults
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.ui.notifications.rememberVisibleNotifications
 import com.simoneluconi.betterauto.ui.phone.CallPill
@@ -54,6 +53,10 @@ import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
+import com.simoneluconi.betterauto.car.VehicleSnapshot
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.runtime.remember
 
 @Composable
 fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
@@ -142,15 +145,22 @@ private fun clockText(context: Context, at: LocalDateTime, style: ClockStyle): S
 }
 
 private fun dateText(at: LocalDateTime, style: DateStyle): String? {
-    val pattern = when (style) {
-        DateStyle.HIDDEN -> return null
-        DateStyle.SHORT -> "EEE d MMM"
-        DateStyle.LONG -> "EEEE d MMMM"
-        // Day and month in the order and with the separator of the phone's language
-        DateStyle.NUMERIC -> DateFormat.getBestDateTimePattern(Locale.getDefault(), "dM")
+    if (style == DateStyle.HIDDEN) return null
+    val locale = Locale.getDefault()
+    val format = DateFormats.getOrPut(style to locale) {
+        val pattern = when (style) {
+            DateStyle.SHORT -> "EEE d MMM"
+            DateStyle.LONG -> "EEEE d MMMM"
+            // Day and month in the order and with the separator of the phone's language
+            else -> DateFormat.getBestDateTimePattern(locale, "dM")
+        }
+        DateTimeFormatter.ofPattern(pattern, locale)
     }
-    return at.format(DateTimeFormatter.ofPattern(pattern, Locale.getDefault()))
+    return at.format(format)
 }
+
+/** Built once per style and language, not on every recomposition of the status bar (main thread only). */
+private val DateFormats = HashMap<Pair<DateStyle, Locale>, DateTimeFormatter>()
 
 private val Clock24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val Clock12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm")
@@ -163,9 +173,10 @@ private val LowBattery = Color(0xFFE5484D)
  */
 @Composable
 private fun EngineLight(settings: LauncherSettings) {
-    val vehicle by VehicleData.snapshot.collectAsStateWithLifecycle()
-    if (!hasFaults(vehicle)) return
-    val count = vehicle.diagnostics?.value?.size ?: 0
+    // Only the number of codes: the snapshot itself changes with every sensor reading
+    val count by remember { VehicleData.snapshot.map(::faultCount).distinctUntilChanged() }
+        .collectAsStateWithLifecycle(faultCount(VehicleData.snapshot.value))
+    if (count == 0) return
     Box(
         Modifier
             .carClickable(CircleShape, stringResource(R.string.vehicle_faults_open, count)) {
@@ -290,3 +301,5 @@ private fun Battery(percent: Int, charging: Boolean) {
         CarLabel("$percent%", 19.sp, colors.text, weight = FontWeight.Bold, tabularNumbers = true)
     }
 }
+
+private fun faultCount(snapshot: VehicleSnapshot): Int = snapshot.diagnostics?.value?.size ?: 0

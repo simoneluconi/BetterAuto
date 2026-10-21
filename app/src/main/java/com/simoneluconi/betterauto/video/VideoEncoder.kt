@@ -49,6 +49,8 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
             // A static UI produces no new frames: keep the stream alive with a few repeats a second
             // rather than re-encoding the same picture at full rate (battery, heat, USB)
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, STATIC_REPEAT_US)
+            // Animations draw at the phone's refresh rate: frames beyond what the car shows are dropped before encoding
+            setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps.toFloat())
         }
         try {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -62,20 +64,28 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
         EventLog.log("Encoder ${codec.name}: ${width}x$height $fps fps ${bitrate / 1000} kbps")
     }
 
-    fun start(onCodecConfig: (ByteArray) -> Unit, onFrame: (data: ByteArray, timestampUs: Long) -> Unit) {
+    /**
+     * Each frame comes in its own array after [frameHeadroom] free bytes, so the caller can put its message
+     * header there instead of copying the frame again.
+     */
+    fun start(
+        onCodecConfig: (ByteArray) -> Unit,
+        frameHeadroom: Int,
+        onFrame: (frame: ByteArray, timestampUs: Long) -> Unit,
+    ) {
         running = true
         lastOutputNanos = System.nanoTime()
         Lifecycle.withLock { codec.start() }
         drainThread = thread(name = "video-encoder") {
             try {
-                drain(onCodecConfig, onFrame)
+                drain(onCodecConfig, frameHeadroom, onFrame)
             } catch (e: Exception) {
                 if (running) EventLog.log("Encoder stopped: $e")
             }
         }
     }
 
-    private fun drain(onCodecConfig: (ByteArray) -> Unit, onFrame: (ByteArray, Long) -> Unit) {
+    private fun drain(onCodecConfig: (ByteArray) -> Unit, headroom: Int, onFrame: (ByteArray, Long) -> Unit) {
         val info = MediaCodec.BufferInfo()
         var configSent = false
         while (running) {
@@ -95,14 +105,16 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
             val buffer = codec.getOutputBuffer(index) ?: continue
             buffer.position(info.offset)
             buffer.limit(info.offset + info.size)
-            val data = buffer.toArray()
-            codec.releaseOutputBuffer(index, false)
-
             if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                val data = buffer.toArray()
+                codec.releaseOutputBuffer(index, false)
                 if (!configSent) onCodecConfig(data)
                 configSent = true
-            } else if (data.isNotEmpty()) {
-                onFrame(data, info.presentationTimeUs)
+            } else {
+                val frame = ByteArray(headroom + info.size)
+                buffer.get(frame, headroom, info.size)
+                codec.releaseOutputBuffer(index, false)
+                if (info.size > 0) onFrame(frame, info.presentationTimeUs)
             }
         }
     }

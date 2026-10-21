@@ -18,6 +18,7 @@ import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.audio.CarMicrophone
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.notifications.CarNotifications
+import com.simoneluconi.betterauto.notifications.NotificationContent
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.phone.Contact
 import com.simoneluconi.betterauto.phone.PhoneBook
@@ -337,7 +338,7 @@ object VoiceAssistant {
                 val list = CarNotifications.visible(CarNotifications.all.value, settings).take(3)
                 val text = if (list.isEmpty()) appContext.getString(R.string.voice_no_notifications)
                 // With the privacy setting on, only who wrote and from which app
-                else if (settings.notificationPrivacy.value) list.joinToString(". ") { n -> "${n.title}, ${n.appLabel}" }
+                else if (NotificationContent.hiddenNow(settings)) list.joinToString(". ") { n -> "${n.title}, ${n.appLabel}" }
                 else list.joinToString(". ") { n -> "${n.title}: ${n.last?.text.orEmpty()}" }
                 // The music comes back after the reading
                 done(text)

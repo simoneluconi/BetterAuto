@@ -114,10 +114,15 @@ class CommandParser(private val contacts: List<String>) {
 
         fun normalize(text: String): String =
             Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
-                .replace(Regex("\\p{M}"), "")
-                .replace(Regex("[^a-z0-9 ]"), " ")
-                .replace(Regex("\\s+"), " ")
+                .replace(Marks, "")
+                .replace(NotWord, " ")
+                .replace(Spaces, " ")
                 .trim()
+
+        // Compiled once: every contact name and every partial result goes through normalize()
+        private val Marks = Regex("\\p{M}")
+        private val NotWord = Regex("[^a-z0-9 ]")
+        private val Spaces = Regex("\\s+")
 
         /** 1 for equal words, falling with the edit distance. */
         fun similarity(a: String, b: String): Double {
