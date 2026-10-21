@@ -50,6 +50,7 @@ import com.simoneluconi.betterauto.car.VehicleSnapshot
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.ui.LocalFormatLocale
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
@@ -236,7 +237,7 @@ private fun tiles(s: VehicleSnapshot): List<Tile> {
             listOfNotNull(
                 listOfNotNull(
                     p.altitudeM?.let { "$altitude ${units.length(it)}" },
-                    p.bearing?.let { "$heading ${"%.0f°".format(Locale.getDefault(), it)}" },
+                    p.bearing?.let { "$heading ${"%.0f°".format(LocalFormatLocale.current, it)}" },
                 ).joinToString(" · ").ifEmpty { null },
                 p.accuracyM?.let { stringResource(R.string.vehicle_accuracy_detail, units.length(it)) },
             ).joinToString("\n").ifEmpty { null },

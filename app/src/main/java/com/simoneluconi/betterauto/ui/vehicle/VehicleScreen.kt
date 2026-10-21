@@ -55,6 +55,7 @@ import com.simoneluconi.betterauto.car.VehicleSnapshot
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.ui.LocalFormatLocale
 import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
@@ -408,7 +409,7 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
                 s.speed?.value?.cruiseOn?.let { on ->
                     stringResource(R.string.vehicle_cruise) to if (on) (s.speed.value.cruiseSetKmh?.let { units.speed(it.toDouble()) } ?: yes) else no
                 },
-                s.rpm?.let { stringResource(R.string.vehicle_rpm) to "%,d".format(Locale.getDefault(), it.value) },
+                s.rpm?.let { stringResource(R.string.vehicle_rpm) to "%,d".format(LocalFormatLocale.current, it.value) },
             ),
             listOfNotNull(s.gear?.at, s.parkingBrake?.at, s.drivingStatus?.at, s.speed?.at, s.rpm?.at).maxOrNull(),
         )
@@ -421,7 +422,7 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
                 p?.let { stringResource(R.string.vehicle_coordinates) to "%.5f, %.5f".format(Locale.ROOT, it.latitude, it.longitude) },
                 p?.accuracyM?.let { stringResource(R.string.vehicle_accuracy) to "± ${units.length(it)}" },
                 p?.altitudeM?.let { stringResource(R.string.vehicle_altitude) to units.length(it) },
-                p?.bearing?.let { stringResource(R.string.vehicle_heading) to "%.0f°".format(Locale.getDefault(), it) },
+                p?.bearing?.let { stringResource(R.string.vehicle_heading) to "%.0f°".format(LocalFormatLocale.current, it) },
                 s.satellites?.let { sat -> stringResource(R.string.vehicle_satellites) to (sat.value.inView?.let { "${sat.value.inUse} / $it" } ?: sat.value.inUse.toString()) },
             ),
             listOfNotNull(s.position?.at, s.satellites?.at).maxOrNull(),
@@ -431,10 +432,10 @@ private fun cards(s: VehicleSnapshot): List<VehicleCard> {
         list += VehicleCard(
             CarIcons.Gauge, stringResource(R.string.vehicle_motion),
             listOfNotNull(
-                m.value.compassBearing?.let { stringResource(R.string.vehicle_compass) to "%.0f°".format(Locale.getDefault(), it) },
-                m.value.steeringAngle?.let { stringResource(R.string.vehicle_steering) to "%.0f°".format(Locale.getDefault(), it) },
-                m.value.acceleration?.let { (x, y, z) -> stringResource(R.string.vehicle_acceleration) to "%.1f / %.1f / %.1f".format(Locale.getDefault(), x, y, z) },
-                m.value.rotation?.let { (x, y, z) -> stringResource(R.string.vehicle_rotation) to "%.2f / %.2f / %.2f".format(Locale.getDefault(), x, y, z) },
+                m.value.compassBearing?.let { stringResource(R.string.vehicle_compass) to "%.0f°".format(LocalFormatLocale.current, it) },
+                m.value.steeringAngle?.let { stringResource(R.string.vehicle_steering) to "%.0f°".format(LocalFormatLocale.current, it) },
+                m.value.acceleration?.let { (x, y, z) -> stringResource(R.string.vehicle_acceleration) to "%.1f / %.1f / %.1f".format(LocalFormatLocale.current, x, y, z) },
+                m.value.rotation?.let { (x, y, z) -> stringResource(R.string.vehicle_rotation) to "%.2f / %.2f / %.2f".format(LocalFormatLocale.current, x, y, z) },
             ),
             m.at,
         )

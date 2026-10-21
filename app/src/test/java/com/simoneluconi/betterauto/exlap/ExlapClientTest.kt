@@ -63,25 +63,26 @@ class ExlapClientTest {
     @Test
     fun everythingIsReadOnceThenOnlyWhatTheScreensNeedIsFollowed() {
         val client = client("user" to "secret")
-        discovered(client, mapOf("outsideTemperature" to "12.5", "engineSpeed" to "800", "Comfort_CarSeatsStatus" to "x"))
+        discovered(client, mapOf("outsideTemperature" to "12.5", "totalDistance" to "1000", "engineSpeed" to "800", "Comfort_CarSeatsStatus" to "x"))
 
         // Functions are the car's actions: never described nor read
         assertTrue(sent.none { it.contains("Media_Pause") && !it.contains("<Dir") })
-        assertEquals(ExlapStatus(ExlapState.LOGGED_IN, 3), statuses.last())
+        assertEquals(ExlapStatus(ExlapState.LOGGED_IN, 4), statuses.last())
         // The first read already gives the vehicle screen its values
         assertEquals(12.5, VehicleData.snapshot.value.environment!!.value.temperatureC!!, 0.01)
-        // Nothing on screen: only who is aboard is followed
-        assertEquals(listOf("Comfort_CarSeatsStatus"), subscriptions())
+        // Nothing on screen: only who is aboard and the outside temperature (clock widget) are followed
+        assertEquals(setOf("Comfort_CarSeatsStatus", "outsideTemperature"), subscriptions().toSet())
 
         client.setDemand(VehicleDemand.OVERVIEW)
-        assertEquals(listOf("Comfort_CarSeatsStatus", "outsideTemperature"), subscriptions())
+        assertEquals(setOf("Comfort_CarSeatsStatus", "outsideTemperature", "totalDistance"), subscriptions().toSet())
         client.setDemand(VehicleDemand.DETAIL)
         assertTrue("engineSpeed" in subscriptions())
 
         client.setDemand(VehicleDemand.NONE)
         assertTrue(sent.any { it.contains("<Unsubscribe url=\"engineSpeed\"") })
-        assertTrue(sent.any { it.contains("<Unsubscribe url=\"outsideTemperature\"") })
+        assertTrue(sent.any { it.contains("<Unsubscribe url=\"totalDistance\"") })
         assertFalse(sent.any { it.contains("<Unsubscribe url=\"Comfort_CarSeatsStatus\"") })
+        assertFalse(sent.any { it.contains("<Unsubscribe url=\"outsideTemperature\"") })
     }
 
     @Test

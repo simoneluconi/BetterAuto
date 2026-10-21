@@ -21,6 +21,8 @@ import com.simoneluconi.betterauto.settings.RailItem
 import com.simoneluconi.betterauto.settings.RailLayout
 import com.simoneluconi.betterauto.settings.RailSlot
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.smarthome.SmartHome
+import com.simoneluconi.betterauto.ui.smarthome.SmartHomeRailButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +100,9 @@ fun AppRail(
     val followed by NowPlaying.followedApp.collectAsStateWithLifecycle()
     val layout by settings.railLayout.collectAsStateWithLifecycle()
     val buttons = remember(layout) { buttons(layout) }
+    // Linked smart-home services sit with the apps, each with its own icon
+    val homes by SmartHome.linked.collectAsStateWithLifecycle()
+    val screenHome by SmartHome.screenProvider.collectAsStateWithLifecycle()
     // The knob starts from the current section's button (or its group), else from the first one
     val focused = buttons.firstOrNull { b ->
         when (b) {
@@ -117,7 +122,7 @@ fun AppRail(
     BoxWithConstraints(if (vertical) surface.fillMaxHeight().width(RAIL_WIDTH) else surface.fillMaxWidth().height(RAIL_HEIGHT)) {
         // Media apps take the room left by the sections, never pushing Settings out of the screen
         val length = if (vertical) maxHeight else maxWidth
-        val free = ((length - SLOT * (buttons.size + 1) - DIVIDER) / SLOT).toInt().coerceIn(0, MAX_APPS)
+        val free = ((length - SLOT * (buttons.size + 1 + homes.size) - DIVIDER) / SLOT).toInt().coerceIn(0, MAX_APPS)
         val apps = remember(pinned, recent, followed, free) {
             RailLayout.mediaApps(pinned, recent, followed) { MediaApps.suggested(context) }
                 .mapNotNull { MediaApps.info(context, it) }.take(free)
@@ -131,13 +136,22 @@ fun AppRail(
                         label = stringResource(button.item.label),
                         selected = section == button.item.section,
                         modifier = mod,
+                        onLongClick = { BarEditor.open(button.item) },
                     ) { settings.setSection(button.item.section) }
-                    is RailButtonSpec.Group -> GroupButton(button.items, selected = button.items.any { it.section == section }, modifier = mod) {
+                    is RailButtonSpec.Group -> GroupButton(
+                        button.items, selected = button.items.any { it.section == section }, modifier = mod,
+                        onLongClick = { BarEditor.open(button.items.first()) },
+                    ) {
                         onOpenGroup(button.slot)
                     }
                 }
             }
-            if (apps.isNotEmpty()) RailDivider(vertical)
+            if (apps.isNotEmpty() || homes.isNotEmpty()) RailDivider(vertical)
+            for (home in homes) {
+                SmartHomeRailButton(home, selected = section == Section.SMART_HOME && home.id == (screenHome ?: homes.first().id)) {
+                    settings.setSection(Section.SMART_HOME)
+                }
+            }
             for (app in apps) {
                 val isPinned = app.packageName in pinned
                 Box(
@@ -169,6 +183,7 @@ fun AppRail(
             RailButton(
                 CarIcons.Settings, stringResource(R.string.nav_settings), section == Section.SETTINGS,
                 modifier = if (focused == null) Modifier.focusRequester(firstFocus) else Modifier,
+                onLongClick = { BarEditor.open(null) },
             ) { settings.setSection(Section.SETTINGS) }
         }
         if (vertical) {
@@ -187,15 +202,15 @@ fun AppRail(
     }
 }
 
-/** One button for a group: its first items' icons together. */
+/** One button for a group: its first items' icons together. Held, it arranges the bar. */
 @Composable
-private fun GroupButton(items: List<RailItem>, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun GroupButton(items: List<RailItem>, selected: Boolean, modifier: Modifier, onLongClick: () -> Unit, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(22.dp)
     val names = items.map { stringResource(it.label) }.joinToString(", ")
     Box(
         modifier
-            .carClickable(shape, stringResource(R.string.rail_group, names), onClick = onClick)
+            .carClickable(shape, stringResource(R.string.rail_group, names), onLongClick = onLongClick, onClick = onClick)
             .background(if (selected) colors.focus.copy(alpha = 0.2f) else colors.surface2, shape)
             .size(72.dp),
         contentAlignment = Alignment.Center,
@@ -277,19 +292,21 @@ private val SLOT = 80.dp
 private val DIVIDER = 18.dp
 private const val MAX_APPS = 4
 
+/** A section's button; held (finger or knob center), it arranges the bar. */
 @Composable
 private fun RailButton(
     icon: ImageVector,
     label: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
+    onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(22.dp)
     Box(
         modifier
-            .carClickable(shape, label, onClick = onClick)
+            .carClickable(shape, label, onLongClick = onLongClick, onClick = onClick)
             .background(if (selected) colors.focus.copy(alpha = 0.2f) else colors.surface, shape)
             .size(72.dp),
         contentAlignment = Alignment.Center,

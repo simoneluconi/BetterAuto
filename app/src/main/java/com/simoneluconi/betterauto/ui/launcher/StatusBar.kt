@@ -44,6 +44,7 @@ import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.ui.notifications.rememberVisibleNotifications
 import com.simoneluconi.betterauto.ui.phone.CallPill
+import com.simoneluconi.betterauto.ui.smarthome.ArrivalStatusButton
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.phone.rememberPhoneStatus
@@ -57,6 +58,10 @@ import com.simoneluconi.betterauto.car.VehicleSnapshot
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.remember
+import com.simoneluconi.betterauto.settings.AppLocales
+import com.simoneluconi.betterauto.settings.WidgetType
+import com.simoneluconi.betterauto.ui.LocalFormatLocale
+import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 
 @Composable
 fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
@@ -71,10 +76,14 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val showBell by settings.showBell.collectAsStateWithLifecycle()
     val showSignal by settings.showSignal.collectAsStateWithLifecycle()
     val showBattery by settings.showBattery.collectAsStateWithLifecycle()
-    val showLayout by settings.showLayoutButton.collectAsStateWithLifecycle()
+
     val voiceEnabled by settings.voiceEnabled.collectAsStateWithLifecycle()
     val showMic by settings.showMicButton.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // A clock widget on the home screen already says the time and date: not twice on the same screen
+    val layout by settings.layout.collectAsStateWithLifecycle()
+    val slots by settings.widgets.collectAsStateWithLifecycle()
+    val hideTime = section == Section.HOME && slots.take(layout.slots).any { it.type == WidgetType.CLOCK }
 
     Row(
         Modifier
@@ -83,19 +92,23 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        clockText(context, phone.at, clockStyle)?.let { CarLabel(it, 32.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true) }
-        dateText(phone.at, dateStyle)?.let { CarLabel(it, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp)) }
+        if (!hideTime) {
+            clockText(context, phone.at, clockStyle, LocalFormatLocale.current)?.let { CarLabel(it, 32.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true) }
+            dateText(phone.at, dateStyle, LocalFormatLocale.current)?.let { CarLabel(it, 20.sp, colors.text2, modifier = Modifier.padding(start = 4.dp, top = 6.dp)) }
+        }
         Spacer(Modifier.weight(1f))
 
         // The row hangs from the right edge: what comes and goes (a call, the engine light, the layout button on
         // the home screen) sits on the left, so the buttons that are always there never move under the finger
         call?.takeIf { callMinimized }?.let { CallPill(it) }
         if (showEngine) EngineLight(settings)
-        if (showLayoutButton && showLayout) {
+        ArrivalStatusButton()
+        if (showLayoutButton) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(
                 Modifier
-                    .carClickable(CircleShape, layoutDescription) { settings.cycleLayout() }
+                    // A tap changes the layout, holding it edits the home screen
+                    .carClickable(CircleShape, layoutDescription, onLongClick = { HomeEdit.start(settings) }) { settings.cycleLayout() }
                     .background(colors.surface, CircleShape)
                     .size(52.dp),
                 contentAlignment = Alignment.Center,
@@ -137,16 +150,15 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
 /** Room for Wi-Fi, the signal bars and a three-digit battery. */
 private val STATUS_MIN_WIDTH = 176.dp
 
-private fun clockText(context: Context, at: LocalDateTime, style: ClockStyle): String? = when (style) {
+private fun clockText(context: Context, at: LocalDateTime, style: ClockStyle, formats: Locale): String? = when (style) {
     ClockStyle.HIDDEN -> null
     ClockStyle.H24 -> at.format(Clock24)
     ClockStyle.H12 -> at.format(Clock12)
-    ClockStyle.AUTO -> at.format(if (DateFormat.is24HourFormat(context)) Clock24 else Clock12)
+    ClockStyle.AUTO -> at.format(if (AppLocales.is24Hours(context, formats)) Clock24 else Clock12)
 }
 
-private fun dateText(at: LocalDateTime, style: DateStyle): String? {
+private fun dateText(at: LocalDateTime, style: DateStyle, locale: Locale): String? {
     if (style == DateStyle.HIDDEN) return null
-    val locale = Locale.getDefault()
     val format = DateFormats.getOrPut(style to locale) {
         val pattern = when (style) {
             DateStyle.SHORT -> "EEE d MMM"

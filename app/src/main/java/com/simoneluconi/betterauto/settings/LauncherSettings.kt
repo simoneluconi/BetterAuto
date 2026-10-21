@@ -14,9 +14,14 @@ enum class BarPosition { AUTO, LEFT, BOTTOM }
 
 enum class HomeLayout(val slots: Int) { SINGLE(1), SPLIT(2), TRIO(3) }
 
-enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS }
+/** SMART_HOME shows the provider in [com.simoneluconi.betterauto.smarthome.SmartHome.screenProvider]. */
+enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS, SMART_HOME }
 
-enum class WidgetType { MUSIC, MAP, NOTIFICATIONS }
+/**
+ * Kinds of home widget; what each one shows and when it is offered is in `ui/widgets/HomeWidgets`.
+ * [takesParam]: only meaningful with a parameter (which smart-home group), never a blank default.
+ */
+enum class WidgetType(val takesParam: Boolean = false) { MUSIC, MAP, NOTIFICATIONS, CLOCK, CALENDAR, FAVORITES, WEATHER, SMART_HOME(takesParam = true) }
 
 /** How contact names are written and sorted: "Mario Rossi" or "Rossi Mario". */
 enum class NameOrder { FIRST_LAST, LAST_FIRST }
@@ -35,14 +40,15 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _barPosition = MutableStateFlow(enumOf(KEY_BAR, BarPosition.AUTO))
     val barPosition: StateFlow<BarPosition> = _barPosition
 
-    private val _layout = MutableStateFlow(enumOf(KEY_LAYOUT, HomeLayout.SPLIT))
+    private val _layout = MutableStateFlow(enumOf(KEY_LAYOUT, HomeLayout.TRIO))
     val layout: StateFlow<HomeLayout> = _layout
 
     private val _section = MutableStateFlow(enumOf(KEY_SECTION, Section.HOME))
     val section: StateFlow<Section> = _section
 
     private val _widgets = MutableStateFlow(loadWidgets())
-    val widgets: StateFlow<List<WidgetType>> = _widgets
+    /** The home slots, always [HomeSlots.COUNT]: the layout shows the first one, two or three. */
+    val widgets: StateFlow<List<WidgetChoice>> = _widgets
 
     private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, false))
     /** Music section: player plus library panel (true) or full-screen player (false, the default); the screen remembers how it was left. */
@@ -67,20 +73,29 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _dateStyle = MutableStateFlow(enumOf(KEY_DATE, DateStyle.SHORT))
     val dateStyle: StateFlow<DateStyle> = _dateStyle
 
+
     private val _showEngineLight = boolFlow(KEY_SHOW_ENGINE, true)
     val showEngineLight: StateFlow<Boolean> = _showEngineLight
 
     private val _showBell = boolFlow(KEY_SHOW_BELL, true)
     val showBell: StateFlow<Boolean> = _showBell
 
+    // Signal and battery were two settings: each keeps its saved value until the one setting changes both
     private val _showSignal = boolFlow(KEY_SHOW_SIGNAL, true)
     val showSignal: StateFlow<Boolean> = _showSignal
 
     private val _showBattery = boolFlow(KEY_SHOW_BATTERY, true)
     val showBattery: StateFlow<Boolean> = _showBattery
 
-    private val _showLayoutButton = boolFlow(KEY_SHOW_LAYOUT_BUTTON, true)
-    val showLayoutButton: StateFlow<Boolean> = _showLayoutButton
+    private val _showPhoneStatus = MutableStateFlow(_showSignal.value || _showBattery.value)
+    /** The phone's network, signal and battery in the top bar: on while either shows. */
+    val showPhoneStatus: StateFlow<Boolean> = _showPhoneStatus
+
+    fun setShowPhoneStatus(value: Boolean) {
+        saveBool(KEY_SHOW_SIGNAL, value, _showSignal)
+        saveBool(KEY_SHOW_BATTERY, value, _showBattery)
+        _showPhoneStatus.value = value
+    }
 
     private val _quietMode = MutableStateFlow(prefs.getBoolean(KEY_QUIET, false))
     /** No notification banners; notifications still collect in the widget. */
@@ -96,6 +111,15 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _notificationHiddenApps = MutableStateFlow(loadList(KEY_NOTIF_HIDDEN))
     val notificationHiddenApps: StateFlow<List<String>> = _notificationHiddenApps
+
+    private val _hiddenCalendars = MutableStateFlow(loadList(KEY_HIDDEN_CALENDARS))
+    /** Calendars the calendar widget leaves out, by the provider's id: a new calendar shows up by default. */
+    val hiddenCalendars: StateFlow<List<String>> = _hiddenCalendars
+
+    fun toggleCalendar(id: String) {
+        val list = hiddenCalendars.value
+        saveList(KEY_HIDDEN_CALENDARS, if (id in list) list - id else list + id, _hiddenCalendars)
+    }
 
     private val _mutedChats = MutableStateFlow(loadList(KEY_MUTED_CHATS, separator = "\n"))
     /** Muted chats, as "package|chat name". */
@@ -133,6 +157,18 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setTemperatureUnit(value: TemperatureUnit) = saveEnum(KEY_TEMPERATURE, value, _temperatureUnit)
 
+    private val _voiceLanguage = MutableStateFlow(enumOf(KEY_VOICE_LANGUAGE, VoiceLanguage.AUTO))
+    /** What voice commands are heard and answered in; see [AppLocales]. */
+    val voiceLanguage: StateFlow<VoiceLanguage> = _voiceLanguage
+
+    fun setVoiceLanguage(value: VoiceLanguage) = saveEnum(KEY_VOICE_LANGUAGE, value, _voiceLanguage)
+
+    private val _formatRegion = MutableStateFlow(enumOf(KEY_FORMAT_REGION, FormatRegion.AUTO))
+    /** How dates, times and numbers are written in the car; see [AppLocales]. */
+    val formatRegion: StateFlow<FormatRegion> = _formatRegion
+
+    fun setFormatRegion(value: FormatRegion) = saveEnum(KEY_FORMAT_REGION, value, _formatRegion)
+
     private val _autoPlay = MutableStateFlow(prefs.getBoolean(KEY_AUTO_PLAY, true))
     val autoPlay: StateFlow<Boolean> = _autoPlay
 
@@ -165,17 +201,40 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         saveEnum(KEY_SECTION, value, _section)
     }
 
+    private val _startOnHome = boolFlow(KEY_START_HOME, false)
+    /** A new car session opens the home screen; otherwise the section left last time (the default). */
+    val startOnHome: StateFlow<Boolean> = _startOnHome
+
+    fun setStartOnHome(value: Boolean) = saveBool(KEY_START_HOME, value, _startOnHome)
+
+    /**
+     * The section a new car session opens: home, or where the driver left off. Settings and the notifications
+     * are passing visits, not a place to come back to: the section before them, else home.
+     */
+    fun onSessionStart() {
+        val left = _section.value
+        val next = when {
+            _startOnHome.value -> Section.HOME
+            left == Section.SETTINGS || left == Section.NOTIFICATIONS ->
+                previousSection.takeIf { it != Section.SETTINGS && it != Section.NOTIFICATIONS } ?: Section.HOME
+            else -> left
+        }
+        if (next != left) setSection(next)
+    }
+
     /** Back from the notifications to wherever the driver was. */
     fun closeNotifications() = setSection(previousSection.takeIf { it != Section.NOTIFICATIONS } ?: Section.HOME)
 
     fun cycleLayout() = setLayout(HomeLayout.entries[(layout.value.ordinal + 1) % HomeLayout.entries.size])
 
-    /** Rotates widget order, so each widget can take the big slot. */
-    fun rotateWidgets() {
-        val list = widgets.value
-        val rotated = list.drop(1) + list.first()
-        _widgets.value = rotated
-        prefs.edit { putString(KEY_WIDGETS, rotated.joinToString(",") { it.name }) }
+    /** Puts [choice] in slot [index] (0 = the big one), swapping it with the slot it was in, if any. */
+    fun setWidget(index: Int, choice: WidgetChoice) = saveWidgets(HomeSlots.pick(widgets.value, index, choice))
+
+    fun setWidgets(value: List<WidgetChoice>) = saveWidgets(HomeSlots.decode(HomeSlots.encode(value)))
+
+    private fun saveWidgets(value: List<WidgetChoice>) {
+        _widgets.value = value
+        prefs.edit { putString(KEY_WIDGETS, HomeSlots.encode(value)) }
     }
 
     fun setMusicPanel(value: Boolean) {
@@ -214,11 +273,6 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setShowBell(value: Boolean) = saveBool(KEY_SHOW_BELL, value, _showBell)
 
-    fun setShowSignal(value: Boolean) = saveBool(KEY_SHOW_SIGNAL, value, _showSignal)
-
-    fun setShowBattery(value: Boolean) = saveBool(KEY_SHOW_BATTERY, value, _showBattery)
-
-    fun setShowLayoutButton(value: Boolean) = saveBool(KEY_SHOW_LAYOUT_BUTTON, value, _showLayoutButton)
 
     private fun boolFlow(key: String, default: Boolean) = MutableStateFlow(prefs.getBoolean(key, default))
 
@@ -305,12 +359,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         prefs.edit { putString(key, value.name) }
     }
 
-    private fun loadWidgets(): List<WidgetType> {
-        val saved = prefs.getString(KEY_WIDGETS, null)?.split(",")
-            ?.mapNotNull { name -> WidgetType.entries.firstOrNull { it.name == name } }
-        // Keep every widget exactly once, even if new ones were added since the last save
-        return ((saved ?: emptyList()) + WidgetType.entries).distinct()
-    }
+    private fun loadWidgets(): List<WidgetChoice> = HomeSlots.decode(prefs.getString(KEY_WIDGETS, null))
 
     private fun loadList(key: String, separator: String = ","): List<String> =
         prefs.getString(key, null)?.split(separator)?.filter { it.isNotBlank() } ?: emptyList()
@@ -325,7 +374,9 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_BAR = "bar_position"
         private const val KEY_LAYOUT = "home_layout"
         private const val KEY_SECTION = "section"
-        private const val KEY_WIDGETS = "widgets"
+        private const val KEY_START_HOME = "start_on_home"
+        /** Not the earlier "widgets" (every widget in a rotating order): the slots started over from the new default. */
+        private const val KEY_WIDGETS = "home_widgets"
         private const val KEY_DEBUG = "debug_overlay"
         private const val KEY_AUTO_PLAY = "auto_play"
         private const val KEY_UNKNOWN_AUDIO = "unknown_audio"
@@ -345,14 +396,18 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_DATE = "date_style"
         private const val KEY_UNITS = "unit_system"
         private const val KEY_TEMPERATURE = "temperature_unit"
+        private const val KEY_VOICE_LANGUAGE = "voice_language"
+        private const val KEY_FORMAT_REGION = "format_region"
         private const val KEY_SHOW_ENGINE = "show_engine_light"
+
         private const val KEY_SHOW_BELL = "show_bell"
         private const val KEY_SHOW_SIGNAL = "show_signal"
         private const val KEY_SHOW_BATTERY = "show_battery"
-        private const val KEY_SHOW_LAYOUT_BUTTON = "show_layout_button"
+
         private const val KEY_NOTIF_GROUPS = "notification_groups"
         private const val KEY_NOTIF_APPS = "notification_apps"
         private const val KEY_NOTIF_HIDDEN = "notification_hidden_apps"
+        private const val KEY_HIDDEN_CALENDARS = "hidden_calendars"
         private const val KEY_MUTED_CHATS = "muted_chats"
         private const val MAX_NOTIF_APPS = 40
         private const val KEY_PHONE_TAB = "phone_tab"

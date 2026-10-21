@@ -64,7 +64,7 @@ class WifiJoin(context: Context) {
             release()
             throw IOException("could not join the WiFi \"${endpoint.ssid}\"")
         }
-        return network!!
+        return network
     }
 
     fun release() {

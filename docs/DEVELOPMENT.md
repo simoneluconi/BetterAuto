@@ -113,6 +113,10 @@ picks one, `-Serial <id>` picks the phone.
   adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --es screen 1920x720  # wide dashboard
   ```
 
+  Home widgets: `--es widgets "clock,calendar,weather"` fills the slots, the big one first (music,
+  notifications, favorites, clock, calendar, weather, map; `default` resets them) and opens the home
+  screen; `--ez widgetDemo true` shows pretend calendar events and favorites (`false` the phone's own);
+  `--es vehicle demo` gives the clock an outside temperature.
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the
@@ -134,6 +138,21 @@ picks one, `-Serial <id>` picks the phone.
 
 - *Car UI preview* in the app shows the launcher full screen on the phone.
 
+## Home widgets
+
+Each home slot holds a `WidgetChoice` (`settings/HomeSlots`): a `WidgetType` plus an optional parameter,
+saved as `TYPE` or `TYPE:param`. `ui/widgets/HomeWidgets` lists one `HomeWidgetKind` per type: its name
+and icon in the slot picker, the choices it offers on this phone (none hides it, one per parameter for a
+kind that takes one, e.g. a smart-home group) and the composable. A new widget is one enum value and one
+entry there; the car's and the phone's pickers follow.
+
+Widgets watch their data only while on screen: the minute tick, a `ContentObserver` on the calendar or
+the contacts. The weather widget is the phone's own weather app widget, hosted with `AppWidgetHost` like a
+launcher (`home/WeatherWidgetHost`): the provider is picked by name (`WeatherProviders`), binding needs
+the system dialog once (from the phone app; "always allow" makes later ones silent), the host listens
+only while the widget is shown and the car shows our screen, and the hosted view never takes the focus
+or a touch. It follows the phone's dark mode, not the car's night mode.
+
 ## Vehicle data sources
 
 The screens read only canonical fields (`car/VehicleField`: one meaning, one metric unit each). Every
@@ -148,6 +167,48 @@ personal data named without values), then subscribes only to what the screens ne
 (`VehicleData.demand`): seat occupancy always, the overview's objects while the vehicle screen is open,
 everything while "All data" is (dropped 30 s after leaving). `ExlapMapping` holds the object names and
 their sources.
+
+## Smart home
+
+Everything outside `smarthome/<service>/` works on the canonical model of `smarthome/` and never knows
+the service: the car screen, the arrival buttons, the device selection, the phone section, the widget
+card (`SmartHomeGroupCard`). A service is a `SmartHomeProvider`; its KDoc lists what adding one takes.
+`SmartHome` asks providers to follow the chosen devices only while a car session runs (or a smart-home
+screen is open), so the phone does no network work otherwise.
+
+Sign-in: services with OAuth use a client id page per service on the project's GitHub Pages, branch
+`gh-pages` (not on `main`): `https://simoneluconi.github.io/BetterAuto/auth/<provider id>/`, declaring
+`<link rel="redirect_uri" href="betterauto://auth/<provider id>">` in its first 10 kB. The browser comes
+back to `SignInActivity` (scheme `betterauto`, host `auth`), which hands the query to the provider with
+that id. Adding a service with OAuth: its page on `gh-pages`, then the provider (client id and redirect
+from `SmartHomeAuth.clientId(id)` / `redirectUri(id)`). Home Assistant: `/auth/authorize`, code
+exchanged at `/auth/token`, refresh token kept (encrypted with `SecretStore`); "Advanced" takes a
+long-lived token instead. After linking, `get_config` gives the home's name and, when the address typed
+only works at home, its external URL (or the Nabu Casa remote one), used from then on.
+
+Home Assistant data comes over the WebSocket API (`HaSocket`, OkHttp): `get_states`,
+`config/area_registry/list`, `config/device_registry/list`, `config/entity_registry/list`,
+`homeassistant/expose_entity/list` (admin only) and `get_config` when the phone app reads the devices;
+in the car only `subscribe_entities` with the chosen entities and `call_service`. Pre-selection: what is
+exposed to a voice assistant, of car-useful kinds; with nothing exposed, a guess by kind (no sensors, at
+most 24). Hidden, disabled, configuration and diagnostic entities never show.
+
+Arrival buttons: the place is the provider's home zone (radius) plus the driver's offset (300 m by
+default); they show inside it, also when the session starts there, and hide 150 m past it. Position:
+the car's GPS (Android Auto location sensor) when it talks, otherwise the phone's platform location,
+one fix at a time, the next one when the car could at the earliest reach the nearest edge (distance /
+speed, 40 m/s or the car's speed ×1.5, 5 s to 10 min), plus passive fixes. Each check is logged:
+
+```
+Smart home: homeassistant 812 m, outside, next check in 20 s
+Smart home: entered the place of homeassistant at 380 m: arrival buttons shown
+```
+
+Debug (see `DebugInputReceiver`): `--es smarthome demo` adds a pretend service with devices and a home
+place (`off` removes it, `open` opens its screen); `--es arrival inside|outside|"distance 2000,90"|panel|real`,
+`--es location 45.46,9.19[,50]` (`off`), `--es drive 2000,50[,90]` (a drive through the home place, in
+and out again) replace the position, with the real devices too, also without a car session;
+`--ez carGps true` feeds them like the car's GPS instead of the phone's polled location.
 
 ## Shizuku (optional audio routing)
 

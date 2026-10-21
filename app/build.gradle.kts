@@ -56,8 +56,13 @@ dependencies {
     // Optional: with Shizuku installed and allowed, audio is moved to the car instead of copied (Apache 2.0)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    // Smart home: Home Assistant's HTTP login and WebSocket API (Apache 2.0)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
+    // The real org.json for JVM tests (the Android one is a stub there)
+    testImplementation(libs.org.json)
 }
 
 // .proto files in src/main/proto/aap_protobuf come from opencardev/aasdk (GPLv3), see AASDK_VERSION.txt

@@ -71,6 +71,8 @@ object CarIcons {
     val Backspace = icon("M21 5H8l-6 7 6 7h13z", "M11 9l6 6", "M17 9l-6 6")
     val Star = icon("M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z")
     val Clock = icon(circle(12f, 12f, 9f), "M12 7v5l3 2")
+    val Calendar = icon("M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z", "M3 10h18M8 3v4M16 3v4")
+    val Weather = icon("M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z")
     val Contacts = icon("M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2", circle(10f, 8f, 4f), "M21 21v-2a4 4 0 0 0-3-3.9", "M16 4.1a4 4 0 0 1 0 7.8")
     val Incoming = icon("M17 7L7 17", "M7 9v8h8")
     val Outgoing = icon("M7 17L17 7", "M9 7h8v8")
@@ -92,6 +94,21 @@ object CarIcons {
     val List = icon("M9 6h12M9 12h12M9 18h12", circle(4f, 6f, 1.2f), circle(4f, 12f, 1.2f), circle(4f, 18f, 1.2f))
     val Shuffle = icon("M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6 6", "M4 4l5 5")
     val Repeat = icon("M17 2l4 4-4 4", "M3 11v-1a4 4 0 0 1 4-4h14", "M7 22l-4-4 4-4", "M21 13v1a4 4 0 0 1-4 4H3")
+    /** Smart home: a house with three linked nodes inside. */
+    val SmartHome = icon(
+        "M3 11l9-8 9 8", "M5 10v10h14V10",
+        circle(9f, 16f, 1.4f), circle(15f, 16f, 1.4f), circle(12f, 11.5f, 1.4f), "M10.2 14.8l1-2M13.8 14.8l-1-2M10.4 16h3.2",
+    )
+    val Gate = icon("M3 21V5", "M21 21V5", "M3 8h18", "M3 18h18", "M7.5 8v10M12 8v10M16.5 8v10")
+    val Garage = icon("M3 21V9l9-6 9 6v12", "M6 21v-9h12v9", "M6 15h12", "M6 18h12")
+    val Lock = icon("M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z", "M8 11V7a4 4 0 0 1 8 0v4", "M12 15v2")
+    val LockOpen = icon("M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z", "M8 11V7a4 4 0 0 1 7.7-1.5", "M12 15v2")
+    val Power = icon("M12 3v8", "M7.1 6.3a7.5 7.5 0 1 0 9.8 0")
+    /** A scene: a sparkle. */
+    val Scene = icon("M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z", "M19 16v4M17 18h4")
+    val Up = icon("M6 15l6-6 6 6")
+    val Down = icon("M6 9l6 6 6-6")
+    val Stop = icon("M7 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z")
 
     private fun circle(cx: Float, cy: Float, r: Float) =
         "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0"

@@ -19,6 +19,7 @@ import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.voice.VoiceAssistant
 
 /**
@@ -43,6 +44,7 @@ class Projection(val context: Context) {
                 .createVirtualDisplay("BetterAuto", width, height, densityDpi, surface, 0)
             virtualDisplay = display
             presentation = LauncherPresentation(context, display.display).also { it.show() }
+            LauncherSettings.get(context).onSessionStart()
             NowPlaying.acquire(context) // released by stop(), which checks for a presentation
             CarNotifications.acquire()
             EventLog.log("Projection started: ${width}x$height @ $densityDpi dpi")

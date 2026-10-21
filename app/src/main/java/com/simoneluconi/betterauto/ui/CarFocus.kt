@@ -4,11 +4,19 @@ import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.Job
+import com.simoneluconi.betterauto.EventLog
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +54,31 @@ private val ActivateKeys = setOf(Key.Enter, Key.DirectionCenter, Key.NumPadEnter
 
 private const val MIN_PRESS_MS = 120L
 
+/** Holding the knob's center (or enter) this long is a long press, as holding a finger is. */
+private const val KEY_LONG_PRESS_MS = 600L
+
+/**
+ * What holding a control does when it has no long press of its own: a home widget's controls edit the
+ * home screen. Without it, holding is just a slow tap.
+ */
+val LocalHoldAction = staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * The control the knob was last on, so an overlay (arrival buttons, a panel) can give the focus back
+ * where it was when it closes. Main thread only.
+ */
+object FocusMemory {
+    var last: FocusRequester? = null
+        private set
+
+    internal fun focused(requester: FocusRequester) {
+        last = requester
+    }
+
+    /** Back to [requester] if it is still on screen; false when it is gone (the caller picks another place). */
+    fun restore(requester: FocusRequester?): Boolean = requester != null && runCatching { requester.requestFocus() }.getOrDefault(false)
+}
+
 /** Press-in and focus zoom: this many dp on the longest side, at most these fractions on small controls. */
 private const val PRESS_SHRINK_DP = 8
 private const val MAX_PRESS_SHRINK = 0.08f
@@ -56,6 +89,8 @@ private const val MAX_FOCUS_GROW = 0.03f
  * A control usable both by touch and by the car's rotary/d-pad: always focusable (touch mode or not),
  * activated by tap or by the center/enter key, with a clear focus ring and slight zoom when focused,
  * and a short press-in (shrink + veil) on every press so the driver sees it registered.
+ * [onLongClick] (else [LocalHoldAction]) runs on a held finger or a held center key; the release then
+ * doesn't also click.
  */
 fun Modifier.carClickable(
     shape: Shape,
@@ -65,6 +100,7 @@ fun Modifier.carClickable(
 ): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val self = remember { FocusRequester() }
     val colors = LocalCarColors.current
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
@@ -74,7 +110,21 @@ fun Modifier.carClickable(
     val zoom by animateFloatAsState(if (focused && !pressed) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 700f), label = "zoom")
     val veil by animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 60 else 260), label = "pressVeil")
     val click by rememberUpdatedState(onClick)
-    val longClick by rememberUpdatedState(onLongClick)
+    val longClick by rememberUpdatedState(onLongClick ?: LocalHoldAction.current)
+    var keyHold by remember { mutableStateOf<Job?>(null) }
+    var heldLong by remember { mutableStateOf(false) }
+    // A release whose press went to another control (a hold that opened this one) is not a click
+    var keyDown by remember { mutableStateOf(false) }
+
+    // Once per hold, from the timer or from the car's own long-press flag, whichever comes first
+    fun keyLongPress(keyCode: Int) {
+        if (heldLong) return
+        val action = longClick ?: return
+        heldLong = true
+        keyHold?.cancel()
+        EventLog.log("Input: key $keyCode long press")
+        action()
+    }
 
     fun press() {
         pressed = true
@@ -126,15 +176,36 @@ fun Modifier.carClickable(
         }
         .onKeyEvent { event ->
             if (event.key !in ActivateKeys) return@onKeyEvent false
+            val native = event.nativeKeyEvent
             when (event.type) {
-                KeyEventType.KeyDown -> if (!pressed) press()
+                KeyEventType.KeyDown -> {
+                    if (!pressed) {
+                        keyDown = true
+                        press()
+                        heldLong = false
+                        if (longClick != null) keyHold = scope.launch {
+                            delay(KEY_LONG_PRESS_MS)
+                            keyLongPress(native.keyCode)
+                        }
+                    }
+                    // Repeats while held, or a car that flags the long press itself
+                    if (native.isLongPress || native.repeatCount > 0) keyLongPress(native.keyCode)
+                }
                 KeyEventType.KeyUp -> {
-                    release()
-                    click()
+                    keyHold?.cancel()
+                    keyHold = null
+                    if (keyDown) {
+                        release()
+                        if (!heldLong) click()
+                    }
+                    keyDown = false
+                    heldLong = false
                 }
             }
             true
         }
+        .focusRequester(self)
+        .onFocusChanged { if (it.isFocused) FocusMemory.focused(self) }
         .focusable(interactionSource = interaction)
         .pointerInput(Unit) {
             detectTapGestures(
@@ -159,3 +230,25 @@ private inline fun DrawScope.drawRingOutside(
     val outline = shape.createOutline(Size(size.width + distance * 2, size.height + distance * 2), layoutDirection, this)
     translate(-distance, -distance) { draw(outline, Stroke(width)) }
 }
+
+/**
+ * How lists scroll to the control the knob lands on: with a margin, so its focus ring (drawn around it)
+ * and a bit of what follows stay in view, instead of stopping flush with the edge and cutting the ring.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+val CarBringIntoView: BringIntoViewSpec = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val margin = (containerSize * 0.08f).coerceAtMost(FOCUS_MARGIN_PX)
+        val leading = offset - margin
+        val trailing = offset + size + margin - containerSize
+        return when {
+            // Bigger than the room left with its margins: its start shows
+            size + 2 * margin > containerSize -> leading
+            leading < 0 -> leading
+            trailing > 0 -> trailing
+            else -> 0f
+        }
+    }
+}
+
+private const val FOCUS_MARGIN_PX = 64f

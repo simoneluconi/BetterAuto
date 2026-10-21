@@ -43,10 +43,12 @@ anything copied from closed-source apps.
 | `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery; `PhoneSignal` shares the telephony listeners) |
 | `notifications/` | Notifications shown in the car |
 | `voice/` | Voice commands: on-device speech recognition, `CommandParser`, `VoiceAssistant` |
+| `home/` | Data behind the home widgets: `Agenda` + `CalendarEvents` (calendar), `FavoriteContacts`, `WeatherWidgetHost` + `WeatherProviders` (the phone's weather app widget, hosted like a launcher). The widgets themselves and their registry (`HomeWidgets`, one `HomeWidgetKind` per `WidgetType`) are in `ui/widgets/`; the slots in `settings/HomeSlots` |
 | `car/` | Data from the car: `VehicleData`/`CarState`, `FaultCodes`, `Units` (metric/imperial, °C/°F), `Viewport`. Vehicle values are canonical `VehicleField`s published by `VehicleSource`s (AA sensors, Exlap, demo) and merged by `VehicleMerger`; the UI never reads a protocol directly |
+| `smarthome/` | Smart home, generic: `SmartHomeProvider` (the interface a service implements; its KDoc says how to add one), canonical `SmartDevice`/`DeviceKind`/`DeviceAction`/`DeviceState`/`SmartPlace`, `SmartHome` (registry, choices, talks to services only during a session), `Preselection`/`ArrivalCandidates`, `Geofence` (pure fence logic) + `ArrivalWatcher` (car GPS, else phone location), `SecretStore` (Keystore AES-GCM), `SmartHomeAuth` + `SignInActivity` (OAuth redirect `betterauto://auth/<provider>`). `homeassistant/`: `HomeAssistantProvider`, `HaAuth` (OAuth), `HaSocket` (WebSocket, OkHttp), `HaMapping`, `HaLinkCard` |
 | `exlap/` | VW group Exlap (extra vehicle data, read only): `ExlapClient` (protocol), `ExlapSettings`, `ExlapData` (+ `ExlapVehicleSource`), `ExlapMapping` (object names to canonical fields), `ExlapRows`, `ExlapPhoneSettings` (phone-only settings card) |
 | `settings/` | `LauncherSettings` (persisted, StateFlows), `SettingsCatalog` (one declaration shown both in the car and on the phone), `RailLayout` |
-| `ui/` | The car launcher: `launcher/` (root, status bar, app rail, focus zones, settings screen), `widgets/` (music), `phone/`, `vehicle/`, `notifications/`, `voice/`, `theme/`, shared bits (`CarFocus`, `CarText`, `CarIcons`, `Scrollbar`, `AlphabetJump`) |
+| `ui/` | The car launcher: `launcher/` (root, status bar, app rail, focus zones, settings screen), `widgets/` (music), `phone/`, `vehicle/`, `notifications/`, `voice/`, `smarthome/` (screen, tiles, arrival panel, group card, phone section), `theme/`, shared bits (`CarFocus`, `CarText`, `CarIcons`, `Scrollbar`, `AlphabetJump`) |
 | `MainActivity`, `PhoneSettings` | The phone app: setup steps, log, settings (the catalog plus phone-only sections) |
 | `src/debug/…/DebugInputReceiver` | Debug-only broadcasts to drive the car UI without a car (see its KDoc for the full list) |
 
@@ -102,9 +104,21 @@ Every screen must work fully with **touch** and with the **rotary knob / d-pad /
 ## Settings
 
 Declare a user setting once in `SettingsCatalog` (with a `LauncherSettings` StateFlow + setter) and it
-appears both in the car's settings screen and in the phone app. Use `ChoiceSetting` for chips; reuse
-`option_auto`, `option_on/off` etc. Phone-only or car-specific features get their own section outside
-the catalog.
+appears both in the car's settings screen and in the phone app.
+
+- Every setting has a `SettingsCategory` and a short **description** (what it does, and what Auto means),
+  shown under its title everywhere, EN + IT: a setting without one is not finished. `more = true` puts it
+  under the category's "More options".
+- `ChoiceSetting` for chips; reuse `option_auto`, `option_on/off` etc. A boolean shows as a switch only
+  with on/off or hide/show labels; two named choices stored as a boolean stay chips. Lists to tick are
+  `ListSetting`s with a summary. A setting can refuse a value with a reason (e.g. hiding the last way to
+  the notifications).
+- Phone-only parts (sign-ins, system dialogs, typing) implement `PhoneSettingsSection` and are listed in
+  `PhoneSettingsSections.all`; a `PhoneNote` in the catalog adds the car's "set up on the phone" line
+  where the driver would look.
+- The car settings (and editing the home or the bar) are available only while the car stands
+  (`car/CarMotion`: P, parking brake or no speed; no data = available).
+- No dead ends: every choice or setup keeps a visible way to change, redo or go back to Auto.
 
 ## Testing and debugging
 
@@ -120,7 +134,7 @@ the catalog.
   `adb shell dumpsys SurfaceFlinger --display-id`.
 - `DebugInputReceiver` (debug builds): `adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT …`
   with extras for knob/keys, touches and drags in video pixels (`--es touch x,y` / `x1,y1,x2,y2`),
-  section, theme, units, pretend calls/notifications/vehicle data, voice panel previews, connection
+  section, theme, units, home widget slots, pretend calls/notifications/vehicle data/calendar/favorites, voice panel previews, connection
   problem notifications, video pipeline rebuild. Never drive the UI blindly: take a screenshot first.
 - Unit tests live in `app/src/test` (JVM; `android.util.Log` returns defaults). Protocol pieces are
   written so they can be tested without Android (e.g. `ExlapClient` against a scripted server).

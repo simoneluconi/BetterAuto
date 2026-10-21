@@ -22,6 +22,7 @@ import com.simoneluconi.betterauto.notifications.NotificationContent
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.phone.Contact
 import com.simoneluconi.betterauto.phone.PhoneBook
+import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
 import com.simoneluconi.betterauto.settings.NameOrder
@@ -108,7 +109,7 @@ object VoiceAssistant {
         main.removeCallbacks(backToIdle)
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
             EventLog.log("Voice: no on-device speech recognition on this phone")
-            show(VoiceState.Done("", appContext.getString(R.string.voice_unavailable), understood = false), speak = false)
+            show(VoiceState.Done("", voiceText(R.string.voice_unavailable), understood = false), speak = false)
             return
         }
         stopRecognition()
@@ -125,7 +126,7 @@ object VoiceAssistant {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, AppLocales.voice(appContext).toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -135,7 +136,7 @@ object VoiceAssistant {
         }
         // The car's microphone whenever the car has one, unless the driver chose the phone's
         val carMic = settings.voiceMicrophone.value == MicSource.CAR && Build.VERSION.SDK_INT >= 33 && attachCarMicrophone(intent)
-        EventLog.log("Voice: listening (${if (carMic) "car" else "phone"} microphone, ${Locale.getDefault().toLanguageTag()})")
+        EventLog.log("Voice: listening (${if (carMic) "car" else "phone"} microphone, ${AppLocales.voice(appContext).toLanguageTag()})")
 
         val rec = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
         recognizer = rec
@@ -260,11 +261,11 @@ object VoiceAssistant {
         Speech.cancelTone()
         // Say what went wrong when we can tell: an unknown contact or place, not just "not understood"
         val message = when {
-            heard.isBlank() -> appContext.getString(R.string.voice_nothing_heard)
+            heard.isBlank() -> voiceText(R.string.voice_nothing_heard)
             else -> when (val miss = parser.miss(heard)) {
-                is CommandParser.Miss.ContactNotFound -> appContext.getString(R.string.voice_contact_not_found, titleCase(miss.name))
-                is CommandParser.Miss.UnknownPlace -> appContext.getString(R.string.voice_unknown_place, miss.name)
-                null -> appContext.getString(R.string.voice_not_understood, heard)
+                is CommandParser.Miss.ContactNotFound -> voiceText(R.string.voice_contact_not_found, titleCase(miss.name))
+                is CommandParser.Miss.UnknownPlace -> voiceText(R.string.voice_unknown_place, miss.name)
+                null -> voiceText(R.string.voice_not_understood, heard)
             }
         }
         EventLog.log("Voice: not understood after ${SystemClock.elapsedRealtime() - startedAt} ms")
@@ -294,14 +295,14 @@ object VoiceAssistant {
                 resumeMusic = false
                 val before = NowPlaying.track.value?.title
                 val ok = NowPlaying.playFromSearch(command.query)
-                done(if (ok) appContext.getString(R.string.voice_playing, command.query) else appContext.getString(R.string.voice_no_player))
+                done(if (ok) voiceText(R.string.voice_playing, command.query) else voiceText(R.string.voice_no_player))
                 // The player says nothing when the search finds nothing: no music, or the same song, means not found
                 if (ok) {
                     main.postDelayed({
                         val now = NowPlaying.track.value
                         if (!NowPlaying.isPlaying || now?.title == before) {
                             EventLog.log("Voice: search gave nothing to play")
-                            show(VoiceState.Done(heard, appContext.getString(R.string.voice_track_not_found, command.query), understood = false), speak = true)
+                            show(VoiceState.Done(heard, voiceText(R.string.voice_track_not_found, command.query), understood = false), speak = true)
                         }
                     }, SEARCH_CHECK_MS)
                 }
@@ -309,34 +310,34 @@ object VoiceAssistant {
             VoiceCommand.Pause -> {
                 resumeMusic = false
                 NowPlaying.pause()
-                done(appContext.getString(R.string.voice_paused), speak = false)
+                done(voiceText(R.string.voice_paused), speak = false)
             }
             VoiceCommand.Resume -> {
                 resumeMusic = false
                 NowPlaying.resume()
-                done(appContext.getString(R.string.voice_resumed), speak = false)
+                done(voiceText(R.string.voice_resumed), speak = false)
             }
             VoiceCommand.Next -> {
                 resumeMusic = true
                 NowPlaying.next()
-                done(appContext.getString(R.string.voice_next), speak = false)
+                done(voiceText(R.string.voice_next), speak = false)
             }
             VoiceCommand.Previous -> {
                 resumeMusic = true
                 NowPlaying.previous()
-                done(appContext.getString(R.string.voice_previous), speak = false)
+                done(voiceText(R.string.voice_previous), speak = false)
             }
             is VoiceCommand.Open -> {
                 settings.setSection(command.section)
-                done(appContext.getString(R.string.voice_opening), speak = false)
+                done(voiceText(R.string.voice_opening), speak = false)
             }
             is VoiceCommand.Quiet -> {
                 settings.setQuietMode(command.on)
-                done(appContext.getString(if (command.on) R.string.voice_quiet_on else R.string.voice_quiet_off))
+                done(voiceText(if (command.on) R.string.voice_quiet_on else R.string.voice_quiet_off))
             }
             VoiceCommand.ReadNotifications -> {
                 val list = CarNotifications.visible(CarNotifications.all.value, settings).take(3)
-                val text = if (list.isEmpty()) appContext.getString(R.string.voice_no_notifications)
+                val text = if (list.isEmpty()) voiceText(R.string.voice_no_notifications)
                 // With the privacy setting on, only who wrote and from which app
                 else if (NotificationContent.hiddenNow(settings)) list.joinToString(". ") { n -> "${n.title}, ${n.appLabel}" }
                 else list.joinToString(". ") { n -> "${n.title}: ${n.last?.text.orEmpty()}" }
@@ -355,7 +356,7 @@ object VoiceAssistant {
     private fun call(name: String, numberType: String?) {
         val contact = contacts.firstOrNull { it.name == name }
         if (contact == null) {
-            done(appContext.getString(R.string.voice_not_understood, name))
+            done(voiceText(R.string.voice_not_understood, name))
             return
         }
         scope.launch {
@@ -371,13 +372,13 @@ object VoiceAssistant {
                 ?: numbers.firstOrNull { it.type == Phone.TYPE_MOBILE }
                 ?: numbers.firstOrNull()
             if (number == null) {
-                done(appContext.getString(R.string.voice_no_number, name))
+                done(voiceText(R.string.voice_no_number, name))
                 return@launch
             }
             // Nothing is dialed yet: a few seconds to cancel with Back or the voice key
             callNumber = number.number
             _state.value = VoiceState.Calling(name, number.label, SystemClock.elapsedRealtime() + CALL_DELAY_MS)
-            if (LauncherSettings.get(appContext).voiceReplies.value) Speech.say(appContext, appContext.getString(R.string.voice_calling, name, number.label))
+            if (LauncherSettings.get(appContext).voiceReplies.value) Speech.say(appContext, voiceText(R.string.voice_calling, name, number.label))
             main.removeCallbacks(placeCall)
             main.postDelayed(placeCall, CALL_DELAY_MS)
         }
@@ -413,13 +414,16 @@ object VoiceAssistant {
     /** Examples from the driver's own world: an artist they listen to and a contact of theirs, picked at random. */
     private fun hint(): String {
         val examples = listOfNotNull(
-            NowPlaying.recentArtists.randomOrNull()?.let { appContext.getString(R.string.voice_example_play, it) },
-            contacts.randomOrNull()?.let { appContext.getString(R.string.voice_example_call, it.name) },
-        ).ifEmpty { listOf(appContext.getString(R.string.voice_example_pause)) }
-        return appContext.getString(R.string.voice_hint_examples, examples.joinToString(", "))
+            NowPlaying.recentArtists.randomOrNull()?.let { voiceText(R.string.voice_example_play, it) },
+            contacts.randomOrNull()?.let { voiceText(R.string.voice_example_call, it.name) },
+        ).ifEmpty { listOf(voiceText(R.string.voice_example_pause)) }
+        return voiceText(R.string.voice_hint_examples, examples.joinToString(", "))
     }
 
-    private fun titleCase(name: String) = name.split(' ').joinToString(" ") { word -> word.replaceFirstChar { it.titlecase(Locale.getDefault()) } }
+    private fun titleCase(name: String) = name.split(' ').joinToString(" ") { word -> word.replaceFirstChar { it.titlecase(AppLocales.voice(appContext)) } }
+
+    /** What the assistant shows and says, in the voice language (it may differ from the interface's). */
+    private fun voiceText(id: Int, vararg args: Any): String = AppLocales.voiceContext(appContext).getString(id, *args)
 
     private fun restoreMusic() {
         if (resumeMusic) NowPlaying.resume()

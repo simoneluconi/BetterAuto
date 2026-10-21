@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
@@ -41,6 +43,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -51,6 +54,7 @@ import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.Calls
+import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.ui.phone.CallScreen
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreen
 import com.simoneluconi.betterauto.ui.voice.VoiceOverlay
@@ -60,17 +64,23 @@ import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
 import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
+import com.simoneluconi.betterauto.ui.smarthome.ArrivalPanel
+import com.simoneluconi.betterauto.ui.smarthome.ArrivalScrim
+import com.simoneluconi.betterauto.ui.smarthome.SmartHomeScreen
 import com.simoneluconi.betterauto.settings.BarPosition
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.RailSlot
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.settings.ThemeMode
 import com.simoneluconi.betterauto.settings.WidgetType
+import com.simoneluconi.betterauto.ui.CarBringIntoView
+import com.simoneluconi.betterauto.ui.LocalFormatLocale
 import com.simoneluconi.betterauto.ui.theme.CarTheme
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.MusicScreen
 import com.simoneluconi.betterauto.ui.widgets.PlaceholderWidget
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
+import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.min
@@ -86,6 +96,8 @@ private const val DESIGN_SHORT = 720f
  * The whole car screen. Works on the projected display and in the on-phone preview.
  * [insets] (pixels) are edges that may be hidden: the background reaches them, the controls don't.
  */
+// LocalBringIntoViewSpec: the knob's margin when lists scroll to the focused control
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LauncherRoot(modifier: Modifier = Modifier, focus: LauncherFocus? = null, insets: Edges = Edges.None) {
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -98,7 +110,16 @@ fun LauncherRoot(modifier: Modifier = Modifier, focus: LauncherFocus? = null, in
             end = (insets.right / scale).dp,
             bottom = (insets.bottom / scale).dp,
         )
-        CompositionLocalProvider(LocalDensity provides Density(scale, fontScale = 1f)) {
+        // Dates and numbers as the driver chose (Auto: the phone's language of the SIM's country)
+        val context = LocalContext.current
+        val formatChoice by remember { LauncherSettings.get(context).formatRegion }.collectAsStateWithLifecycle()
+        val configuration = LocalConfiguration.current
+        val formatLocale = remember(formatChoice, configuration) { AppLocales.formats(context) }
+        CompositionLocalProvider(
+            LocalDensity provides Density(scale, fontScale = 1f),
+            LocalFormatLocale provides formatLocale,
+            LocalBringIntoViewSpec provides CarBringIntoView,
+        ) {
             LauncherContent(focus, padding)
         }
     }
@@ -178,6 +199,13 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         if (!down) VoiceAssistant.cancel()
                         return@onPreviewKeyEvent true
                     }
+                    // Then the editors, one level at a time, wherever the focus is
+                    if ((event.key == Key.Back || event.key == Key.Escape) && (BarEditor.open.value || HomeEdit.active.value)) {
+                        if (!down) {
+                            if (BarEditor.open.value) BarEditor.close() else HomeEdit.back()
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                     // Knob nudges: from the app bar straight to the screen's main control, and back
                     val toScreen = if (railVertical) Key.DirectionRight else Key.DirectionUp
                     val toBar = if (railVertical) Key.DirectionLeft else Key.DirectionDown
@@ -250,6 +278,25 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     rail(false)
                 }
             }
+            // The bar's editor: after it closes, back where the knob was, else on the bar
+            val arranging by BarEditor.open.collectAsStateWithLifecycle()
+            var wasArranging by remember { mutableStateOf(false) }
+            LaunchedEffect(arranging) {
+                if (wasArranging && !arranging) {
+                    withFrameNanos { }
+                    if (!BarEditor.restoreFocus()) refocusRail++
+                }
+                wasArranging = arranging
+            }
+            if (current == null) {
+                BarEditorScrim(Modifier.fillMaxSize())
+                BarEditorPanel(
+                    settings,
+                    maxHeight = maxHeight - 48.dp,
+                    modifier = if (left) Modifier.align(Alignment.CenterStart).padding(start = 124.dp, end = 24.dp)
+                    else Modifier.align(Alignment.BottomCenter).padding(bottom = 116.dp, start = 24.dp, end = 24.dp),
+                )
+            }
             openGroup?.let { slot ->
                 RailGroupPanel(
                     settings, slot, section,
@@ -262,12 +309,15 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 )
             }
             VoiceScrim(Modifier.fillMaxSize())
+            if (current == null) ArrivalScrim(Modifier.fillMaxSize())
             // Centered over the screen beside the app bar, where the driver looks, not over the whole frame
             val besideRail = when {
                 current != null -> Modifier
                 left -> Modifier.padding(start = RAIL_WIDTH)
                 else -> Modifier.padding(bottom = RAIL_HEIGHT)
             }
+            // Arrival buttons where the voice panel goes; never over a call
+            if (current == null) ArrivalPanel(Modifier.align(Alignment.BottomCenter).then(besideRail).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
             VoiceOverlay(Modifier.align(Alignment.BottomCenter).then(besideRail).padding(bottom = 28.dp, start = 24.dp, end = 24.dp))
             // No banner over a call, nor on the notifications screen itself
             if (shownCall == null && section != Section.NOTIFICATIONS) {
@@ -317,6 +367,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.VEHICLE -> VehicleScreen(Modifier.fillMaxSize())
                 Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize(), primary = true)
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
+                Section.SMART_HOME -> SmartHomeScreen(Modifier.fillMaxSize())
             }
         }
     }

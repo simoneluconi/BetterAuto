@@ -20,6 +20,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -68,6 +69,8 @@ import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.ui.smarthome.SmartHomeCard
+import com.simoneluconi.betterauto.settings.SettingsCategory
 import com.simoneluconi.betterauto.ui.theme.CarTheme
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
@@ -82,23 +85,29 @@ class MainActivity : ComponentActivity() {
         setContent {
             CarTheme(night = isSystemInDarkTheme(), album = null) {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
+                // Kept here, above the pages: coming back from settings finds the home page where it was
+                val homeScroll = rememberScrollState()
                 BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
                 when (page) {
                     PhonePage.HOME -> PhoneHome(
+                        scroll = homeScroll,
                         onOpenSetup = { page = PhonePage.SETUP },
                         onOpenWireless = { page = PhonePage.WIRELESS },
                         onOpenSettings = { page = PhonePage.SETTINGS },
+                        onOpenSmartHome = { page = PhonePage.SMART_HOME },
                     )
                     PhonePage.SETUP -> SetupPage(onBack = { page = PhonePage.HOME })
                     PhonePage.WIRELESS -> WirelessPage(onBack = { page = PhonePage.HOME })
                     PhonePage.SETTINGS -> PhoneSettingsPage(onBack = { page = PhonePage.HOME })
+                    // The home page's smart-home card is a shortcut to Settings › Smart home
+                    PhonePage.SMART_HOME -> PhoneSettingsPage(onBack = { page = PhonePage.HOME }, start = SettingsCategory.SMART_HOME)
                 }
             }
         }
     }
 }
 
-private enum class PhonePage { HOME, SETUP, WIRELESS, SETTINGS }
+private enum class PhonePage { HOME, SETUP, WIRELESS, SETTINGS, SMART_HOME }
 
 private enum class StepState { DONE, TODO, OPTIONAL }
 
@@ -111,6 +120,9 @@ private class Step(
     val onAction: () -> Unit = {},
     /** A command to run from a computer, for what an app cannot do by itself. */
     val command: String? = null,
+    /** Once done: where to change or undo it (system settings, Shizuku...), so a done step is never a dead end. */
+    val link: String? = null,
+    val onLink: () -> Unit = {},
 )
 
 /** The setup checklist, re-checked whenever the app comes back to the front and when Shizuku changes. */
@@ -123,18 +135,17 @@ private fun rememberSteps(): List<Step> {
         resumes++
         onPauseOrDispose { }
     }
-    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
-    val askMicrophone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
-    val askPhone = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { resumes++ }
+    // After "Don't ask again" these open the app's system settings instead
+    val ask = rememberPermissionRequest { resumes++ }
 
     // Shizuku starting, stopping or answering the permission request also changes its step
     val shizukuChanges by ShizukuAudio.changes.collectAsStateWithLifecycle()
     val steps = remember(resumes, shizukuChanges) {
         listOf(
-            notificationsStep(context) { askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) },
+            notificationsStep(context) { ask(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) },
             mediaStep(context),
-            audioStep(context) { askMicrophone.launch(Manifest.permission.RECORD_AUDIO) },
-            phoneStep(context) { askPhone.launch(PhonePermissions) },
+            audioStep(context) { ask(arrayOf(Manifest.permission.RECORD_AUDIO)) },
+            phoneStep(context) { ask(PhonePermissions) },
             voiceStep(context),
             androidAutoStep(context),
             shizukuStep(context),
@@ -144,7 +155,13 @@ private fun rememberSteps(): List<Step> {
 }
 
 @Composable
-private fun PhoneHome(onOpenSetup: () -> Unit, onOpenWireless: () -> Unit, onOpenSettings: () -> Unit) {
+private fun PhoneHome(
+    scroll: ScrollState,
+    onOpenSetup: () -> Unit,
+    onOpenWireless: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenSmartHome: () -> Unit,
+) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
     val steps = rememberSteps()
@@ -154,7 +171,7 @@ private fun PhoneHome(onOpenSetup: () -> Unit, onOpenWireless: () -> Unit, onOpe
             .fillMaxSize()
             .background(colors.bg)
             .safeDrawingPadding()
-            .verticalScrollWithBar()
+            .verticalScrollWithBar(scroll)
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -166,6 +183,7 @@ private fun PhoneHome(onOpenSetup: () -> Unit, onOpenWireless: () -> Unit, onOpe
         SetupCard(steps, onOpenSetup)
         WirelessCard(onOpenWireless)
         SettingsCard(onOpenSettings)
+        SmartHomeCard(onOpenSmartHome)
 
         PillButton(stringResource(R.string.action_preview), primary = true, modifier = Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, CarPreviewActivity::class.java))
@@ -250,6 +268,13 @@ private fun StepCard(step: Step) {
             }
         }
         step.action?.let { PillButton(it, primary = step.state == StepState.TODO, onClick = step.onAction) }
+        step.link?.let { link ->
+            CarLabel(
+                link, 15.sp, colors.focus,
+                Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = step.onLink).padding(vertical = 6.dp, horizontal = 2.dp),
+                weight = FontWeight.Bold,
+            )
+        }
     }
 }
 
@@ -445,6 +470,12 @@ private fun notificationsStep(context: Context, request: () -> Unit): Step {
         state = if (granted) StepState.DONE else StepState.TODO,
         action = if (granted) null else context.getString(R.string.action_allow),
         onAction = request,
+        link = if (granted) context.getString(R.string.step_change_in_settings) else null,
+        onLink = {
+            runCatching {
+                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }.onFailure { openAppSettings(context) }
+        },
     )
 }
 
@@ -457,13 +488,15 @@ private fun mediaStep(context: Context): Step {
         state = if (granted) StepState.DONE else StepState.TODO,
         action = if (granted) null else context.getString(R.string.action_open_settings),
         onAction = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+        link = if (granted) context.getString(R.string.step_change_in_settings) else null,
+        onLink = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
     )
 }
 
 private fun audioStep(context: Context, request: () -> Unit): Step {
     val microphone = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     val automatic = runCatching {
-        context.getSystemService(AppOpsManager::class.java).unsafeCheckOpNoThrow(
+        context.getSystemService(AppOpsManager::class.java).checkOpNoThrow(
             AudioConsentActivity.OPSTR_PROJECT_MEDIA, context.applicationInfo.uid, context.packageName,
         ) == AppOpsManager.MODE_ALLOWED
     }.getOrDefault(false)
@@ -473,9 +506,14 @@ private fun audioStep(context: Context, request: () -> Unit): Step {
             CarIcons.Speaker, title, context.getString(R.string.step_audio_text_todo), StepState.TODO,
             action = context.getString(R.string.action_allow), onAction = request,
         )
-        ShizukuAudio.state(context) == ShizukuAudio.State.READY ->
-            Step(CarIcons.Speaker, title, context.getString(R.string.step_audio_text_shizuku), StepState.DONE)
-        automatic -> Step(CarIcons.Speaker, title, context.getString(R.string.step_audio_text_done), StepState.DONE)
+        ShizukuAudio.state(context) == ShizukuAudio.State.READY -> Step(
+            CarIcons.Speaker, title, context.getString(R.string.step_audio_text_shizuku), StepState.DONE,
+            link = context.getString(R.string.step_change_in_settings), onLink = { openAppSettings(context) },
+        )
+        automatic -> Step(
+            CarIcons.Speaker, title, context.getString(R.string.step_audio_text_done), StepState.DONE,
+            link = context.getString(R.string.step_change_in_settings), onLink = { openAppSettings(context) },
+        )
         else -> Step(
             CarIcons.Speaker, title, context.getString(R.string.step_audio_text_ask), StepState.OPTIONAL,
             command = "adb shell appops set ${context.packageName} PROJECT_MEDIA allow",
@@ -509,14 +547,26 @@ private fun phoneStep(context: Context, request: () -> Unit): Step {
         state = if (granted) StepState.DONE else StepState.TODO,
         action = if (granted) null else context.getString(R.string.action_allow),
         onAction = request,
+        link = if (granted) context.getString(R.string.step_change_in_settings) else null,
+        onLink = { openAppSettings(context) },
     )
 }
 
 private fun androidAutoStep(context: Context): Step {
+    val installed = runCatching { context.packageManager.getApplicationInfo(ANDROID_AUTO, 0) }.isSuccess
     val enabled = runCatching { context.packageManager.getApplicationInfo(ANDROID_AUTO, 0).enabled }.getOrDefault(false)
     val title = context.getString(R.string.step_android_auto_title)
     return if (!enabled) {
-        Step(CarIcons.Car, title, context.getString(R.string.step_android_auto_text_done), StepState.DONE)
+        // Its system page has the button to turn it back on
+        Step(
+            CarIcons.Car, title, context.getString(R.string.step_android_auto_text_done), StepState.DONE,
+            link = if (installed) context.getString(R.string.step_android_auto_reenable) else null,
+            onLink = {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ANDROID_AUTO, null)))
+                }
+            },
+        )
     } else {
         Step(
             CarIcons.Car, title, context.getString(R.string.step_android_auto_text_todo), StepState.TODO,
@@ -555,7 +605,13 @@ private fun shizukuStep(context: Context): Step {
             CarIcons.Settings, title, text(R.string.step_shizuku_text_allow), StepState.OPTIONAL,
             action = context.getString(R.string.action_allow), onAction = ShizukuAudio::requestPermission,
         )
-        ShizukuAudio.State.READY -> Step(CarIcons.Settings, title, text(R.string.step_shizuku_text_ready), StepState.DONE)
+        ShizukuAudio.State.READY -> Step(
+            CarIcons.Settings, title, text(R.string.step_shizuku_text_ready), StepState.DONE,
+            link = context.getString(R.string.action_open_shizuku),
+            onLink = {
+                context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            },
+        )
     }
 }
 

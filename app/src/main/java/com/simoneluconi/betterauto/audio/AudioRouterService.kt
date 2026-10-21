@@ -221,7 +221,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         val mixBuilder = Class.forName("android.media.audiopolicy.AudioMix\$Builder").getConstructor(rule.javaClass).newInstance(rule)
         mixBuilder.javaClass.getMethod("setFormat", AudioFormat::class.java).invoke(mixBuilder, format)
         mixBuilder.javaClass.getMethod("setRouteFlags", Int::class.javaPrimitiveType).invoke(mixBuilder, ROUTE_FLAG_LOOP_BACK)
-        return mixBuilder.javaClass.getMethod("build").invoke(mixBuilder)
+        return mixBuilder.javaClass.getMethod("build").invoke(mixBuilder) ?: error("AudioMix.Builder.build gave no mix")
     }
 
     /**
@@ -263,7 +263,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     private fun buildPolicy(mix: Any): Any {
         val builder = Class.forName("android.media.audiopolicy.AudioPolicy\$Builder").getConstructor(Context::class.java).newInstance(context)
         builder.javaClass.getMethod("addMix", MIX).invoke(builder, mix)
-        return builder.javaClass.getMethod("build").invoke(builder)
+        return builder.javaClass.getMethod("build").invoke(builder) ?: error("AudioPolicy.Builder.build gave no policy")
     }
 
     private companion object {

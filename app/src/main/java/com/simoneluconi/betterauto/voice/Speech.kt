@@ -7,6 +7,7 @@ import android.media.AudioTrack
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.settings.AppLocales
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
@@ -28,6 +29,8 @@ object Speech {
     fun say(context: Context, text: String) {
         val engine = tts
         if (engine != null && ready) {
+            // The voice language may have been changed since the engine started
+            AppLocales.voice(context).let { if (engine.voice?.locale != it) engine.language = it }
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "reply")
             return
         }
@@ -41,7 +44,7 @@ object Speech {
                 return@TextToSpeech
             }
             t.setAudioAttributes(Media)
-            t.language = Locale.getDefault()
+            t.language = AppLocales.voice(context)
             pending?.let { t.speak(it, TextToSpeech.QUEUE_FLUSH, Bundle(), "reply") }
             pending = null
         }

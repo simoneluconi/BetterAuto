@@ -16,7 +16,6 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.settings.NameOrder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 data class Contact(
     val id: Long,
@@ -142,6 +141,7 @@ object PhoneBook {
     suspend fun recents(context: Context, order: NameOrder): List<RecentCall> = withContext(Dispatchers.IO) {
         if (!canReadCallLog(context)) return@withContext emptyList()
         val byNumber = if (canRead(context)) numberIndex(context, order) else emptyMap()
+        val country = PhoneCountry.of(context)
         val result = ArrayList<RecentCall>()
         runCatching {
             context.contentResolver.query(
@@ -155,13 +155,13 @@ object PhoneBook {
                 while (c.moveToNext() && result.size < MAX_RECENTS) {
                     val number = c.getString(0).orEmpty()
                     val type = c.getInt(2)
-                    val key = c.getString(4) ?: normalize(number)
+                    val key = c.getString(4) ?: normalize(number, country)
                     val last = result.lastOrNull()
-                    if (last != null && last.type == type && normalize(last.number) == normalize(number)) {
+                    if (last != null && last.type == type && normalize(last.number, country) == normalize(number, country)) {
                         result[result.lastIndex] = last.copy(count = last.count + 1)
                         continue
                     }
-                    val contact = byNumber[key] ?: byNumber[normalize(number)]
+                    val contact = byNumber[key] ?: byNumber[normalize(number, country)]
                     val label = if (c.isNull(5)) null else Phone.getTypeLabel(context.resources, c.getInt(5), c.getString(6)).toString()
                     result += RecentCall(
                         number = number,
@@ -239,6 +239,7 @@ object PhoneBook {
     private fun numberIndex(context: Context, order: NameOrder): Map<String, Contact> {
         val nameColumn = if (order == NameOrder.LAST_FIRST) Phone.DISPLAY_NAME_ALTERNATIVE else Phone.DISPLAY_NAME_PRIMARY
         val map = HashMap<String, Contact>()
+        val country = PhoneCountry.of(context)
         runCatching {
             context.contentResolver.query(
                 Phone.CONTENT_URI,
@@ -249,15 +250,16 @@ object PhoneBook {
                     val name = c.getString(3) ?: continue
                     val contact = Contact(c.getLong(2), name, c.getString(4)?.let(Uri::parse), false)
                     c.getString(1)?.let { map[it] = contact }
-                    c.getString(0)?.let { map[normalize(it)] = contact }
+                    c.getString(0)?.let { map[normalize(it, country)] = contact }
                 }
             }
         }
         return map
     }
 
-    private fun normalize(number: String): String =
-        PhoneNumberUtils.formatNumberToE164(number, Locale.getDefault().country) ?: PhoneNumberUtils.normalizeNumber(number)
+    /** E.164 with the SIM's country for numbers written without a prefix, the same key the contacts use. */
+    private fun normalize(number: String, country: String): String =
+        PhoneNumberUtils.formatNumberToE164(number, country) ?: PhoneNumberUtils.normalizeNumber(number)
 }
 
 private val NameOrder.nameColumn

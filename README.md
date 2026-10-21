@@ -72,16 +72,24 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
 - 🚗 **Vehicle**: everything the car shares (tyre pressure, range, odometer, climate, gear, doors…),
   fault codes explained in plain words, and an engine-light shortcut in the top bar. On VW group cars
   the extra data of Exlap fills in what the standard Android Auto sensors leave out.
+- 🏠 **Smart home** (Home Assistant first, other services can plug in): your gates, garage doors,
+  locks, lights, scenes and scripts as big tiles with live state, one tap to act. Linking takes the
+  address and Home Assistant's own sign-in; the devices you already share with your voice assistants
+  come ticked. Arriving home (by the car's GPS, or the phone's during the drive) the gate and garage
+  buttons slide in by themselves.
 - 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
   calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
 - 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the
-  settings.
+  settings. Widgets: music, notifications, favorite contacts (one tap calls), a big clock with the
+  outside temperature, today's and tomorrow's events from the calendars you pick, and the weather, shown by hosting the
+  phone's own weather app widget (no weather service of ours). Sensible defaults, nothing to set up
+  unless a widget needs a permission, asked on the phone only when it is picked.
 - 🌗 **Day and night themes** following the car's lights.
 - 📐 **Any screen shape**, from 800×480 to wide dashboards and portrait displays.
 - 🌍 English and Italian, following the phone's language.
 
-Ideas for what could come next: maps with turn-by-turn directions, Home Assistant, a trip log,
-wireless Android Auto.
+Ideas for what could come next: maps with turn-by-turn directions, more smart-home services, a trip
+log, wireless Android Auto.
 
 ## Trying it
 

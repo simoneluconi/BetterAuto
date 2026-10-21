@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,6 +10,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
@@ -29,6 +31,7 @@ import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.exlap.ExlapSettings
 import com.simoneluconi.betterauto.projection.Projection
+import com.simoneluconi.betterauto.smarthome.SmartHome
 import com.simoneluconi.betterauto.transport.TcpTransport
 import com.simoneluconi.betterauto.transport.Transport
 import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
@@ -85,11 +88,19 @@ class AapService : Service() {
         CarAudio.init(this)
         // The car's vendor channel reads the Exlap switch and credentials from here
         ExlapSettings.get(this)
+        // Smart home follows the session by itself (states, arrival buttons)
+        SmartHome.init(this)
+        // Arrival buttons may need the phone's location while the car screen runs: only with the permission
+        if (hasLocationPermission()) foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
         ShizukuAudio.init()
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         ContextCompat.registerReceiver(this, detached, filter, ContextCompat.RECEIVER_EXPORTED)
     }
+
+    private fun hasLocationPermission() =
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     /** Closing stops the encoder and the projection: off the main thread. The session thread then reports the end. */
     private fun endSession(ended: AapSession) {
@@ -105,7 +116,15 @@ class AapService : Service() {
             startAudioCapture(intent)
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
+        } catch (e: SecurityException) {
+            // The location type can be refused (permission just revoked): run without it
+            if (foregroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION == 0) throw e
+            EventLog.log("Location for the arrival buttons not allowed in the background service")
+            foregroundTypes = foregroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION.inv()
+            startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
+        }
 
         if (intent?.action == ACTION_CONNECT_TCP) {
             connectTcp(intent.getStringExtra(EXTRA_HOST), intent.getIntExtra(EXTRA_PORT, DEFAULT_TCP_PORT))

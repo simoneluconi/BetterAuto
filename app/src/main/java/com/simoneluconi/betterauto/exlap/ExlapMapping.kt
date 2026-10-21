@@ -22,12 +22,12 @@ data class ExlapMapped(val fields: List<FieldValue<*>>, val used: Set<String>)
  * declares in its Interface answer) and anything not understood is simply left as a raw value.
  */
 object ExlapMapping {
-    /** Followed whatever is on screen: who is aboard drives the notification privacy. */
-    private val ALWAYS = setOf("Comfort_CarSeatsStatus")
+    /** Followed whatever is on screen: who is aboard drives the notification privacy, the clock widget shows the outside temperature. */
+    private val ALWAYS = setOf("Comfort_CarSeatsStatus", "outsideTemperature")
 
     /** What the vehicle overview shows. */
     private val OVERVIEW = setOf(
-        "outsideTemperature", "tankLevelPrimary", "fuelWarningPrimaryTank", "totalDistance", "dayMilage",
+        "tankLevelPrimary", "fuelWarningPrimaryTank", "totalDistance", "dayMilage",
         "tyrePressures", "doorState", "lightState_front", "blinkingState", "currentGear", "reverseGear", "parkingBrake",
     )
 

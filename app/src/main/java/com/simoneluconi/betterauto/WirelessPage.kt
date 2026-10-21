@@ -94,7 +94,8 @@ internal fun WirelessPage(onBack: () -> Unit) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
+    // After "Don't ask again" it opens the app's system settings instead
+    val ask = rememberPermissionRequest { refresh++ }
     val missing = remember(refresh) { WirelessConnector.missingPermissions(context) }
     val devices = remember(refresh, missing.isEmpty()) { if (missing.isEmpty()) paired(context) else emptyList() }
     var selected by remember { mutableStateOf(WirelessConnector.savedDevice(context)) }
@@ -125,7 +126,7 @@ internal fun WirelessPage(onBack: () -> Unit) {
             if (missing.isNotEmpty()) {
                 Card {
                     CarLabel(stringResource(R.string.wireless_permissions), 15.sp, colors.text2, maxLines = 6, lineHeight = 21.sp)
-                    PillButton(stringResource(R.string.action_allow), primary = true) { ask.launch(missing.toTypedArray()) }
+                    PillButton(stringResource(R.string.action_allow), primary = true) { ask(missing.toTypedArray()) }
                 }
                 return@Column
             }

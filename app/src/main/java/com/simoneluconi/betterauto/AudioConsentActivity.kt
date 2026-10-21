@@ -53,7 +53,7 @@ class AudioConsentActivity : Activity() {
     /** True when the ADB pre-approval is in place: Android will grant capture without asking, nothing to explain. */
     private fun isPreApproved(): Boolean = runCatching {
         getSystemService(AppOpsManager::class.java)
-            .unsafeCheckOpNoThrow(OPSTR_PROJECT_MEDIA, applicationInfo.uid, packageName) == AppOpsManager.MODE_ALLOWED
+            .checkOpNoThrow(OPSTR_PROJECT_MEDIA, applicationInfo.uid, packageName) == AppOpsManager.MODE_ALLOWED
     }.getOrDefault(false)
 
     private fun declined() {

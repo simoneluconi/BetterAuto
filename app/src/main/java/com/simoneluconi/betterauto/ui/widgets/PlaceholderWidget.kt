@@ -31,11 +31,9 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 @Composable
 fun PlaceholderWidget(type: WidgetType, modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
-    val (title, icon) = when (type) {
-        WidgetType.MAP -> R.string.widget_map to CarIcons.Map
-        WidgetType.MUSIC -> R.string.nav_music to CarIcons.Music
-        WidgetType.NOTIFICATIONS -> R.string.widget_notifications to CarIcons.Bell
-    }
+    val kind = HomeWidgets.kind(type)
+    val title = kind?.title ?: R.string.widget_map
+    val icon = kind?.icon ?: CarIcons.Map
     val caption = R.string.widget_slot_next
     val grid = type == WidgetType.MAP
     Column(

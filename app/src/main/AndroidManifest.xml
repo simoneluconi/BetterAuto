@@ -32,9 +32,11 @@
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
-    <uses-permission
-        android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="32" />
+    <!-- WiFi join before Android 13; arrival buttons (smart home) when the car shares no GPS:
+         only while a car session runs, never in the background otherwise -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- Head units reached over the network (TCP), besides the USB accessory -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 17 drops traffic to the local network without it (bench head unit, wireless dongle) -->
@@ -56,11 +58,16 @@
     <uses-permission android:name="android.permission.CALL_COMPANION_APP" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Calendar home widget: asked only when the driver picks it -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <!-- Media apps (for the app bar) are the ones exposing a MediaBrowserService -->
     <queries>
         <!-- Shizuku, optional: to tell the driver whether it is installed -->
         <package android:name="moe.shizuku.privileged.api" />
+        <!-- Home Assistant's companion app: its icon in the app bar, and the phone app suggests linking -->
+        <package android:name="io.homeassistant.companion.android" />
+        <package android:name="io.homeassistant.companion.android.minimal" />
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
@@ -68,6 +75,10 @@
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Apps offering widgets, to find a weather one for the home screen -->
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
         </intent>
     </queries>
 
@@ -77,6 +88,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 
         <activity
@@ -103,6 +115,24 @@
             <meta-data
                 android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
                 android:resource="@xml/accessory_filter" />
+        </activity>
+
+        <!-- Smart-home sign-in: the browser comes back to betterauto://auth/<service> -->
+        <activity
+            android:name=".smarthome.SignInActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="auth"
+                    android:scheme="betterauto" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -160,6 +190,6 @@
         <service
             android:name=".AapService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|mediaProjection|microphone" />
+            android:foregroundServiceType="connectedDevice|mediaProjection|microphone|location" />
     </application>
 </manifest>
