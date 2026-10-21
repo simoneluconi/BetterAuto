@@ -124,4 +124,18 @@ class HaMappingTest {
         assertEquals(setOf("light.a", "cover.b"), HaMapping.exposed(result))
         assertNull(HaMapping.exposed(null))
     }
+
+    @Test
+    fun entitiesAreNamedWithoutTheirDevice() {
+        val friendly = JSONObject().put("friendly_name", "Esp-Garage-V2 Porta Garage")
+        val modern = JSONObject().put("has_entity_name", true).put("original_name", "Porta Garage")
+        assertEquals("Porta Garage", HaMapping.shortName("cover.porta", friendly, modern, "Esp-Garage-V2"))
+        // Older integrations: the device name is cut from the front of the friendly name
+        assertEquals("Porta Garage", HaMapping.shortName("cover.porta", friendly, JSONObject(), "Esp-Garage-V2"))
+        // A name the user gave the entity stays as it is
+        assertEquals("Garage", HaMapping.shortName("cover.porta", friendly, JSONObject().put("name", "Garage"), "Esp-Garage-V2"))
+        // The device's main entity has no name of its own: the device's
+        val main = JSONObject().put("has_entity_name", true)
+        assertEquals("Esp-Garage-V2", HaMapping.shortName("switch.esp", JSONObject().put("friendly_name", "Esp-Garage-V2"), main, "Esp-Garage-V2"))
+    }
 }

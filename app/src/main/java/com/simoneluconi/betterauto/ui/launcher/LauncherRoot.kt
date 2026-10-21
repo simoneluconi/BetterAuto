@@ -64,7 +64,9 @@ import com.simoneluconi.betterauto.voice.VoiceState
 import com.simoneluconi.betterauto.ui.notifications.NotificationBanner
 import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.ui.phone.PhoneScreen
+import com.simoneluconi.betterauto.smarthome.SmartHome
 import com.simoneluconi.betterauto.ui.smarthome.ArrivalPanel
+import com.simoneluconi.betterauto.ui.smarthome.ArrivalPanelShown
 import com.simoneluconi.betterauto.ui.smarthome.ArrivalScrim
 import com.simoneluconi.betterauto.ui.smarthome.SmartHomeScreen
 import com.simoneluconi.betterauto.settings.BarPosition
@@ -204,6 +206,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         if (!down) {
                             if (BarEditor.open.value) BarEditor.close() else HomeEdit.back()
                         }
+                        return@onPreviewKeyEvent true
+                    }
+                    // The arrival panel, also when something took the focus out of it
+                    if ((event.key == Key.Back || event.key == Key.Escape) && ArrivalPanelShown.value) {
+                        if (!down) SmartHome.arrival?.closePanel()
                         return@onPreviewKeyEvent true
                     }
                     // Knob nudges: from the app bar straight to the screen's main control, and back

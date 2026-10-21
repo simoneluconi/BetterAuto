@@ -96,9 +96,10 @@ fun ClockWidget(settings: LauncherSettings, modifier: Modifier = Modifier) {
         val dateSize = (timeSize * 0.24f).coerceIn(19f, 30f)
         if (wide && temperature != null) {
             Row(Modifier.wrapContentSize(), verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                // Weighted: the temperature is measured first and never cut, the time shrinks instead
+                Column(Modifier.weight(1f, fill = false)) {
                     Time()
-                    CarLabel(date, dateSize.sp, colors.text2, weight = FontWeight.Bold)
+                    CarLabel(date, dateSize.sp, colors.text2, weight = FontWeight.Bold, shrinkToFit = true)
                 }
                 Spacer(Modifier.width(32.dp))
                 // A hairline between the clock and the car's reading

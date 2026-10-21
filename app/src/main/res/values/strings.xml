@@ -461,6 +461,7 @@
     <string name="option_start_last">Where I left off</string>
     <string name="option_start_home">Home</string>
     <string name="settings_when_stopped">Settings are available when the car is stopped</string>
+    <string name="smarthome_arrival_order">Their order in the car: drag them by the handle</string>
     <string name="settings_when_stopped_hint">They come back by themselves as soon as the car stands still: in P, with the parking brake on, or stopped.</string>
     <!-- Smart home -->
     <string name="smarthome_title">Smart home</string>

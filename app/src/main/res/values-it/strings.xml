@@ -461,6 +461,7 @@
     <string name="option_start_last">Dove ero rimasto</string>
     <string name="option_start_home">Home</string>
     <string name="settings_when_stopped">Le impostazioni sono disponibili a auto ferma</string>
+    <string name="smarthome_arrival_order">L\'ordine in auto: trascinali dalla maniglia</string>
     <string name="settings_when_stopped_hint">Tornano da sole appena l\'auto è ferma: in P, con il freno a mano tirato o da fermo.</string>
     <!-- Casa intelligente -->
     <string name="smarthome_title">Casa intelligente</string>

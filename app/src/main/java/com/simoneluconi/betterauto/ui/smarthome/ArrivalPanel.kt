@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -95,6 +96,12 @@ fun ArrivalScrim(modifier: Modifier = Modifier) {
  * buttons together, then Close; Back, Close or a tap outside closes it and the knob goes back where it
  * was. It can be reopened from the status bar while still there.
  */
+/** Whether the arrival panel is on screen: Back closes it even when the focus got out of it. */
+object ArrivalPanelShown {
+    var value by mutableStateOf(false)
+        internal set
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ArrivalPanel(modifier: Modifier = Modifier) {
@@ -107,7 +114,10 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
     var returnFocus by remember { mutableStateOf<FocusRequester?>(null) }
     var wasOpen by remember { mutableStateOf(false) }
     val open = arrival.panelOpen && inside.isNotEmpty()
+    // Gone with the panel (a call screen replaces it)
+    DisposableEffect(Unit) { onDispose { ArrivalPanelShown.value = false } }
     LaunchedEffect(open) {
+        ArrivalPanelShown.value = open
         if (wasOpen && !open) {
             withFrameNanos { }
             FocusMemory.restore(returnFocus)
@@ -150,8 +160,10 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
                 val feedback by SmartHome.feedback.collectAsStateWithLifecycle()
                 val link by provider.link.collectAsStateWithLifecycle()
                 val homeName by provider.homeName.collectAsStateWithLifecycle()
-                val ids = (choices[provider.id] ?: ProviderChoice()).arrivalAt(place)?.devices.orEmpty()
-                val devices = catalog?.devices.orEmpty().filter { it.id in ids }
+                val arrival = (choices[provider.id] ?: ProviderChoice()).arrivalAt(place)
+                val ids = arrival?.devices.orEmpty()
+                // In the order the driver dragged them into on the phone
+                val devices = catalog?.devices.orEmpty().filter { it.id in ids }.let { list -> arrival?.sorted(list) { it.id } ?: list }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     ProviderIcon(provider, 34)
                     Column(Modifier.weight(1f)) {

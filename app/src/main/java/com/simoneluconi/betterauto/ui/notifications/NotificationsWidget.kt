@@ -123,24 +123,28 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
 private fun Header(settings: LauncherSettings, list: List<CarNotification>, compact: Boolean) {
     val colors = LocalCarColors.current
     val quiet by settings.quietMode.collectAsStateWithLifecycle()
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        CarLabel(stringResource(R.string.notif_title), if (compact) 22.sp else 26.sp, colors.text, weight = FontWeight.ExtraBold)
-        if (list.isNotEmpty()) {
-            Box(Modifier.background(colors.focus, CircleShape).padding(horizontal = 10.dp, vertical = 2.dp)) {
-                CarLabel(list.size.toString(), 17.sp, colors.bg, weight = FontWeight.Bold)
+    // A narrow card (portrait screens) keeps only the moon: its word and Clear all would be cut
+    BoxWithConstraints {
+        val narrow = maxWidth < 440.dp
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CarLabel(stringResource(R.string.notif_title), if (compact) 22.sp else 26.sp, colors.text, weight = FontWeight.ExtraBold)
+            if (list.isNotEmpty()) {
+                Box(Modifier.background(colors.focus, CircleShape).padding(horizontal = 10.dp, vertical = 2.dp)) {
+                    CarLabel(list.size.toString(), 17.sp, colors.bg, weight = FontWeight.Bold)
+                }
             }
-        }
-        Spacer(Modifier.weight(1f))
-        // A moon, not a bell: the bell in the status bar opens and closes this screen
-        HeaderButton(
-            CarIcons.Moon,
-            stringResource(if (quiet) R.string.notif_quiet_on else R.string.notif_quiet_off),
-            active = quiet,
-            text = if (compact) null else stringResource(R.string.notif_quiet),
-        ) { settings.setQuietMode(!quiet) }
-        if (list.isNotEmpty() && !compact) {
-            HeaderButton(CarIcons.Close, stringResource(R.string.notif_clear_all), active = false) {
-                CarNotifications.dismissAll(list)
+            Spacer(Modifier.weight(1f))
+            // A moon, not a bell: the bell in the status bar opens and closes this screen
+            HeaderButton(
+                CarIcons.Moon,
+                stringResource(if (quiet) R.string.notif_quiet_on else R.string.notif_quiet_off),
+                active = quiet,
+                text = if (compact || narrow) null else stringResource(R.string.notif_quiet),
+            ) { settings.setQuietMode(!quiet) }
+            if (list.isNotEmpty() && !compact && !narrow) {
+                HeaderButton(CarIcons.Close, stringResource(R.string.notif_clear_all), active = false) {
+                    CarNotifications.dismissAll(list)
+                }
             }
         }
     }

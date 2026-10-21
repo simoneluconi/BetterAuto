@@ -1,7 +1,6 @@
 package com.simoneluconi.betterauto.smarthome.homeassistant
 
 import android.content.ClipboardManager
-import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.PillButton
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.smarthome.LinkState
+import com.simoneluconi.betterauto.smarthome.SmartHomeAuth
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.smarthome.PhoneTextField
 import com.simoneluconi.betterauto.ui.smarthome.ProviderBadge
@@ -109,9 +109,7 @@ private fun LinkForm(provider: HomeAssistantProvider, companion: Boolean) {
             return@PillButton
         }
         provider.clearLinking()
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(provider.authorizeUrl(base))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+        SmartHomeAuth.openSignIn(context, provider.authorizeUrl(base))
     }
     CarLabel(
         stringResource(if (advanced) R.string.ha_link_advanced_hide else R.string.ha_link_advanced),

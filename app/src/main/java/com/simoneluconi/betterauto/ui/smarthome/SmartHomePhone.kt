@@ -64,6 +64,8 @@ import com.simoneluconi.betterauto.smarthome.SmartHomeProvider
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.ui.DragRow
+import com.simoneluconi.betterauto.ui.ReorderList
 import com.simoneluconi.betterauto.ui.theme.CarText
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import kotlinx.coroutines.launch
@@ -285,6 +287,14 @@ private fun PlaceArrivalSetup(provider: SmartHomeProvider, catalog: SmartCatalog
     if (shown.isEmpty()) CarLabel(stringResource(R.string.smarthome_arrival_pick), 15.sp, colors.text2, maxLines = 3)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (device in shown) TickChip(device, ticked = device.id in ticked) { SmartHome.toggleArrival(provider.id, placeId, device.id) }
+    }
+    // Their order in the car: drag them up or down
+    val chosen = arrival.sorted(catalog.devices.filter { it.id in ticked }) { it.id }
+    if (chosen.size > 1) {
+        CarLabel(stringResource(R.string.smarthome_arrival_order), 16.sp, colors.text2, weight = FontWeight.Bold)
+        ReorderList(chosen, key = { it.id }, onMoved = { list -> SmartHome.orderArrival(provider.id, placeId, list.map { it.id }) }) { device, dragging, handle ->
+            DragRow(device.name, dragging, handle)
+        }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val more = carDevices.any { d -> base.none { it.id == d.id } }

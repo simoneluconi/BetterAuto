@@ -18,19 +18,23 @@ project is also a fairly complete map of what it takes to replace Android Auto o
 
 ## Screenshots
 
-All taken from the head unit's video stream on the test bench. Messages, calls and car data are
-made up (the app has a demo mode for this).
+All taken from the car screen on the test bench. Messages, calls, calendar, car data and the smart
+home are made up (the app has a demo mode for this).
 
 | Home | Vehicle |
 |---|---|
 | ![Home with the music player](docs/screenshots/01_home_music.jpg) | ![Vehicle overview](docs/screenshots/17_vehicle.jpg) |
 | **Fault codes, explained** | **Voice commands** |
 | ![Fault codes](docs/screenshots/18_vehicle_diagnostics.jpg) | ![Voice: calling a contact](docs/screenshots/21_voice_calling.jpg) |
+| **Smart home** | **Arriving home** |
+| ![Smart home devices](docs/screenshots/22_smart_home.jpg) | ![Arrival buttons for the gate and the garage](docs/screenshots/23_arrival_buttons.jpg) |
+| **Widgets: calendar, favorites, clock** | **Settings** |
+| ![Home with calendar, favorites and clock](docs/screenshots/02_home_three_widgets.jpg) | ![Settings](docs/screenshots/11_settings.jpg) |
 | **Call in progress** | **Night theme** |
 | ![Call in progress](docs/screenshots/10_call_active.jpg) | ![Night theme](docs/screenshots/12_home_night.jpg) |
 
-More in [docs/screenshots](docs/screenshots): notifications, music library, keypad, settings,
-portrait and wide screens.
+More in [docs/screenshots](docs/screenshots): notifications, music library, keypad, portrait and
+wide screens.
 
 ## Where it works
 

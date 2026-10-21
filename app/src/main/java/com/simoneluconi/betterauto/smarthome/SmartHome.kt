@@ -101,6 +101,19 @@ object SmartHome {
                 for (p in _providers.value) p.follow(follow[p.id].orEmpty())
             }
         }
+        // Each session reads the linked services' lists again, once: names and devices changed there arrive by
+        // themselves (and a list cached by an older version is replaced), no tap on "Refresh the list" needed
+        scope.launch {
+            needed.collect { inSession ->
+                if (inSession) for (p in linked.value) launch { runCatching { p.refreshCatalog() } }
+            }
+        }
+        // A linked service with no usable list (none yet, or an older version's): read it now, not at the next drive
+        scope.launch {
+            linked.collect { list ->
+                for (p in list) if (p.catalog.value == null) launch { runCatching { p.refreshCatalog() } }
+            }
+        }
         // Arrival buttons: during a car session, for every place whose buttons are on (all off with the main switch)
         scope.launch {
             combine(catalogs, linked, _choices, needed, _arrivalEnabled) { _, linkedNow, choices, inSession, arriving ->
@@ -177,6 +190,9 @@ object SmartHome {
     fun updatePlace(providerId: String, placeId: String, change: (PlaceArrival) -> PlaceArrival) = update(providerId) { c ->
         c.copy(places = c.places + (placeId to change(c.places[placeId] ?: PlaceArrival())))
     }
+
+    /** The arrival buttons of [placeId] in this order, as dragged on the phone. */
+    fun orderArrival(providerId: String, placeId: String, order: List<String>) = updatePlace(providerId, placeId) { it.copy(order = order) }
 
     fun toggleArrival(providerId: String, placeId: String, deviceId: String) = updatePlace(providerId, placeId) { p ->
         p.copy(devices = if (deviceId in p.devices) p.devices - deviceId else p.devices + deviceId)

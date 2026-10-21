@@ -166,6 +166,7 @@ object HaMapping {
             SmartArea(id, a.optStringOrNull("name") ?: id)
         }
         val deviceArea = devices.objects().associate { d -> d.optString("id") to d.optStringOrNull("area_id") }
+        val deviceName = devices.objects().associate { d -> d.optString("id") to (d.optStringOrNull("name_by_user") ?: d.optStringOrNull("name")) }
         val registry = entities.objects().associateBy { it.optString("entity_id") }
         val out = ArrayList<SmartDevice>()
         val places = ArrayList<SmartPlace>()
@@ -183,7 +184,7 @@ object HaMapping {
             val deviceClass = attrs.optStringOrNull("device_class")
             if (kind == DeviceKind.SENSOR && !suggested && deviceClass !in UsefulSensorClasses) continue
             if (kind == DeviceKind.BINARY_SENSOR && !suggested && deviceClass !in OpeningSensorClasses) continue
-            val name = attrs.optStringOrNull("friendly_name") ?: reg?.optStringOrNull("name") ?: reg?.optStringOrNull("original_name") ?: entityId
+            val name = shortName(entityId, attrs, reg, reg?.optStringOrNull("device_id")?.let { deviceName[it] })
             val area = reg?.optStringOrNull("area_id") ?: reg?.optStringOrNull("device_id")?.let { deviceArea[it] }
             out += SmartDevice(
                 providerId = PROVIDER_ID,
@@ -201,6 +202,26 @@ object HaMapping {
             places += SmartPlace("zone.home", config.optStringOrNull("location_name") ?: "Home", config.getDouble("latitude"), config.getDouble("longitude"), 100.0, home = true)
         }
         return SmartCatalog(areaList, out, places)
+    }
+
+    /**
+     * The entity's own name, without its device's in front: "Porta Garage", not "Esp-Garage-V2 Porta Garage".
+     * HA builds friendly names as device + entity; a name the user gave the entity is kept as it is, and an
+     * entity named only after its device (the device's main one) keeps the device's name.
+     */
+    internal fun shortName(entityId: String, attrs: JSONObject, reg: JSONObject?, device: String?): String {
+        reg?.optStringOrNull("name")?.let { return it }
+        val friendly = attrs.optStringOrNull("friendly_name")
+        if (reg != null && reg.optBoolean("has_entity_name")) {
+            reg.optStringOrNull("original_name")?.let { return it }
+            return device ?: friendly ?: entityId
+        }
+        if (friendly != null && device != null && friendly.length > device.length + 1 &&
+            friendly.startsWith("$device ", ignoreCase = true)
+        ) {
+            return friendly.substring(device.length + 1).trim()
+        }
+        return friendly ?: entityId
     }
 
     private fun zone(entityId: String, attrs: JSONObject): SmartPlace? {

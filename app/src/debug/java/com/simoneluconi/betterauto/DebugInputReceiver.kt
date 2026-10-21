@@ -22,6 +22,7 @@ import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
+import com.simoneluconi.betterauto.settings.FormatRegion
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.HomeSlots
 import com.simoneluconi.betterauto.settings.WidgetChoice
@@ -63,7 +64,8 @@ import kotlin.concurrent.thread
  *                            side reaches Bluetooth ("false" is right, an exception is not)
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
- *                            --es temperature fahrenheit: celsius, fahrenheit or auto
+ *                            --es temperature fahrenheit: celsius, fahrenheit or auto;
+ *                            --es formats uk: dates and numbers as in italy, us, uk or auto
  *   ... --es screen 9:16     pretend the car screen has this shape (or a size like 1280x480) inside the
  *                            real frame, to try portrait and wide layouts on any head unit; "off" to stop
  *   ... --es section music   open a section: home, music, map, phone or settings
@@ -145,6 +147,10 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("units")?.let { name ->
             UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setUnitSystem(it) }
+        }
+        intent.getStringExtra("formats")?.let { name ->
+            FormatRegion.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { LauncherSettings.get(context).setFormatRegion(it) }
         }
         intent.getStringExtra("temperature")?.let { name ->
             TemperatureUnit.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }

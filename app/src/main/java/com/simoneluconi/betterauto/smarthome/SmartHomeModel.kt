@@ -90,6 +90,7 @@ data class SmartCatalog(
     fun device(id: String): SmartDevice? = devices.firstOrNull { it.id == id }
 
     fun toJson(): String = JSONObject()
+        .put("v", FORMAT)
         .put("areas", JSONArray().apply { areas.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) } })
         .put("devices", JSONArray().apply {
             devices.forEach { d ->
@@ -111,10 +112,14 @@ data class SmartCatalog(
         .toString()
 
     companion object {
-        /** A cached catalog; null when there is none or it can't be read (it is then fetched again). */
+        /** Bumped when what a catalog holds changes (2: devices named without their device): older caches are read again. */
+        private const val FORMAT = 2
+
+        /** A cached catalog; null when there is none, it can't be read or it is older (it is then fetched again). */
         fun fromJson(text: String?): SmartCatalog? = text?.let {
             runCatching {
                 val json = JSONObject(it)
+                if (json.optInt("v") != FORMAT) return@runCatching null
                 SmartCatalog(
                     areas = json.optJSONArray("areas").objects().map { a -> SmartArea(a.getString("id"), a.getString("name")) },
                     devices = json.optJSONArray("devices").objects().mapNotNull { d ->

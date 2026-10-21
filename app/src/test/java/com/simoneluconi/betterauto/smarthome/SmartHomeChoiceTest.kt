@@ -24,26 +24,31 @@ class SmartHomeChoiceTest {
     private val areas = listOf(SmartArea("out", "Esterno"), SmartArea("kitchen", "Cucina"), SmartArea("garage", "Garage"))
 
     @Test
-    fun exposedDevicesArePreselectedOnly() {
+    fun onlyExposedDevicesUsefulWhileDrivingArePreselected() {
         val catalog = SmartCatalog(
             areas,
             listOf(
                 d("a", "Cancello", DeviceKind.GATE, suggested = true),
-                d("b", "Luce cucina", DeviceKind.LIGHT, "kitchen"),
+                d("b", "Luce cucina", DeviceKind.LIGHT, "kitchen", suggested = true),
                 d("c", "Temperatura", DeviceKind.SENSOR, suggested = true),
+                d("e", "Luce giardino", DeviceKind.LIGHT, "out", suggested = true),
+                d("f", "Buonanotte", DeviceKind.SCENE, suggested = true),
+                d("h", "Relè cancelletto", DeviceKind.SWITCH, suggested = true),
+                d("i", "Serratura", DeviceKind.LOCK),
             ),
         )
-        assertEquals(setOf("a", "c"), Preselection.pick(catalog))
+        assertEquals(setOf("a", "e", "f", "h"), Preselection.pick(catalog))
     }
 
     @Test
-    fun withNothingExposedKindsDecideWithoutSensorsAndCapped() {
-        val devices = (1..40).map { d("l$it", "Light $it", DeviceKind.LIGHT) } +
-            d("g", "Gate", DeviceKind.GATE) + d("t", "Temp", DeviceKind.SENSOR)
-        val picked = Preselection.pick(SmartCatalog(devices = devices))
+    fun withNothingExposedTheSameChoiceAmongAllCapped() {
+        val devices = (1..40).map { d("s$it", "Scene $it", DeviceKind.SCENE) } +
+            d("g", "Gate", DeviceKind.GATE) + d("t", "Temp", DeviceKind.SENSOR) + d("l", "Lamp", DeviceKind.LIGHT, "kitchen")
+        val picked = Preselection.pick(SmartCatalog(areas, devices))
         assertEquals(Preselection.FALLBACK_CAP, picked.size)
         assertTrue("g" in picked)
         assertFalse("t" in picked)
+        assertFalse("l" in picked)
     }
 
     @Test

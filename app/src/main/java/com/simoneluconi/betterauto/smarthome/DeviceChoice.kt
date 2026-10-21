@@ -11,7 +11,15 @@ data class PlaceArrival(
     val devices: Set<String> = emptySet(),
     val offsetM: Int = ProviderChoice.DEFAULT_OFFSET_M,
     val on: Boolean = false,
-)
+    /** The order the driver dragged them into on the phone; devices not in it come after. */
+    val order: List<String> = emptyList(),
+) {
+    /** [items] in the driver's order; the others keep theirs, after the ordered ones. */
+    fun <T> sorted(items: List<T>, id: (T) -> String): List<T> {
+        val rank = order.withIndex().associate { it.value to it.index }
+        return items.sortedBy { rank[id(it)] ?: Int.MAX_VALUE }
+    }
+}
 
 /** What the driver chose for one provider: devices for the car screen, and the arrival buttons per place. */
 data class ProviderChoice(
@@ -51,15 +59,28 @@ object Preselection {
         DeviceKind.BINARY_SENSOR, DeviceKind.SENSOR,
     )
 
-    /** With nothing suggested, a guess by kind: no sensors, and a short list. */
+    /** Wanted while driving wherever they are: what lets the car in, and one-tap routines. */
+    private val Driving = setOf(
+        DeviceKind.GATE, DeviceKind.GARAGE_DOOR, DeviceKind.DOOR, DeviceKind.LOCK,
+        DeviceKind.SCENE, DeviceKind.SCRIPT, DeviceKind.BUTTON,
+    )
+
+    /** Wanted only outside or at the entrance: a garden light yes, the kitchen one no. */
+    private val OutsideOnly = setOf(DeviceKind.LIGHT, DeviceKind.SWITCH, DeviceKind.COVER)
+
+    /** With nothing suggested, the same choice among all devices, kept short. */
     const val FALLBACK_CAP = 24
 
+    /**
+     * The devices ticked by default: only what makes sense from the car (no sensors, no indoor lights),
+     * among the suggested ones, or among all of them, capped, when the provider suggests none.
+     */
     fun pick(catalog: SmartCatalog): Set<String> {
-        val suggested = catalog.devices.filter { it.suggested && it.kind in CarUseful }
+        fun useful(d: SmartDevice) = d.kind in Driving ||
+            (d.kind in OutsideOnly && (ArrivalCandidates.outside(catalog, d) || ArrivalCandidates.namedForArrival(d)))
+        val suggested = catalog.devices.filter { it.suggested && useful(it) }
         if (suggested.isNotEmpty()) return suggested.map { it.id }.toSet()
-        return catalog.devices
-            .filter { !it.kind.readOnly }
-            .sortedBy { CarUseful.indexOf(it.kind) }
+        return order(catalog.devices.filter(::useful))
             .take(FALLBACK_CAP)
             .map { it.id }
             .toSet()
@@ -87,15 +108,24 @@ object ArrivalCandidates {
     )
     private val OutsideWords = listOf(
         "garage", "esterno", "esterni", "giardino", "cortile", "vialetto", "ingresso esterno",
+        "ingresso", "entrata", "portico", "veranda",
         "outside", "outdoor", "outdoors", "exterior", "garden", "yard", "driveway", "front yard",
+        "entrance", "entry", "porch",
     )
+
+    /** In an area whose name says outside or entrance. */
+    internal fun outside(catalog: SmartCatalog, d: SmartDevice) =
+        catalog.area(d.areaId)?.name?.let { matches(it, OutsideWords) } == true
+
+    /** Its name says gate or garage ("Relè cancello"). */
+    internal fun namedForArrival(d: SmartDevice) = matches(d.name, NameWords)
 
     /** At most this many devices in the "pick yourself" list. */
     const val ASK_CAP = 8
 
     fun propose(catalog: SmartCatalog): ArrivalProposal {
         val actable = catalog.devices.filter { !it.kind.readOnly && it.actions.isNotEmpty() }
-        fun outside(d: SmartDevice) = catalog.area(d.areaId)?.name?.let { matches(it, OutsideWords) } == true
+        fun outside(d: SmartDevice) = outside(catalog, d)
         val byKind = actable.filter { it.kind == DeviceKind.GATE || it.kind == DeviceKind.GARAGE_DOOR }
         val doors = actable.filter { it.kind == DeviceKind.DOOR && (outside(it) || matches(it.name, NameWords)) }
         val byName = actable.filter {

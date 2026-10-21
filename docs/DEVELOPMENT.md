@@ -116,7 +116,8 @@ picks one, `-Serial <id>` picks the phone.
   Home widgets: `--es widgets "clock,calendar,weather"` fills the slots, the big one first (music,
   notifications, favorites, clock, calendar, weather, map; `default` resets them) and opens the home
   screen; `--ez widgetDemo true` shows pretend calendar events and favorites (`false` the phone's own);
-  `--es vehicle demo` gives the clock an outside temperature.
+  `--es vehicle demo` gives the clock an outside temperature; `--es formats uk` (italy, us, uk, auto)
+  sets how dates and numbers are written, e.g. English dates for screenshots.
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the

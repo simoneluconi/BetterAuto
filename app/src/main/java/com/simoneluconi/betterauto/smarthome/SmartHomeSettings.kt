@@ -52,7 +52,7 @@ class SmartHomeSettings(context: Context) {
             .putOpt("selected", c.selected?.let { JSONArray(it.sorted()) })
             .put("places", JSONObject().apply {
                 for ((id, p) in c.places.toSortedMap()) {
-                    put(id, JSONObject().put("devices", JSONArray(p.devices.sorted())).put("offset", p.offsetM).put("on", p.on))
+                    put(id, JSONObject().put("devices", JSONArray(p.devices.sorted())).put("offset", p.offsetM).put("on", p.on).put("order", JSONArray(p.order)))
                 }
             })
             .toString()
@@ -67,6 +67,7 @@ class SmartHomeSettings(context: Context) {
                         devices = p.optJSONArray("devices").strings().toSet(),
                         offsetM = p.optInt("offset", ProviderChoice.DEFAULT_OFFSET_M),
                         on = p.optBoolean("on"),
+                        order = p.optJSONArray("order").strings(),
                     )
                 }.toMap()
             } ?: json.optJSONArray("arrival")?.strings()?.toSet()?.let { devices ->

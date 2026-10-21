@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -76,7 +77,16 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
 /** The app on the phone: connection status, a setup checklist, the car UI preview and the protocol log. */
 class MainActivity : ComponentActivity() {
+    /** A page asked for by whoever opened the app (the smart-home sign-in coming back). */
+    private val openRequest = mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openRequest.value = intent.getStringExtra(EXTRA_OPEN)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        openRequest.value = intent?.getStringExtra(EXTRA_OPEN)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // If the app died while connected, the phone may still be muted: put the volume back now
@@ -85,6 +95,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             CarTheme(night = isSystemInDarkTheme(), album = null) {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
+                val request by openRequest
+                LaunchedEffect(request) {
+                    if (request == OPEN_SMART_HOME) page = PhonePage.SMART_HOME
+                    openRequest.value = null
+                }
                 // Kept here, above the pages: coming back from settings finds the home page where it was
                 val homeScroll = rememberScrollState()
                 BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
@@ -104,6 +119,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_OPEN = "open"
+        const val OPEN_SMART_HOME = "smart_home"
     }
 }
 

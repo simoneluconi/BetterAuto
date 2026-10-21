@@ -1,7 +1,9 @@
 package com.simoneluconi.betterauto.smarthome
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.MainActivity
@@ -20,6 +22,18 @@ object SmartHomeAuth {
     fun clientId(providerId: String) = "$PAGES_BASE$providerId/"
 
     fun redirectUri(providerId: String) = "$SCHEME://$HOST/$providerId"
+
+    /**
+     * Opens a service's sign-in page as a Custom Tab inside the app's own task (the extra alone, no library),
+     * so that coming back to the app closes it instead of leaving the browser on the login page. Browsers
+     * without Custom Tabs ignore the extra and open a normal tab.
+     */
+    fun openSignIn(context: Context, url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .putExtras(Bundle().apply { putBinder("android.support.customtabs.extra.SESSION", null) })
+        if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+    }
 }
 
 /**
@@ -39,7 +53,12 @@ class SignInActivity : Activity() {
             val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it).orEmpty() }
             provider.onSignInAnswer(params)
         }
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        // Back where the sign-in started: the app's Smart home page, not its home page; CLEAR_TOP closes the tab
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN, MainActivity.OPEN_SMART_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
         finish()
     }
 }
