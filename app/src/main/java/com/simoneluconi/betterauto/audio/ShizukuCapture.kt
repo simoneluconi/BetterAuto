@@ -6,8 +6,6 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.SystemClock
 import com.simoneluconi.betterauto.EventLog
-import com.simoneluconi.betterauto.media.MediaApps
-import com.simoneluconi.betterauto.media.NowPlaying
 import java.io.DataInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -15,8 +13,10 @@ import java.nio.ByteOrder
 import kotlin.concurrent.thread
 
 /**
- * The phone's media audio *moved* to the car through Shizuku ([AudioRouterService]), like the system
- * Android Auto does: no capture consent, no screen-sharing indicator, the speaker goes silent by itself.
+ * Phone audio *moved* to the car through Shizuku ([AudioRouterService]), like the system Android Auto
+ * does: no capture consent, no screen-sharing indicator, the speaker goes silent by itself. One instance
+ * per stream: the music, or the navigation prompts for the car's guidance stream. Each instance has a
+ * route of its own in the service, so one stopped late can never end the one that replaced it.
  * Samples arrive as float and are dithered to the car's bit depth like [AudioCapture] does.
  *
  * Connecting to Shizuku can take a moment, so it happens on the worker thread; if anything fails,
@@ -25,12 +25,17 @@ import kotlin.concurrent.thread
 class ShizukuCapture(
     private val context: Context,
     private val sink: AudioSink,
+    /** Which apps' audio moves (all when empty), asked when routing starts. */
+    private val uids: () -> IntArray,
+    /** Which kinds of sound move (AudioAttributes.USAGE_*). */
+    private val usages: IntArray,
     /** Routing is on: the music now goes to the car (called on the worker thread). */
     private val onStarted: () -> Unit,
     private val onFailed: () -> Unit,
 ) {
     private val format = sink.format
     private val chunkFrames = format.sampleRate / AudioCapture.CHUNKS_PER_SECOND
+    private val route = nextRoute.getAndIncrement()
 
     @Volatile
     private var running = false
@@ -40,7 +45,7 @@ class ShizukuCapture(
 
     fun start() {
         running = true
-        worker = thread(name = "car-audio-shizuku") {
+        worker = thread(name = "car-audio-shizuku-$route") {
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
             val pipe = open()
             if (pipe == null) {
@@ -67,12 +72,18 @@ class ShizukuCapture(
 
     /** The service and its pipe, float first and 16-bit if float is refused. */
     private fun open(): Pair<DataInputStream, Boolean>? {
-        val connection = ShizukuAudio.connect(context) ?: return null
+        val connection = ShizukuAudio.connect(context, route) ?: return null
         this.connection = connection
         val router = connection.router
+        // Stopped while Shizuku was connecting: no route to start
+        if (!running) {
+            connection.close()
+            this.connection = null
+            return null
+        }
         for (encoding in intArrayOf(AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_16BIT)) {
             if (encoding == AudioFormat.ENCODING_PCM_16BIT && format.bits != 16) break
-            val pipe = runCatching { router.start(format.sampleRate, format.channels, encoding, musicApps(), CarAudio.carUsages()) }.getOrNull()
+            val pipe = runCatching { router.start(route, format.sampleRate, format.channels, encoding, uids(), usages) }.getOrNull()
             if (pipe != null) {
                 EventLog.log("Car audio: moved through Shizuku, ${runCatching { router.status() }.getOrDefault("")}")
                 return DataInputStream(ParcelFileDescriptor.AutoCloseInputStream(pipe)).also { input = it } to
@@ -83,16 +94,6 @@ class ShizukuCapture(
         connection.close()
         this.connection = null
         return null
-    }
-
-    /**
-     * Only the music apps go to the car: the players BetterAuto lists (they offer a media browser) and the
-     * one playing now. Videos in a social app, for instance, keep playing on the phone.
-     */
-    private fun musicApps(): IntArray {
-        val packages = (MediaApps.installed(context) + listOfNotNull(NowPlaying.track.value?.packageName)).distinct()
-        return packages.mapNotNull { runCatching { context.packageManager.getApplicationInfo(it, 0).uid }.getOrNull() }
-            .distinct().toIntArray()
     }
 
     private fun stream(pipe: Pair<DataInputStream, Boolean>) {
@@ -118,12 +119,18 @@ class ShizukuCapture(
         }
     }
 
-    /** Stops routing: the service unregisters its policy and the phone plays its own audio again. */
+    /** Stops routing: the service unregisters this route's policy and the phone plays that audio itself again. */
     fun stop() {
         running = false
         runCatching { input?.close() }
         connection?.close()
         connection = null
-        worker?.join(500)
+        // Called from the worker itself when it fails: nothing to wait for
+        if (Thread.currentThread() !== worker) worker?.join(500)
+    }
+
+    private companion object {
+        /** Route ids handed to the service, never reused while the app runs. */
+        val nextRoute = java.util.concurrent.atomic.AtomicInteger(1)
     }
 }

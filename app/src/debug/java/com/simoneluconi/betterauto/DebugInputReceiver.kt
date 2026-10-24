@@ -39,6 +39,7 @@ import com.simoneluconi.betterauto.ui.launcher.BarEditor
 import com.simoneluconi.betterauto.ui.launcher.CarSettingsNav
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import android.os.ParcelFileDescriptor
+import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.ShizukuAudio
 import kotlin.concurrent.thread
 
@@ -101,6 +102,11 @@ import kotlin.concurrent.thread
  *                            "panel" reopens the panel, "real" goes back to the real position. Also works
  *                            without a car session. Each check is logged ("Smart home: <id> 812 m, outside,
  *                            next check in 20 s", "entered ... at 380 m", "left ...")
+ *   ... --es navPrompt "In 300 metres, turn right"  speak it like a navigation app (navigation guidance usage):
+ *                            with Shizuku it goes to the car's guidance stream, otherwise the phone speaks it and
+ *                            the music in the car is lowered meanwhile
+ *   ... --ez copyAudio true  copy the car audio as without Shizuku for this connection (asks the capture consent
+ *                            if needed; false goes back to Shizuku), to try the no-Shizuku paths
  *   ... --es location 45.46,9.19[,50]  a pretend position (and km/h) until --es location off
  *   ... --es drive 2000,50[,90]  a pretend drive through the home place: starts 2000 m away, 50 km/h, goes past
  *                            and away, so the adaptive interval, arriving, the hysteresis and leaving show in the
@@ -195,6 +201,14 @@ class DebugInputReceiver : BroadcastReceiver() {
             "preview_confirm" -> VoiceAssistant.preview(VoiceState.Choosing(listOf("Mario Rossi"), null, confirm = true))
             "preview_listen" -> VoiceAssistant.preview(VoiceState.Listening("chiama Mario", 0.4f, carMicrophone = true))
             "preview_off" -> VoiceAssistant.preview(VoiceState.Idle)
+        }
+        intent.getStringExtra("navPrompt")?.let { FakeNavPrompt.speak(context, it) }
+        if (intent.hasExtra("copyAudio")) {
+            val copy = intent.getBooleanExtra("copyAudio", false)
+            CarAudio.copyInstead(copy)
+            if (copy && !CarAudio.hasProjection) {
+                context.startActivity(Intent(context, AudioConsentActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
         }
         intent.getStringExtra("voice")?.takeIf { !it.startsWith("preview") }?.let { mode ->
             VoiceProbe.run(context, mode, intent.getStringExtra("phrase") ?: "chiama Mario Rossi", intent.getStringExtra("lang") ?: "it-IT")
@@ -350,9 +364,10 @@ class DebugInputReceiver : BroadcastReceiver() {
     /** Routes media audio through the Shizuku service for a few seconds: how much arrives, and how loud. */
     private fun probeShizuku(context: Context) {
         EventLog.log("Shizuku probe: ${ShizukuAudio.state(context)}")
-        val connection = ShizukuAudio.connect(context) ?: return
+        // A route of its own, so a car session's routes keep running
+        val connection = ShizukuAudio.connect(context, PROBE_ROUTE) ?: return
         try {
-            val pipe = connection.router.start(48000, 2, android.media.AudioFormat.ENCODING_PCM_16BIT, intArrayOf(), intArrayOf())
+            val pipe = connection.router.start(PROBE_ROUTE, 48000, 2, android.media.AudioFormat.ENCODING_PCM_16BIT, intArrayOf(), intArrayOf())
             EventLog.log("Shizuku probe: ${connection.router.status()}")
             if (pipe == null) return
             val input = ParcelFileDescriptor.AutoCloseInputStream(pipe)
@@ -387,5 +402,6 @@ class DebugInputReceiver : BroadcastReceiver() {
         const val LONG_TOUCH_MS = 900L
         const val TOUCH_DRAG_STEPS = 20
         const val PROBE_MS = 3000L
+        const val PROBE_ROUTE = 9
     }
 }

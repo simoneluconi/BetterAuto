@@ -118,6 +118,12 @@ picks one, `-Serial <id>` picks the phone.
   screen; `--ez widgetDemo true` shows pretend calendar events and favorites (`false` the phone's own);
   `--es vehicle demo` gives the clock an outside temperature; `--es formats uk` (italy, us, uk, auto)
   sets how dates and numbers are written, e.g. English dates for screenshots.
+  Navigation prompts: `--es navPrompt "In 300 metres, turn right"` speaks it like a navigation app
+  (guidance usage): with Shizuku it goes to the car's guidance stream, otherwise the phone speaks it
+  and the music in the car is lowered meanwhile (`Car audio: navigation prompt ...` in the log).
+  `--ez copyAudio true` copies the audio as without Shizuku for the current connection (`false` goes
+  back), to try that path on a phone that has Shizuku. The bench Crankshaft takes the guidance stream
+  and ducks its music but does not play 16 kHz audio: the prompt itself is heard only in a car.
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the

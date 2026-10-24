@@ -124,8 +124,10 @@ through the screen-capture permission. It works well, with a few side effects:
 - Android shows a permission prompt on every connection (an `adb` command removes it) and a
   screen-sharing indicator while audio goes to the car;
 - the phone's own speaker is muted while connected, since the sound is copied, not moved;
-- apps can refuse to be captured (typically paid video apps), and navigation prompts from other
-  apps can't be captured;
+- apps can refuse to be captured (typically paid video apps);
+- navigation prompts (Maps, Waze...) can't be captured at all: BetterAuto lets them play on the
+  phone, bringing its speaker back up while they speak, and lowers the music in the car meanwhile
+  (for that moment the music is heard faintly from the phone too);
 - calls go over Bluetooth, which is what Android Auto does too.
 
 Sound quality is great: Android Auto carries uncompressed PCM (typically 48 kHz / 16-bit), better
@@ -137,7 +139,9 @@ If [Shizuku](https://play.google.com/store/apps/details?id=moe.shizuku.privilege
 running and BetterAuto is allowed to use it, BetterAuto moves media audio to the car the way the system
 app does (an audio policy registered through Shizuku): no permission prompt, no screen-sharing
 indicator, the phone speaker is not muted by BetterAuto (the sound simply isn't there any more), and
-apps that only block capture by regular apps play too. The app's setup checklist shows whether Shizuku
+apps that only block capture by regular apps play too. Navigation prompts go to the car on their own
+stream, which the car plays over the music, lowering it, as with the official app (if a car has no
+such stream, they stay on the phone and the music is lowered under them). The app's setup checklist shows whether Shizuku
 is installed, running and allowed. Without Shizuku, or if it stops, BetterAuto copies the sound as
 described above, automatically.
 

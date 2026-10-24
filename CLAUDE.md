@@ -38,7 +38,7 @@ anything copied from closed-source apps.
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
 | `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI |
-| `audio/` | Phone audio to the car: `CarAudio` picks the way. With Shizuku ready, `ShizukuCapture` + `AudioRouterService` (an AIDL user service running as the shell user, audio policy loopback mix, system APIs by reflection) *move* it; otherwise `AudioCapture` *copies* it (MediaProjection) and `PhoneSpeakerMute` mutes the phone. `PcmQuantizer` (float → dithered PCM) is shared. Also the car microphone |
+| `audio/` | Phone audio to the car: `CarAudio` picks the way. With Shizuku ready, `ShizukuCapture` + `AudioRouterService` (an AIDL user service running as the shell user, audio policy loopback mix, system APIs by reflection) *move* it; otherwise `AudioCapture` *copies* it (MediaProjection) and `PhoneSpeakerMute` mutes the phone. Navigation prompts: with Shizuku a second route feeds the car's guidance stream (`AudioSinkChannel` for both streams, `CarAudioFocus` shares the one audio focus); capture cannot take them, so otherwise `NavPrompts` notices them playing on the phone, lifts its speaker and ducks the music in the car. `PcmQuantizer` (float → dithered PCM, gain ramp) is shared. Also the car microphone |
 | `media/` | `NowPlaying` (follows the active media session), media apps, library browsing |
 | `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery; `PhoneSignal` shares the telephony listeners) |
 | `notifications/` | Notifications shown in the car |
@@ -147,8 +147,9 @@ appears both in the car's settings screen and in the phone app.
 - Shizuku started without root dies whenever the phone connects to the car by USB (the switch to
   accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
   wireless Android Auto.
-- Channels the cars offer that are not implemented yet: guidance/system audio,
-  navigation status, notifications, media browser, radio.
+- Channels the cars offer that are not implemented yet: system audio, navigation status,
+  notifications, media browser, radio. The guidance (navigation prompts) stream is tried on the bench
+  only; in the car it still has to be heard.
 - Wireless with an AAWireless dongle: it often drops the first session while it sets up its USB link to
   the car (retried automatically), and sends an empty control message 0 right before it hangs up (not
   understood yet). On a bench without a car it may never switch its WiFi on.

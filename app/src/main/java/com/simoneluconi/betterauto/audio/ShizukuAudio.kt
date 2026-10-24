@@ -81,14 +81,30 @@ object ShizukuAudio {
         runCatching { (context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime / 1000).toInt() }.getOrDefault(1)
 
     /** Starts the shell-user service and waits for it; null when Shizuku is not ready or it does not come up. */
-    fun connect(context: Context, timeoutMs: Long = 5000): Connection? {
+    @Synchronized
+    fun connect(context: Context, route: Int, timeoutMs: Long = 5000): Connection? {
         if (state(context) != State.READY) return null
-        val bound = bind(context, owner = true, timeoutMs) { EventLog.log("Shizuku: audio service gone") }
+        // The music and the prompts share one binding: the last of them to close ends the service
+        val bound = shared ?: bind(context, owner = true, timeoutMs) {
+            EventLog.log("Shizuku: audio service gone")
+            synchronized(this) { shared = null }
+        }?.also { shared = it }
         if (bound == null) {
             EventLog.log("Shizuku: audio service did not start")
             return null
         }
-        return Connection(bound.router, bound::unbind)
+        bound.users++
+        return Connection(bound.router, route) { release(bound) }
+    }
+
+    /** The binding that moves the audio, while any route uses it. */
+    private var shared: Bound? = null
+
+    @Synchronized
+    private fun release(bound: Bound) {
+        if (--bound.users > 0) return
+        bound.unbind()
+        if (shared === bound) shared = null
     }
 
     /** Turns dual WiFi on or back to the phone's default through the shell service; false if it did not take. */
@@ -168,14 +184,22 @@ object ShizukuAudio {
         private val connection: ServiceConnection,
         private val remove: Boolean,
     ) {
+        /** Routes using this binding ([connect]). */
+        var users = 0
+
         fun unbind() {
             runCatching { Shizuku.unbindUserService(args, connection, remove) }
         }
     }
 
-    class Connection(val router: IAudioRouter, private val unbind: () -> Unit) {
+    /** One route on the shared service; [close] stops it and lets the service go once no route is left. */
+    class Connection(val router: IAudioRouter, private val route: Int, private val unbind: () -> Unit) {
+        private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** Safe to call twice (a capture stopping while its worker gives up): the binding is counted once. */
         fun close() {
-            runCatching { router.stop() }
+            if (!closed.compareAndSet(false, true)) return
+            runCatching { router.stop(route) }
             unbind()
         }
     }

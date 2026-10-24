@@ -139,7 +139,7 @@
     <string name="step_android_auto_title">Android Auto turned off</string>
     <string name="step_android_auto_text_todo">Android Auto is on and takes over the car connection. Open its page and tap Disable. If your phone doesn\'t allow it, run this from a computer:</string>
     <string name="step_shizuku_title">Shizuku (optional)</string>
-    <string name="step_shizuku_purpose">With Shizuku, BetterAuto moves the phone\'s sound to the car like the official Android Auto: no permission prompt, no screen-sharing icon, the phone speaker is not muted, and apps that block copying play too. With the USB cable it needs a rooted phone: without root, Shizuku stops as soon as the phone connects to the car, and BetterAuto goes back to copying the sound.</string>
+    <string name="step_shizuku_purpose">With Shizuku, BetterAuto moves the phone\'s sound to the car like the official Android Auto: no permission prompt, no screen-sharing icon, the phone speaker is not muted, apps that block copying play too, and navigation prompts reach the car\'s speakers. With the USB cable it needs a rooted phone: without root, Shizuku stops as soon as the phone connects to the car, and BetterAuto goes back to copying the sound.</string>
     <string name="step_shizuku_text_missing">Without it the sound is copied, with those limits. Shizuku is free on the Play Store.</string>
     <string name="step_shizuku_text_stopped">Installed but not running: open it and start it. Without root it stops after every restart of the phone and every time the phone connects to the car by cable.</string>
     <string name="step_shizuku_text_allow">Running: allow BetterAuto to use it.</string>

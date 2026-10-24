@@ -55,4 +55,26 @@ class PcmQuantizerTest {
         PcmQuantizer.deliver16(sink, ByteArray(1920), 1920, 0)
         assertEquals(1, sink.chunks.size)
     }
+
+    @Test
+    fun aGainChangeIsRampedAcrossTheChunkThenHeld() {
+        val quantizer = PcmQuantizer(format)
+        val first = FloatArray(100) { 1f }
+        quantizer.applyGain(first, first.size, 0.3f)
+        // From full level down to the target, never a jump
+        assertTrue(first.first() > 0.98f)
+        assertEquals(0.3f, first.last(), 1e-5f)
+        for (i in 1 until first.size) assertTrue(first[i] <= first[i - 1])
+
+        val second = FloatArray(100) { 1f }
+        quantizer.applyGain(second, second.size, 0.3f)
+        assertTrue(second.all { abs(it - 0.3f) < 1e-5f })
+    }
+
+    @Test
+    fun fullLevelLeavesTheSamplesUntouched() {
+        val samples = FloatArray(10) { it / 10f }
+        PcmQuantizer(format).applyGain(samples, samples.size, 1f)
+        for (i in samples.indices) assertEquals(i / 10f, samples[i], 0f)
+    }
 }

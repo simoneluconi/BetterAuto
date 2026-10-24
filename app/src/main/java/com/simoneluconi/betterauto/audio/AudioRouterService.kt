@@ -23,17 +23,21 @@ import kotlin.system.exitProcess
 /**
  * Runs in a Shizuku user service, as the shell user, which holds MODIFY_AUDIO_ROUTING: registers an
  * audio policy whose mix takes the phone's media (music, games, unknown) away from the speaker, the way
- * the system Android Auto does, and streams it to the app through a pipe. The policy dies with this
- * process, so the phone never stays silent if the app goes away.
+ * the system Android Auto does, and streams it to the app through a pipe. A second route does the same
+ * for navigation prompts, which the car plays on their own stream. The policies die with this process,
+ * so the phone never stays silent if the app goes away.
  *
  * AudioPolicy / AudioMix are system APIs, reached by reflection.
  */
 class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
-    private var policy: Any? = null
-    private var record: AudioRecord? = null
-    private var pump: Thread? = null
-    @Volatile
-    private var running = false
+    /** One registered policy, its recorder and the thread copying it into the app's pipe. */
+    private class Route(val policy: Any, val record: AudioRecord) {
+        @Volatile
+        var running = true
+        var pump: Thread? = null
+    }
+
+    private val routes = HashMap<Int, Route>()
     @Volatile
     private var lastStatus = "idle"
 
@@ -42,11 +46,11 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     constructor() : this(Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as Context)
 
     @Synchronized
-    override fun start(sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? =
-        asShell { startRouting(sampleRate, channels, encoding, uids, usages) }
+    override fun start(route: Int, sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? =
+        asShell { startRouting(route, sampleRate, channels, encoding, uids, usages) }
 
     @Synchronized
-    override fun stop() = asShell { stopRouting() }
+    override fun stop(route: Int) = asShell { stopRouting(route) }
 
     /**
      * AudioPolicy checks MODIFY_AUDIO_ROUTING on the binder caller, which is the app: run as this
@@ -61,8 +65,8 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         }
     }
 
-    private fun startRouting(sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? {
-        stopRouting()
+    private fun startRouting(id: Int, sampleRate: Int, channels: Int, encoding: Int, uids: IntArray, usages: IntArray): ParcelFileDescriptor? {
+        stopRouting(id)
         return try {
             val format = AudioFormat.Builder()
                 .setEncoding(encoding)
@@ -77,24 +81,27 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
                 lastStatus = "registerAudioPolicy failed: $result"
                 return null
             }
-            policy = newPolicy
-            val newRecord = buildRecord(mix, format)
-            record = newRecord
+            val newRecord = runCatching { buildRecord(mix, format) }.getOrElse { e ->
+                unregister(newPolicy)
+                throw e
+            }
+            val route = Route(newPolicy, newRecord)
+            routes[id] = route
             val (readEnd, writeEnd) = ParcelFileDescriptor.createPipe()
-            running = true
             newRecord.startRecording()
-            pump = thread(name = "audio-router") { pump(newRecord, writeEnd) }
-            lastStatus = "routing ${if (uids.isEmpty()) "all media" else "${uids.size} apps"}, $sampleRate Hz ${channels}ch ${if (encoding == AudioFormat.ENCODING_PCM_FLOAT) "float" else "16-bit"}"
+            route.pump = thread(name = "audio-router-$id") { pump(route, writeEnd) }
+            lastStatus = "route $id: ${if (uids.isEmpty()) "any app" else "${uids.size} apps"}, $sampleRate Hz ${channels}ch ${if (encoding == AudioFormat.ENCODING_PCM_FLOAT) "float" else "16-bit"}"
             readEnd
         } catch (e: Throwable) {
-            lastStatus = "start failed: ${(e.cause ?: e)}"
-            stopRouting()
+            lastStatus = "route $id: start failed: ${(e.cause ?: e)}"
+            stopRouting(id)
             null
         }
     }
 
     /** AudioRecord -> pipe until stopped or until the app closes its end. */
-    private fun pump(source: AudioRecord, sink: ParcelFileDescriptor) {
+    private fun pump(route: Route, sink: ParcelFileDescriptor) {
+        val source = route.record
         val float = source.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
         // The app reads 20 ms at a time: reading the same here wakes this process half as often as 4 KiB did
         val chunk = source.sampleRate / CHUNKS_PER_SECOND * source.channelCount * (if (float) 4 else 2)
@@ -104,7 +111,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         val floatView = floatBytes.asFloatBuffer()
         ParcelFileDescriptor.AutoCloseOutputStream(sink).use { out ->
             try {
-                while (running) {
+                while (route.running) {
                     if (float) {
                         // Float keeps the mix untouched; the app dithers it down to the car's bit depth
                         val n = source.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
@@ -123,19 +130,19 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         }
     }
 
-    private fun stopRouting() {
-        running = false
-        runCatching { record?.stop() }
-        pump?.join(500)
-        runCatching { record?.release() }
-        record = null
-        pump = null
-        policy?.let { p ->
-            val audio = context.getSystemService(AudioManager::class.java)
-            runCatching { AudioManager::class.java.getMethod("unregisterAudioPolicy", POLICY).invoke(audio, p) }
-        }
-        policy = null
-        if (lastStatus.startsWith("routing")) lastStatus = "stopped"
+    private fun stopRouting(id: Int) {
+        val route = routes.remove(id) ?: return
+        route.running = false
+        runCatching { route.record.stop() }
+        route.pump?.join(500)
+        runCatching { route.record.release() }
+        unregister(route.policy)
+        lastStatus = "route $id stopped"
+    }
+
+    private fun unregister(policy: Any) {
+        val audio = context.getSystemService(AudioManager::class.java)
+        runCatching { AudioManager::class.java.getMethod("unregisterAudioPolicy", POLICY).invoke(audio, policy) }
     }
 
     override fun status(): String = lastStatus
@@ -199,7 +206,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
     }.getOrElse { "failed: $it" }
 
     override fun destroy() {
-        stop()
+        synchronized(this) { routes.keys.toList().forEach { stop(it) } }
         exitProcess(0)
     }
 

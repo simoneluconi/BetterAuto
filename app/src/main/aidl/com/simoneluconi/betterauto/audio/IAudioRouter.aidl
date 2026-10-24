@@ -3,15 +3,16 @@ package com.simoneluconi.betterauto.audio;
 /** The Shizuku service that moves the phone's media audio (and a WiFi setting), running as the shell user. */
 interface IAudioRouter {
     /**
-     * Starts routing media audio away from the speaker; returns the read end of a pipe of little-endian
-     * samples in [encoding] (AudioFormat.ENCODING_PCM_FLOAT or _16BIT), or null if it cannot.
-     * Only these [usages] (AudioAttributes.USAGE_*) from the apps with these [uids] are routed
-     * (any app if [uids] is empty).
+     * Starts routing audio away from the speaker on [route] (any id the app picks: one per stream, e.g.
+     * the music and the navigation prompts, each with its own pipe); returns the read end of a pipe of
+     * little-endian samples in [encoding]
+     * (AudioFormat.ENCODING_PCM_FLOAT or _16BIT), or null if it cannot. Only these [usages]
+     * (AudioAttributes.USAGE_*) from the apps with these [uids] are routed (any app if [uids] is empty).
      */
-    ParcelFileDescriptor start(int sampleRate, int channels, int encoding, in int[] uids, in int[] usages) = 1;
+    ParcelFileDescriptor start(int route, int sampleRate, int channels, int encoding, in int[] uids, in int[] usages) = 1;
 
-    /** Stops routing: the phone plays its own audio again. */
-    void stop() = 2;
+    /** Stops [route]: the phone plays that audio itself again. */
+    void stop(int route) = 2;
 
     /** What the service did last, for the log. */
     String status() = 3;

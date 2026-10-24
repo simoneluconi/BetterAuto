@@ -53,6 +53,8 @@ class AapSession(
     private val codec = FrameCodec(transport, tls)
     private val channels = ConcurrentHashMap<Int, ServiceChannel>()
     private var audioSink: AudioSinkChannel? = null
+    private var guidanceSink: AudioSinkChannel? = null
+    private val audioFocus = CarAudioFocus(::requestAudioFocus)
 
     @Volatile
     private var running = true
@@ -108,7 +110,10 @@ class AapSession(
             ControlMessageType.MESSAGE_AUDIO_FOCUS_NOTIFICATION_VALUE -> {
                 val focus = AudioFocusNotification.parseFrom(msg.payload)
                 EventLog.log("Audio focus from car: ${focus.focusState}${if (focus.unsolicited) " (unsolicited)" else ""}")
-                audioSink?.onFocus(focus.focusState)
+                for (owner in audioFocus.onNotification(focus.focusState, focus.unsolicited)) {
+                    val sink = if (owner == CarAudioFocus.Owner.MEDIA) audioSink else guidanceSink
+                    sink?.onFocus(focus.focusState)
+                }
             }
             // Flags too: a wireless dongle sends an empty message 0 right before it hangs up, not yet understood
             else -> EventLog.log(
@@ -201,13 +206,17 @@ class AapSession(
             }
             VideoChannel(this, service.id, service.mediaSinkService.videoConfigsList, projection)
         }
+        // Music, and navigation prompts on their own stream so the car lowers the rest under them
         service.hasMediaSinkService() &&
-            service.mediaSinkService.audioType == AudioStreamType.AUDIO_STREAM_MEDIA &&
+            service.mediaSinkService.audioType in OpenedAudio &&
             service.mediaSinkService.audioConfigsCount > 0 -> {
+            val type = service.mediaSinkService.audioType
             service.mediaSinkService.audioConfigsList.forEachIndexed { i, cfg ->
                 EventLog.log("    audio config $i: ${cfg.samplingRate} Hz ${cfg.numberOfBits}-bit ${cfg.numberOfChannels}ch")
             }
-            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList).also { audioSink = it }
+            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList, type, audioFocus).also {
+                if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink = it else guidanceSink = it
+            }
         }
         service.hasInputSourceService() -> {
             val touchscreen = service.inputSourceService.touchscreenList.firstOrNull()
@@ -285,10 +294,16 @@ class AapSession(
         channels.values.forEach { runCatching { it.close() } }
         channels.clear()
         audioSink = null
+        guidanceSink = null
         runCatching { transport.close() }
     }
 
     private fun describeId(id: Int) = ControlMessageType.forNumber(id)?.name ?: id.toString()
+
+    private companion object {
+        /** The car's audio streams BetterAuto feeds; system sounds and calls stay on the phone (calls go by Bluetooth). */
+        val OpenedAudio = setOf(AudioStreamType.AUDIO_STREAM_MEDIA, AudioStreamType.AUDIO_STREAM_GUIDANCE)
+    }
 
     private fun Service.kind() = when {
         hasMediaSinkService() -> "media sink (video/audio to the car)"
