@@ -228,6 +228,9 @@ private fun ArrivalSetup(provider: SmartHomeProvider) {
         listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             .any { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     }
+    val hasBackgroundLocation = remember(resumes) {
+        context.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
     fun askIfMissing() {
         if (!hasLocation) askLocation(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
     }
@@ -237,6 +240,10 @@ private fun ArrivalSetup(provider: SmartHomeProvider) {
             SmartHome.setArrivalEnabled(!enabled)
         }
         if (!enabled) return@Column
+        val atStart by SmartHome.arrivalAtStart.collectAsStateWithLifecycle()
+        PhoneSwitchLine(stringResource(R.string.smarthome_arrival_at_start), stringResource(R.string.smarthome_arrival_at_start_desc), atStart) {
+            SmartHome.setArrivalAtStart(!atStart)
+        }
         if (current.places.isEmpty()) {
             CarLabel(stringResource(R.string.smarthome_arrival_no_home), 15.sp, colors.text2, maxLines = 3)
             return@Column
@@ -251,6 +258,12 @@ private fun ArrivalSetup(provider: SmartHomeProvider) {
             if (!hasLocation) {
                 CarLabel(stringResource(R.string.smarthome_arrival_location_missing), 14.sp, colors.text2, maxLines = 4)
                 PillButton(stringResource(R.string.action_allow), primary = true) { askIfMissing() }
+            } else if (!hasBackgroundLocation) {
+                // Android asks for "all the time" on its own, after the location itself
+                CarLabel(stringResource(R.string.smarthome_arrival_location_background), 14.sp, colors.text2, maxLines = 5)
+                PillButton(stringResource(R.string.action_allow), primary = true) {
+                    askLocation(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.ui.widgets
 
+import com.simoneluconi.betterauto.ui.launcher.carZone
 import com.simoneluconi.betterauto.ui.LazyColumnWithBar
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -77,12 +78,13 @@ fun MusicScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         when {
             !showPanel -> MusicWidget(Modifier.fillMaxSize(), extended = true, onShowPanel = playerToggle)
             stacked -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                MusicWidget(Modifier.weight(1f).fillMaxWidth(), extended = true)
-                MusicPanel(settings, Modifier.weight(1f).fillMaxWidth())
+                MusicWidget(Modifier.weight(1f).fillMaxWidth().carZone(), extended = true)
+                MusicPanel(settings, Modifier.weight(1f).fillMaxWidth().carZone())
             }
             else -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                MusicWidget(Modifier.weight(1.1f).fillMaxSize(), extended = true)
-                MusicPanel(settings, Modifier.weight(1f).fillMaxSize())
+                // The player and the panel are a zone each for the knob's nudges
+                MusicWidget(Modifier.weight(1.1f).fillMaxSize().carZone(), extended = true)
+                MusicPanel(settings, Modifier.weight(1f).fillMaxSize().carZone())
             }
         }
     }

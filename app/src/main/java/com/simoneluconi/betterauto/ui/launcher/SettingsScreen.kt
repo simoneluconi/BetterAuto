@@ -166,8 +166,9 @@ private fun SettingsContent(settings: LauncherSettings, modifier: Modifier) {
         }
         when {
             wide -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                list(Modifier.width(380.dp).fillMaxHeight())
-                pane(Modifier.weight(1f).fillMaxHeight())
+                // The list and the page are a zone each for the knob's nudges
+                list(Modifier.width(380.dp).fillMaxHeight().carZone())
+                pane(Modifier.weight(1f).fillMaxHeight().carZone())
             }
             pageOpen -> pane(Modifier.fillMaxSize())
             else -> list(Modifier.fillMaxSize())

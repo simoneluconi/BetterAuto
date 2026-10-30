@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -96,9 +97,20 @@ fun ArrivalScrim(modifier: Modifier = Modifier) {
  * buttons together, then Close; Back, Close or a tap outside closes it and the knob goes back where it
  * was. It can be reopened from the status bar while still there.
  */
-/** Whether the arrival panel is on screen: Back closes it even when the focus got out of it. */
+/**
+ * Whether the arrival panel is on screen, for the launcher: Back closes it, and a knob move while the focus
+ * is not inside it (taken back by the screen as the session started) first brings it to [first].
+ */
 object ArrivalPanelShown {
     var value by mutableStateOf(false)
+        internal set
+
+    /** The focus is inside the panel. */
+    var hasFocus = false
+        internal set
+
+    /** The panel's first control. */
+    var first: FocusRequester? = null
         internal set
 }
 
@@ -134,6 +146,13 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
         val colors = LocalCarColors.current
         val shape = RoundedCornerShape(32.dp)
         val first = remember { FocusRequester() }
+        DisposableEffect(first) {
+            ArrivalPanelShown.first = first
+            onDispose {
+                if (ArrivalPanelShown.first === first) ArrivalPanelShown.first = null
+                ArrivalPanelShown.hasFocus = false
+            }
+        }
         Column(
             Modifier
                 .widthIn(min = 600.dp, max = 1000.dp)
@@ -144,6 +163,7 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
                 // A tap on the panel itself is not a tap outside
                 .pointerInput(Unit) { detectTapGestures { } }
                 .focusProperties { onExit = { if (requestedFocusDirection != FocusDirection.Enter) cancelFocusChange() } }
+                .onFocusChanged { ArrivalPanelShown.hasFocus = it.hasFocus }
                 .focusGroup()
                 .onKeyEvent { event ->
                     if (event.key != Key.Back && event.key != Key.Escape) return@onKeyEvent false

@@ -82,6 +82,7 @@ object SmartHome {
         settingsStore = store
         _choices.value = store.choices.value
         _arrivalEnabled.value = store.arrivalEnabled.value
+        _arrivalAtStart.value = store.arrivalAtStart.value
         register(HomeAssistantProvider(context.applicationContext))
         val watcher = ArrivalWatcher(context.applicationContext, scope)
         arrival = watcher
@@ -140,6 +141,16 @@ object SmartHome {
         val placeId = key.substringAfter('/')
         val place = provider.catalog.value?.places?.firstOrNull { it.id == placeId } ?: return null
         return provider to place
+    }
+
+    private val _arrivalAtStart = MutableStateFlow(true)
+    /** The buttons also when a session starts already inside a place (else only on arriving; the status bar button stays). */
+    val arrivalAtStart: StateFlow<Boolean> = _arrivalAtStart
+
+    fun setArrivalAtStart(value: Boolean) {
+        val store = settingsStore ?: return
+        store.setArrivalAtStart(value)
+        _arrivalAtStart.value = value
     }
 
     fun setArrivalEnabled(value: Boolean) {

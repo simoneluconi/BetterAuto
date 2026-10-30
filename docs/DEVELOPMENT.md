@@ -124,6 +124,9 @@ picks one, `-Serial <id>` picks the phone.
   `--ez copyAudio true` copies the audio as without Shizuku for the current connection (`false` goes
   back), to try that path on a phone that has Shizuku. The bench Crankshaft takes the guidance stream
   and ducks its music but does not play 16 kHz audio: the prompt itself is heard only in a car.
+  To find what a car objects to: `--es skipChannels "phone status,media status"` leaves those channels
+  (their log names) closed from the next session on (`""` opens them all again), `--ei videoConfig 1`
+  uses another of the car's video configurations (`-1` back to the car's choice).
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the

@@ -91,8 +91,11 @@ Every screen must work fully with **touch** and with the **rotary knob / d-pad /
   Things that must react to touch but not take the knob (e.g. the notification banner) use a private
   tap-only modifier, like `carTapOnly` in `NotificationsWidget`.
 - The knob turns = Tab / Shift+Tab through controls in order; the first knob move only *reveals* the
-  focus (`LauncherFocus`). Nudges move between two zones (`FocusZones`): the app bar and the screen;
-  mark **one** main control per screen with `Modifier.contentFocus()`.
+  focus (`LauncherFocus`). Nudges (the knob pushed sideways, d-pad keys) move between zones
+  (`FocusZones`): the app bar, and on the screen every `Modifier.carZone()` (each home widget, the music
+  player and its panel, the settings list and page); toward the bar from the last zone they land on the
+  current section. Mark **one** main control per screen with `Modifier.contentFocus()` (where a nudge
+  from the bar lands). Overlays that wait for the driver (arrival panel) take the first knob move.
 - Back (car key or Escape): closes the topmost thing (voice panel, detail, notifications go back to the
   previous section), otherwise goes home. Handle it in `onKeyEvent`/`onPreviewKeyEvent` like the
   existing screens.
@@ -147,6 +150,10 @@ appears both in the car's settings screen and in the phone app.
 - Shizuku started without root dies whenever the phone connects to the car by USB (the switch to
   accessory mode restarts adbd); BetterAuto then falls back to copying. Works with root, and will with
   wireless Android Auto.
+- Video START goes out only once the car has given the screen (VIDEO_FOCUS PROJECTED), as Android Auto
+  does: sent earlier, an Audi MMI (Harman MHI2) put up "observe the warnings on your phone" over the
+  picture a few seconds in, depending on timing. A VIDEO_FOCUS_REQUEST goes out only if the car gives
+  nothing within 1.5 s (Crankshaft waits for it).
 - Channels the cars offer that are not implemented yet: system audio, navigation status,
   notifications, media browser, radio. The guidance (navigation prompts) stream is tried on the bench
   only; in the car it still has to be heard.

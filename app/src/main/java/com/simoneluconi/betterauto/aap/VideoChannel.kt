@@ -26,7 +26,8 @@ import kotlin.concurrent.thread
 /**
  * Video sink of the head unit. Flow:
  *   phone -> SETUP(H.264 BP)            HU -> CONFIG(max_unacked, accepted config indices)
- *   phone -> START + VIDEO_FOCUS_REQUEST HU -> VIDEO_FOCUS_NOTIFICATION(PROJECTED)
+ *   HU -> VIDEO_FOCUS_NOTIFICATION(PROJECTED), by itself (asked with VIDEO_FOCUS_REQUEST if it does not come)
+ *   phone -> START, only once the screen is ours, as Android Auto does
  *   phone -> CODEC_CONFIG (SPS/PPS), then DATA frames; HU -> ACK per frame
  */
 class VideoChannel(
@@ -38,6 +39,9 @@ class VideoChannel(
     override val name = "video"
 
     private var config: VideoConfiguration? = null
+    private var configIndex = 0
+    /** START has gone out for this session (once, when the car first gave the screen). */
+    private var started = false
 
     @Volatile
     private var focused = false
@@ -79,25 +83,42 @@ class VideoChannel(
     }
 
     private fun onConfig(response: Config) {
-        val index = response.configurationIndicesList.firstOrNull() ?: 0
+        val accepted = response.configurationIndicesList
+        // Debug: a forced configuration, when the car accepts it (or lists none, meaning any)
+        val forced = forcedConfig?.takeIf { it in configs.indices && (accepted.isEmpty() || it in accepted) }
+        val index = forced ?: accepted.firstOrNull() ?: 0
+        EventLog.log("Video: the car accepts configurations ${accepted.ifEmpty { configs.indices.toList() }.joinToString()}${if (forced != null) ", using $forced (forced)" else ""}")
         val chosen = configs.getOrNull(index)
         if (response.status != Config.Status.STATUS_READY || chosen == null) {
             EventLog.log("Video: configuration rejected (${response.status}, index $index)")
             return
         }
         config = chosen
+        configIndex = index
         window = Semaphore(response.maxUnacked.coerceAtLeast(1))
         EventLog.log("Video ready: ${chosen.describe()}, max_unacked=${response.maxUnacked}")
-
-        send(
-            MediaMessageId.MEDIA_MESSAGE_START_VALUE,
-            Start.newBuilder().setSessionId(SESSION_ID).setConfigurationIndex(index).build(),
-        )
-        send(
-            MediaMessageId.MEDIA_MESSAGE_VIDEO_FOCUS_REQUEST_VALUE,
-            VideoFocusRequestNotification.newBuilder().setMode(VideoFocusMode.VIDEO_FOCUS_PROJECTED).build(),
-        )
+        askFocusIfNotGiven()
         maybeStartStreaming()
+    }
+
+    /**
+     * The car gives the screen by itself, as it does to Android Auto, which never asks. Some head units
+     * (Crankshaft) wait to be asked: the request goes out only if the screen has not come after a moment.
+     */
+    private fun askFocusIfNotGiven() {
+        thread(name = "video-focus", isDaemon = true) {
+            try {
+                Thread.sleep(FOCUS_WAIT_MS)
+            } catch (_: InterruptedException) {
+                return@thread
+            }
+            if (closed || focused) return@thread
+            EventLog.log("Video: no screen from the car after $FOCUS_WAIT_MS ms, asking for it")
+            send(
+                MediaMessageId.MEDIA_MESSAGE_VIDEO_FOCUS_REQUEST_VALUE,
+                VideoFocusRequestNotification.newBuilder().setMode(VideoFocusMode.VIDEO_FOCUS_PROJECTED).build(),
+            )
+        }
     }
 
     @Synchronized
@@ -122,6 +143,16 @@ class VideoChannel(
     private fun maybeStartStreaming() {
         val cfg = config ?: return
         if (closed || !focused || encoder != null) return
+        // The stream starts once the car has given the screen: a START while it still shows its own
+        // (NATIVE) made an Audi MMI (Harman) put up "observe the warnings on your phone", depending on timing
+        if (!started) {
+            started = true
+            EventLog.log("Video: the screen is ours, starting the stream")
+            send(
+                MediaMessageId.MEDIA_MESSAGE_START_VALUE,
+                Start.newBuilder().setSessionId(SESSION_ID).setConfigurationIndex(configIndex).build(),
+            )
+        }
 
         val (width, height) = cfg.size()
         val fps = cfg.fps()
@@ -255,6 +286,10 @@ class VideoChannel(
     }
 
     companion object {
+        /** Debug: the car's video configuration to use from the next session on, null for the car's first choice. */
+        @Volatile
+        var forcedConfig: Int? = null
+
         /** The video channel streaming to the car now, if any (used by debug tools). */
         @Volatile
         var active: VideoChannel? = null
@@ -267,6 +302,9 @@ class VideoChannel(
         /** After a redraw a live pipeline answers within a frame or two. */
         private const val REDRAW_WAIT_MS = 1500L
         private const val MAX_RESTARTS = 3
+
+        /** How long the car may take to give the screen by itself before it is asked. */
+        private const val FOCUS_WAIT_MS = 1500L
     }
 }
 

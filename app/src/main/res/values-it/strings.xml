@@ -476,10 +476,13 @@
     <string name="smarthome_no_catalog">L\'elenco dei dispositivi non è ancora stato letto. Prova Aggiorna l\'elenco.</string>
     <string name="smarthome_no_area">Altro</string>
     <string name="smarthome_arrival_title">Pulsanti all\'arrivo</string>
+    <string name="smarthome_arrival_at_start">Anche se si è già lì</string>
+    <string name="smarthome_arrival_at_start_desc">Attivo: i pulsanti compaiono anche quando l\'auto si collega essendo già in uno dei tuoi luoghi. Disattivo: compaiono solo arrivando da fuori; il pulsante nella barra di stato li apre comunque.</string>
     <string name="smarthome_arrival_no_home">La tua casa intelligente non ha luoghi con una posizione: ai pulsanti d\'arrivo ne serve uno.</string>
     <string name="smarthome_arrival_pick">Scegli cosa apre il cancello o il garage.</string>
     <string name="smarthome_arrival_distance">Da questa distanza oltre la zona del luogo (%1$d m):</string>
     <string name="smarthome_arrival_location_why">Si usa il GPS dell\'auto quando lo condivide; altrimenti la posizione del telefono, solo durante una sessione in auto.</string>
+    <string name="smarthome_arrival_location_background">Consenti la posizione \"sempre\": l\'auto si collega da sola mentre l\'app è in background, e quando il suo GPS non ha segnale (in garage) solo la posizione del telefono può mostrare i pulsanti.</string>
     <string name="smarthome_arrival_location_missing">La posizione è disattivata per BetterAuto: i pulsanti compaiono solo se l\'auto condivide il suo GPS.</string>
     <string name="smarthome_km">%1$d km</string>
     <string name="smarthome_m">%1$d m</string>

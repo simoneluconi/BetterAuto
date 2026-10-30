@@ -24,6 +24,15 @@ class SmartHomeSettings(context: Context) {
         prefs.edit { putBoolean(KEY_ARRIVAL, value) }
     }
 
+    private val _arrivalAtStart = MutableStateFlow(prefs.getBoolean(KEY_ARRIVAL_AT_START, true))
+    /** The buttons also when a session starts already inside a place, not only on arriving there. */
+    val arrivalAtStart: StateFlow<Boolean> = _arrivalAtStart
+
+    fun setArrivalAtStart(value: Boolean) {
+        _arrivalAtStart.value = value
+        prefs.edit { putBoolean(KEY_ARRIVAL_AT_START, value) }
+    }
+
     fun choice(providerId: String): ProviderChoice = _choices.value[providerId] ?: ProviderChoice()
 
     @Synchronized
@@ -47,6 +56,7 @@ class SmartHomeSettings(context: Context) {
     companion object {
         private const val KEY_PREFIX = "choice."
         private const val KEY_ARRIVAL = "arrival_enabled"
+        private const val KEY_ARRIVAL_AT_START = "arrival_at_start"
 
         fun encode(c: ProviderChoice): String = JSONObject()
             .putOpt("selected", c.selected?.let { JSONArray(it.sorted()) })

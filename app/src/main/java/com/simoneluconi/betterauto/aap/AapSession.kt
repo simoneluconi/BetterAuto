@@ -8,6 +8,7 @@ import aap_protobuf.service.control.message.AuthResponseOuterClass.AuthResponse
 import aap_protobuf.service.control.message.ByeByeRequestOuterClass.ByeByeRequest
 import aap_protobuf.service.control.message.ByeByeResponseOuterClass.ByeByeResponse
 import aap_protobuf.service.control.message.ControlMessageTypeOuterClass.ControlMessageType
+import aap_protobuf.service.control.message.HeadUnitInfoOuterClass.HeadUnitInfo
 import aap_protobuf.service.control.message.PingRequestOuterClass.PingRequest
 import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
@@ -166,7 +167,7 @@ class AapSession(
 
     private fun onServiceDiscovery(response: ServiceDiscoveryResponse) {
         val services = response.channelsList
-        val hu = response.headunitInfo
+        val hu = headUnitInfo(response)
         EventLog.log("Head unit: ${hu.headUnitMake} ${hu.headUnitModel} (sw ${hu.headUnitSoftwareVersion}), car: ${hu.make} ${hu.model}")
         established = true
         onEstablished()
@@ -191,6 +192,10 @@ class AapSession(
                 EventLog.log("    vendor extension \"${vendor.name}\", allowed apps: ${vendor.packageWhiteListList.joinToString().ifEmpty { "any" }}, ${vendor.data.size()} bytes of data")
             }
             val channel = createChannel(service) ?: continue
+            if (channel.name in skippedChannels) {
+                EventLog.log("    left closed for this test: ${channel.name}")
+                continue
+            }
             synchronized(this) {
                 if (closed) return
                 channels[service.id] = channel
@@ -300,9 +305,36 @@ class AapSession(
 
     private fun describeId(id: Int) = ControlMessageType.forNumber(id)?.name ?: id.toString()
 
-    private companion object {
+    /**
+     * The car and head unit names: in headunit_info on newer head units, in the older top-level fields on
+     * others (an Audi MMI sends only those), each field taken from wherever it is filled in.
+     */
+    @Suppress("DEPRECATION")
+    private fun headUnitInfo(r: ServiceDiscoveryResponse): HeadUnitInfo {
+        val hu = r.headunitInfo
+        fun pick(new: String, old: String) = new.ifBlank { old }
+        return HeadUnitInfo.newBuilder()
+            .setMake(pick(hu.make, r.make))
+            .setModel(pick(hu.model, r.model))
+            .setYear(pick(hu.year, r.year))
+            .setVehicleId(pick(hu.vehicleId, r.vehicleId))
+            .setHeadUnitMake(pick(hu.headUnitMake, r.headUnitMake))
+            .setHeadUnitModel(pick(hu.headUnitModel, r.headUnitModel))
+            .setHeadUnitSoftwareBuild(pick(hu.headUnitSoftwareBuild, r.headUnitSoftwareBuild))
+            .setHeadUnitSoftwareVersion(pick(hu.headUnitSoftwareVersion, r.headUnitSoftwareVersion))
+            .build()
+    }
+
+    companion object {
+        /**
+         * Debug: channels (by [ServiceChannel.name]) not opened from the next session on, to find which one
+         * a car objects to. Set by the debug receiver only.
+         */
+        @Volatile
+        var skippedChannels: Set<String> = emptySet()
+
         /** The car's audio streams BetterAuto feeds; system sounds and calls stay on the phone (calls go by Bluetooth). */
-        val OpenedAudio = setOf(AudioStreamType.AUDIO_STREAM_MEDIA, AudioStreamType.AUDIO_STREAM_GUIDANCE)
+        private val OpenedAudio = setOf(AudioStreamType.AUDIO_STREAM_MEDIA, AudioStreamType.AUDIO_STREAM_GUIDANCE)
     }
 
     private fun Service.kind() = when {

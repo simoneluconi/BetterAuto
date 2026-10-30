@@ -31,6 +31,11 @@ class FenceTracker(val fence: Fence) {
     var inside: Boolean? = null
         private set
 
+    /** Back to not knowing, as before the first sample (a position found to be wrong). */
+    fun reset() {
+        inside = null
+    }
+
     /** A new position: the transition it causes, if any. Fixes vaguer than [MAX_ACCURACY_M] are ignored. */
     fun update(latitude: Double, longitude: Double, accuracyM: Double? = null): FenceTransition? {
         if (accuracyM != null && accuracyM > MAX_ACCURACY_M) return null

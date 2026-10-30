@@ -476,10 +476,13 @@
     <string name="smarthome_no_catalog">The device list could not be read yet. Try Refresh the list.</string>
     <string name="smarthome_no_area">Other</string>
     <string name="smarthome_arrival_title">Arrival buttons</string>
+    <string name="smarthome_arrival_at_start">Also when already there</string>
+    <string name="smarthome_arrival_at_start_desc">On: the buttons also show when the car connects while already at one of your places. Off: they show only on arriving from outside; the button in the status bar still opens them.</string>
     <string name="smarthome_arrival_no_home">Your smart home has no places with a location: arrival buttons need one.</string>
     <string name="smarthome_arrival_pick">Pick what opens your gate or garage.</string>
     <string name="smarthome_arrival_distance">From this far beyond the place\'s zone (%1$d m):</string>
     <string name="smarthome_arrival_location_why">The car\'s GPS is used when it shares it; otherwise the phone\'s location, only during a car session.</string>
+    <string name="smarthome_arrival_location_background">Allow location \"all the time\": the car connects by itself while the app is in the background, and when its GPS has no signal (a garage) only the phone\'s location can show the buttons.</string>
     <string name="smarthome_arrival_location_missing">Location is off for BetterAuto: the buttons only show when the car shares its GPS.</string>
     <string name="smarthome_km">%1$d km</string>
     <string name="smarthome_m">%1$d m</string>

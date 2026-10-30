@@ -25,6 +25,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.input.pointer.pointerInput
+import com.simoneluconi.betterauto.ui.launcher.carZone
 import com.simoneluconi.betterauto.ui.LocalHoldAction
 import com.simoneluconi.betterauto.ui.launcher.LocalContentFocus
 import androidx.compose.ui.Modifier
@@ -122,7 +123,8 @@ private fun Widget(choice: WidgetChoice, modifier: Modifier) {
     val settings = LocalSettings.current ?: return
     val hold = remember(settings) { { HomeEdit.start(settings) } }
     // Its buttons take the hold through LocalHoldAction; the rest of the card here
-    Box(modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { hold() }) }) {
+    // Each widget is one zone for the knob's nudges
+    Box(modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { hold() }) }.carZone()) {
         CompositionLocalProvider(LocalHoldAction provides hold) {
             HomeWidget(choice, settings, Modifier.fillMaxSize())
         }

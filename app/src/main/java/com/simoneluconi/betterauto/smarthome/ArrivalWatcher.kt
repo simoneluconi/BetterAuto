@@ -9,12 +9,14 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
+import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.VehicleData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,13 +118,46 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
     }
 
     private suspend fun followCar() {
-        VehicleData.snapshot.mapNotNull { it.position }.distinctUntilChanged().collect { timed ->
-            if (System.currentTimeMillis() - timed.at > CAR_FRESH_MS) return@collect
+        var firstPositionAt = 0L
+        VehicleData.snapshot.mapNotNull { s -> s.position?.let { it to s.satellites } }.distinctUntilChanged().collect { (timed, satellites) ->
+            val now = System.currentTimeMillis()
+            if (now - timed.at > CAR_FRESH_MS) return@collect
+            if (firstPositionAt == 0L) firstPositionAt = now
+            // The satellites come a moment after the first position: until then (or a while, for a car that never
+            // sends them) the position is not trusted
+            if (satellites == null && now - firstPositionAt < SATELLITES_WAIT_MS) return@collect
+            // Without satellites (a garage) a car keeps sending its last fix, kilometres off: the phone's counts then
+            val blind = satellites != null && now - satellites.at < CAR_FRESH_MS && satellites.value.inUse == 0
+            if (blind) {
+                if (!carBlindLogged) {
+                    EventLog.log("Smart home: the car's GPS sees no satellites, its position is left out")
+                    // Once, as it goes blind: the phone looks now instead of at its next check
+                    phoneWake.trySend(Unit)
+                }
+                carBlindLogged = true
+                if (lastCarSampleAt != 0L) forgetCarPosition()
+                lastCarSampleAt = 0L
+                return@collect
+            }
             if (lastCarSampleAt == 0L) EventLog.log("Smart home: arrival follows the car's GPS")
+            carBlindLogged = false
             lastCarSampleAt = timed.at
             val p = timed.value
             onSample(p.latitude, p.longitude, p.accuracyM)
         }
+    }
+
+    private var carBlindLogged = false
+
+    /** Wakes the phone's location loop at once (the car's GPS just went blind). */
+    private val phoneWake = Channel<Unit>(Channel.CONFLATED)
+
+    /** What the car's GPS said is not to be believed: the fences start again from not knowing. */
+    @Synchronized
+    private fun forgetCarPosition() {
+        lastSample = null
+        trackers.values.forEach { it.reset() }
+        _state.value = ArrivalState()
     }
 
     private suspend fun followFakeCar() {
@@ -149,7 +184,7 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
             // The car's GPS is talking: nothing to do on the phone
             if (System.currentTimeMillis() - lastCarSampleAt < CAR_FRESH_MS) {
                 stopPassive()
-                delay(CAR_FRESH_MS)
+                withTimeoutOrNull(CAR_FRESH_MS) { phoneWake.receive() }
                 continue
             }
             if (!hasPermission()) {
@@ -162,10 +197,10 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
             logged = true
             startPassive()
             val fix = withTimeoutOrNull(FIX_TIMEOUT_MS) { oneFix() }
-            fix?.let { onSample(it.latitude, it.longitude, if (it.hasAccuracy()) it.accuracy.toDouble() else null) }
+            fix?.let(::onPhoneFix)
             val wait = nextDelay(fix?.takeIf { it.hasSpeed() }?.speed?.toDouble())
             logDecision(wait)
-            delay(wait)
+            withTimeoutOrNull(wait) { phoneWake.receive() }
         }
     }
 
@@ -186,11 +221,14 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
         var open = _state.value.panelOpen
         for ((id, tracker) in trackers) {
             val d = tracker.fence.distanceM(latitude, longitude).roundToInt()
+            // Already there when the session starts: shown only if the driver wants it then too
+            val atStart = tracker.inside == null
             when (tracker.update(latitude, longitude, accuracyM)) {
                 FenceTransition.ENTER -> {
-                    EventLog.log("Smart home: entered ${label(id)} at $d m: arrival buttons shown")
+                    val show = !atStart || SmartHome.arrivalAtStart.value
+                    EventLog.log("Smart home: ${if (atStart) "already at" else "entered"} ${label(id)} at $d m: arrival buttons ${if (show) "shown" else "kept in the status bar"}")
                     inside = inside + id
-                    open = true
+                    if (show) open = true
                 }
                 FenceTransition.EXIT -> {
                     EventLog.log("Smart home: left ${label(id)} at $d m: arrival buttons hidden")
@@ -257,14 +295,24 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
         }
     }
 
+    /**
+     * A fix from the phone counts only while the car's GPS is quiet, and only a recent, reasonably precise one:
+     * a coarse network fix kilometres off, landing between the car's samples, hid and showed the buttons in turn.
+     */
+    private fun onPhoneFix(loc: Location) {
+        if (System.currentTimeMillis() - lastCarSampleAt < CAR_FRESH_MS) return
+        val ageMs = (SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1_000_000
+        if (ageMs > PHONE_FIX_MAX_AGE_MS) return
+        if (loc.hasAccuracy() && loc.accuracy > PHONE_FIX_MAX_ERROR_M) return
+        onSample(loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy.toDouble() else null)
+    }
+
     @SuppressLint("MissingPermission")
     @Synchronized
     private fun startPassive() {
         if (passive != null) return
         val lm = manager ?: return
-        val listener = LocationListener { loc ->
-            if (fake == null) onSample(loc.latitude, loc.longitude, if (loc.hasAccuracy()) loc.accuracy.toDouble() else null)
-        }
+        val listener = LocationListener { loc -> if (fake == null) onPhoneFix(loc) }
         runCatching {
             lm.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, Geo.MIN_INTERVAL_MS, 0f, listener, Looper.getMainLooper())
             passive = listener
@@ -283,6 +331,13 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
     private companion object {
         /** A car position older than this is not live: the phone takes over. */
         const val CAR_FRESH_MS = 20_000L
+
+        /** How long a car's first position waits for its satellite count. */
+        const val SATELLITES_WAIT_MS = 5_000L
+
+        /** Older or vaguer phone fixes say nothing useful about being at a gate. */
+        const val PHONE_FIX_MAX_AGE_MS = 120_000L
+        const val PHONE_FIX_MAX_ERROR_M = 500f
         const val FIX_TIMEOUT_MS = 30_000L
         const val FAKE_CAR_PERIOD_MS = 2_000L
     }

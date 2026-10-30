@@ -37,6 +37,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Arrival buttons: the session often starts by itself (wireless), with the app in the background -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Head units reached over the network (TCP), besides the USB accessory -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 17 drops traffic to the local network without it (bench head unit, wireless dongle) -->

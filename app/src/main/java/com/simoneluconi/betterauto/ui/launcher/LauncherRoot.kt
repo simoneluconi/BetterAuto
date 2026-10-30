@@ -213,19 +213,40 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         if (!down) SmartHome.arrival?.closePanel()
                         return@onPreviewKeyEvent true
                     }
-                    // Knob nudges: from the app bar straight to the screen's main control, and back
+                    // The arrival panel waits for the driver: a knob move while the focus is elsewhere (the screen
+                    // took it back as the session started) first brings it to the panel
+                    if (ArrivalPanelShown.value && !ArrivalPanelShown.hasFocus && event.key in KnobKeys) {
+                        if (down) ArrivalPanelShown.first?.let { runCatching { it.requestFocus() } }
+                        return@onPreviewKeyEvent true
+                    }
+                    // Knob nudges move between zones (the bar, each widget or panel of the screen); turning goes
+                    // through every control. Not out of a panel that waits for the driver: there they move inside it
                     val toScreen = if (railVertical) Key.DirectionRight else Key.DirectionUp
                     val toBar = if (railVertical) Key.DirectionLeft else Key.DirectionDown
-                    if (shownCall == null && hasFocus && (event.key == toScreen || event.key == toBar)) {
-                        if (event.key == toScreen && railHasFocus) {
-                            if (down && !contentFocus.requestFocus()) focusManager.moveFocus(if (railVertical) FocusDirection.Right else FocusDirection.Up)
-                            return@onPreviewKeyEvent true
-                        }
-                        if (event.key == toBar && !railHasFocus) {
+                    val nudge = when (event.key) {
+                        Key.DirectionLeft -> FocusDirection.Left
+                        Key.DirectionRight -> FocusDirection.Right
+                        Key.DirectionUp -> FocusDirection.Up
+                        Key.DirectionDown -> FocusDirection.Down
+                        else -> null
+                    }
+                    val panelOpen = ArrivalPanelShown.value || VoiceAssistant.isBusy || BarEditor.open.value || HomeEdit.active.value
+                    if (shownCall == null && hasFocus && !panelOpen && nudge != null) {
+                        if (railHasFocus) {
+                            if (event.key == toScreen) {
+                                if (down && !contentFocus.requestFocus()) focusManager.moveFocus(nudge)
+                                return@onPreviewKeyEvent true
+                            }
+                            // Along the bar: from section to section
+                        } else {
                             if (down) {
-                                // Moves within the screen first; leaving it always lands on the current section
-                                val moved = focusManager.moveFocus(if (railVertical) FocusDirection.Left else FocusDirection.Down)
-                                if (!moved || railHasFocus) railFocus.requestFocus()
+                                when {
+                                    CarZones.moveBeside(nudge) -> Unit
+                                    // From the last zone toward the bar: the current section
+                                    event.key == toBar -> railFocus.requestFocus()
+                                    // Across the bar's axis with no zone that way: within the screen
+                                    event.key != toScreen -> focusManager.moveFocus(nudge)
+                                }
                             }
                             return@onPreviewKeyEvent true
                         }
@@ -381,3 +402,9 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
 }
 
 private val Nudges = setOf(FocusDirection.Up, FocusDirection.Down, FocusDirection.Left, FocusDirection.Right)
+
+/** The knob's moves and presses: what a panel waiting for the driver must get first. */
+private val KnobKeys = setOf(
+    Key.Tab, Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown,
+    Key.DirectionCenter, Key.Enter, Key.NumPadEnter,
+)

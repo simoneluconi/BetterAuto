@@ -8,6 +8,7 @@ import android.content.Intent
 import aap_protobuf.service.inputsource.message.PointerActionOuterClass.PointerAction
 import aap_protobuf.service.inputsource.message.TouchEventOuterClass.TouchEvent
 import aap_protobuf.shared.InstrumentClusterInputOuterClass.InstrumentClusterInput.InstrumentClusterAction
+import com.simoneluconi.betterauto.aap.AapSession
 import com.simoneluconi.betterauto.aap.ConnectionProblem
 import com.simoneluconi.betterauto.aap.PhoneStatusChannel
 import com.simoneluconi.betterauto.aap.VideoChannel
@@ -107,6 +108,10 @@ import kotlin.concurrent.thread
  *                            the music in the car is lowered meanwhile
  *   ... --ez copyAudio true  copy the car audio as without Shizuku for this connection (asks the capture consent
  *                            if needed; false goes back to Shizuku), to try the no-Shizuku paths
+ *   ... --es skipChannels "phone status,media status"  channels (their log names) not opened from the next session
+ *                            on, to find which one a car objects to ("" opens them all again)
+ *   ... --ei videoConfig 1   use the car's video configuration 1 (its list order, see "video config N" in the
+ *                            log) from the next session on, if the car accepts it; -1 back to the car's choice
  *   ... --es location 45.46,9.19[,50]  a pretend position (and km/h) until --es location off
  *   ... --es drive 2000,50[,90]  a pretend drive through the home place: starts 2000 m away, 50 km/h, goes past
  *                            and away, so the adaptive interval, arriving, the hysteresis and leaving show in the
@@ -203,6 +208,14 @@ class DebugInputReceiver : BroadcastReceiver() {
             "preview_off" -> VoiceAssistant.preview(VoiceState.Idle)
         }
         intent.getStringExtra("navPrompt")?.let { FakeNavPrompt.speak(context, it) }
+        if (intent.hasExtra("videoConfig")) {
+            VideoChannel.forcedConfig = intent.getIntExtra("videoConfig", -1).takeIf { it >= 0 }
+            EventLog.log("Debug: video configuration from the next session: ${VideoChannel.forcedConfig ?: "the car's choice"}")
+        }
+        intent.getStringExtra("skipChannels")?.let { list ->
+            AapSession.skippedChannels = list.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            EventLog.log("Debug: channels left closed from the next session: ${AapSession.skippedChannels.ifEmpty { setOf("none") }.joinToString()}")
+        }
         if (intent.hasExtra("copyAudio")) {
             val copy = intent.getBooleanExtra("copyAudio", false)
             CarAudio.copyInstead(copy)
