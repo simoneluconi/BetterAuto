@@ -22,6 +22,8 @@ class MicrophoneChannel(
     session: AapSession,
     channelId: Int,
     private val config: AudioConfiguration?,
+    /** Announces a voice session on the control channel: the microphone opens only inside one. */
+    private val voiceSession: (Boolean) -> Unit,
 ) : ServiceChannel(session, channelId) {
     override val name = "microphone"
 
@@ -65,10 +67,12 @@ class MicrophoneChannel(
     }
 
     private fun request(open: Boolean) {
+        if (open) voiceSession(true)
         send(
             MediaMessageId.MEDIA_MESSAGE_MICROPHONE_REQUEST_VALUE,
             MicrophoneRequest.newBuilder().setOpen(open).setAncEnabled(true).setEcEnabled(true).setMaxUnacked(1).build(),
         )
+        if (!open) voiceSession(false)
     }
 
     override fun close() {

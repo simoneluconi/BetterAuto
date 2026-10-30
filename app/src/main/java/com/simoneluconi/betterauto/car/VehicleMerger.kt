@@ -25,6 +25,9 @@ object VehicleMerger {
             val better = when {
                 best == null -> true
                 state.live != bestLive -> state.live
+                // A total cannot be less than another source's: some head units (a VW MMX2) send the distance
+                // since the start as the Android Auto odometer, so among live sources the highest is the total
+                state.live && field == VehicleField.Odometer -> (value.value as Double) > (best.value.value as Double)
                 state.live && state.source.priority != best.source.priority -> state.source.priority > best.source.priority
                 else -> value.at > best.value.at
             }

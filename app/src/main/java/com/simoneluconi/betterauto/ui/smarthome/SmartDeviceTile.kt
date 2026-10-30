@@ -140,7 +140,11 @@ fun SmartDeviceTile(
             ) {
                 CarIcon(device.kind.icon, if (lit) Color.White else colors.text, Modifier.size(26.dp))
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // Room for a two-line name whatever the name: tiles side by side keep one height, buttons in one line
+            Column(
+                Modifier.weight(1f).heightIn(min = NAME_BLOCK_MIN),
+                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+            ) {
                 CarLabel(device.name, 21.sp, colors.text, weight = FontWeight.Bold, maxLines = 2, lineHeight = 25.sp)
                 if (device.kind != DeviceKind.SENSOR) {
                     CarLabel(stateText.first, 18.sp, stateText.second ?: colors.text2, weight = FontWeight.Bold)
@@ -187,6 +191,9 @@ fun SmartDeviceTile(
         }
     }
 }
+
+/** Two lines of name (25 sp each) and the state line under them. */
+private val NAME_BLOCK_MIN = 76.dp
 
 /** The state under the name, or the last command's outcome while it shows; a color for failures. */
 @Composable

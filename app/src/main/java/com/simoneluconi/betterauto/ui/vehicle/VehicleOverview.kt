@@ -22,8 +22,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -34,6 +38,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -340,10 +345,12 @@ private fun CarDrawing(s: VehicleSnapshot, modifier: Modifier) {
     val colors = LocalCarColors.current
     val doors = s.doors?.value
     val lights = s.lights?.value
-    val left = lights?.hazard == true || lights?.turn == TurnSignal.LEFT
-    val right = lights?.hazard == true || lights?.turn == TurnSignal.RIGHT
+    val left = heldSignal(lights?.hazard == true || lights?.turn == TurnSignal.LEFT)
+    val right = heldSignal(lights?.hazard == true || lights?.turn == TurnSignal.RIGHT)
     // Animated only while a signal is on: an idle transition would redraw (and re-encode) the screen every frame
     val blink = if (left || right) turnBlink() else null
+    // The front wheels follow the steering wheel (positive = to the left), geared down as on a car and held to a real lock
+    val wheelTurn = s.motion?.value?.steeringAngle?.let { (-it / STEERING_RATIO).toFloat().coerceIn(-MAX_WHEEL_TURN, MAX_WHEEL_TURN) } ?: 0f
     Canvas(modifier) {
         val u = size.width / 100f
         fun p(x: Float, y: Float) = Offset(x * u, y * u)
@@ -351,8 +358,11 @@ private fun CarDrawing(s: VehicleSnapshot, modifier: Modifier) {
         val stroke = Stroke(width = 2.6f * u, cap = StrokeCap.Round)
 
         // Wheels under the body
-        for ((x, y) in listOf(14f to 30f, 78f to 30f, 14f to 140f, 78f to 140f)) {
-            drawRoundRect(colors.text, p(x, y), Size(8f * u, 28f * u), CornerRadius(3f * u))
+        for ((i, wheel) in listOf(14f to 30f, 78f to 30f, 14f to 140f, 78f to 140f).withIndex()) {
+            val (x, y) = wheel
+            rotate(if (i < 2) wheelTurn else 0f, pivot = p(x + 4f, y + 14f)) {
+                drawRoundRect(colors.text, p(x, y), Size(8f * u, 28f * u), CornerRadius(3f * u))
+            }
         }
         // Body
         drawRoundRect(colors.surface, p(20f, 8f), Size(60f * u, 184f * u), CornerRadius(22f * u))
@@ -399,6 +409,20 @@ private fun CarDrawing(s: VehicleSnapshot, modifier: Modifier) {
     }
 }
 
+/**
+ * Some cars report the lamp itself (on, off, on...): a signal counts as on until it has been off for longer
+ * than a blink, and the drawing keeps one steady rhythm of its own instead of two mixed.
+ */
+@Composable
+private fun heldSignal(on: Boolean): Boolean {
+    var held by remember { mutableStateOf(on) }
+    LaunchedEffect(on) {
+        if (!on) kotlinx.coroutines.delay(SIGNAL_HOLD_MS)
+        held = on
+    }
+    return held || on
+}
+
 @Composable
 private fun turnBlink(): State<Float> = rememberInfiniteTransition(label = "turn").animateFloat(
     0.25f, 1f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "turnBlink",
@@ -423,3 +447,12 @@ private fun DrawScope.drawPanel(topLeft: Offset, width: Float, height: Float, ra
 private val GAP = 14.dp
 private val MIN_TILE_HEIGHT = 112.dp
 private const val LOW_TIRE_BAR = 0.25
+
+/** Steering wheel degrees per degree of the front wheels, a typical car's ratio. */
+private const val STEERING_RATIO = 15.0
+
+/** The front wheels' full lock, in degrees. */
+private const val MAX_WHEEL_TURN = 35f
+
+/** Longer than a lamp's off phase (cars blink at about 1.5 Hz). */
+private const val SIGNAL_HOLD_MS = 1_000L

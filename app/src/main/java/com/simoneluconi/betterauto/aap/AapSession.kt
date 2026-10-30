@@ -13,6 +13,8 @@ import aap_protobuf.service.control.message.PingRequestOuterClass.PingRequest
 import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
 import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse
+import aap_protobuf.service.control.message.VoiceSessionNotificationOuterClass.VoiceSessionNotification
+import aap_protobuf.service.control.message.VoiceSessionStatusOuterClass.VoiceSessionStatus
 import aap_protobuf.service.media.sink.message.AudioStreamTypeOuterClass.AudioStreamType
 import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.os.Build
@@ -234,7 +236,7 @@ class AapSession(
         service.hasMediaSourceService() -> {
             val mic = service.mediaSourceService
             EventLog.log("    microphone: ${if (mic.hasAudioConfig()) "${mic.audioConfig.samplingRate} Hz ${mic.audioConfig.numberOfBits}-bit ${mic.audioConfig.numberOfChannels}ch" else "no config"}")
-            MicrophoneChannel(this, service.id, if (mic.hasAudioConfig()) mic.audioConfig else null)
+            MicrophoneChannel(this, service.id, if (mic.hasAudioConfig()) mic.audioConfig else null, ::voiceSession)
         }
         service.hasSensorSourceService() -> {
             val sensors = service.sensorSourceService.sensorsList.map { it.sensorType }
@@ -281,6 +283,20 @@ class AapSession(
         send(
             ControlMessageType.MESSAGE_AUDIO_FOCUS_REQUEST_VALUE,
             AudioFocusRequestNotification.newBuilder().setRequest(type).build(),
+            encrypted = true,
+        )
+    }
+
+    /**
+     * Tells the car a voice command starts or ends. The microphone is opened only inside one: a Harman MMI
+     * (Audi) puts up "observe the warnings on your phone" when it is opened without.
+     */
+    private fun voiceSession(active: Boolean) {
+        val status = if (active) VoiceSessionStatus.VOICE_SESSION_START else VoiceSessionStatus.VOICE_SESSION_END
+        EventLog.log("Voice session: $status")
+        send(
+            ControlMessageType.MESSAGE_VOICE_SESSION_NOTIFICATION_VALUE,
+            VoiceSessionNotification.newBuilder().setStatus(status).build(),
             encrypted = true,
         )
     }

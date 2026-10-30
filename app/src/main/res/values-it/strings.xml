@@ -377,6 +377,7 @@
     <string name="voice_stop">Interrompi il comando vocale</string>
     <string name="voice_which">Quale?</string>
     <string name="voice_unavailable">Questo telefono non ha il riconoscimento vocale offline per i comandi</string>
+    <string name="voice_model_missing">Il telefono sta scaricando il modello vocale per questa lingua: riprova tra qualche minuto</string>
     <string name="voice_nothing_heard">Non ho sentito niente</string>
     <string name="voice_not_understood">Non ho capito «%1$s»</string>
     <string name="voice_calling">Chiamo %1$s, %2$s</string>

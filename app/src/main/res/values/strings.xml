@@ -377,6 +377,7 @@
     <string name="voice_stop">Stop the voice command</string>
     <string name="voice_which">Which one?</string>
     <string name="voice_unavailable">This phone has no offline speech recognition for voice commands</string>
+    <string name="voice_model_missing">The phone is downloading the speech model for this language: try again in a few minutes</string>
     <string name="voice_nothing_heard">I didn\'t hear anything</string>
     <string name="voice_not_understood">I didn\'t get “%1$s”</string>
     <string name="voice_calling">Calling %1$s, %2$s</string>

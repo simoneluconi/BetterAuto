@@ -127,6 +127,8 @@ picks one, `-Serial <id>` picks the phone.
   To find what a car objects to: `--es skipChannels "phone status,media status"` leaves those channels
   (their log names) closed from the next session on (`""` opens them all again), `--ei videoConfig 1`
   uses another of the car's video configurations (`-1` back to the car's choice).
+  `--es exlapDump doorState` logs the raw Exlap values the car sent last for objects whose name contains
+  the text (e.g. to see whether a car really fills an object, or what it sends for hazards).
   Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the

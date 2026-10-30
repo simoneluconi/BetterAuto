@@ -92,10 +92,34 @@ class AapService : Service() {
         SmartHome.init(this)
         // Arrival buttons may need the phone's location while the car screen runs: only with the permission
         if (hasLocationPermission()) foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        // Voice commands: the phone's speech service takes the car's microphone only from an app allowed to record
+        // now, which in the background means a microphone service
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
         ShizukuAudio.init()
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         ContextCompat.registerReceiver(this, detached, filter, ContextCompat.RECEIVER_EXPORTED)
+    }
+
+    /**
+     * Location and the microphone are extras that can be refused (permission just revoked, a start from the
+     * background): without the one refused, the session still runs.
+     */
+    private fun startForegroundDroppingRefused() {
+        for (optional in listOf(0, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)) {
+            if (optional != 0 && foregroundTypes and optional == 0) continue
+            foregroundTypes = foregroundTypes and optional.inv()
+            if (optional == ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) EventLog.log("Microphone for voice commands not allowed in the background service")
+            if (optional == ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) EventLog.log("Location for the arrival buttons not allowed in the background service")
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
+                return
+            } catch (_: SecurityException) {
+            }
+        }
+        startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
     }
 
     private fun hasLocationPermission() =
@@ -116,15 +140,7 @@ class AapService : Service() {
             startAudioCapture(intent)
             return START_NOT_STICKY
         }
-        try {
-            startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
-        } catch (e: SecurityException) {
-            // The location type can be refused (permission just revoked): run without it
-            if (foregroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION == 0) throw e
-            EventLog.log("Location for the arrival buttons not allowed in the background service")
-            foregroundTypes = foregroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION.inv()
-            startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes)
-        }
+        startForegroundDroppingRefused()
 
         if (intent?.action == ACTION_CONNECT_TCP) {
             connectTcp(intent.getStringExtra(EXTRA_HOST), intent.getIntExtra(EXTRA_PORT, DEFAULT_TCP_PORT))

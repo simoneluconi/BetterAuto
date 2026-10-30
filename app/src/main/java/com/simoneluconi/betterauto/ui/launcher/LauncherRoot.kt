@@ -175,6 +175,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     runCatching { callFocus.requestFocus() }
                     false
                 }
+                // The arrival panel waits for the driver: the first knob move lands in it, not on the bar behind
+                ArrivalPanelShown.value && ArrivalPanelShown.first != null -> {
+                    runCatching { ArrivalPanelShown.first?.requestFocus() }
+                    true
+                }
                 else -> {
                     runCatching { railFocus.requestFocus() }
                     true

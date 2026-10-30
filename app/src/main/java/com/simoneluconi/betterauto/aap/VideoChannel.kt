@@ -4,6 +4,7 @@ import aap_protobuf.service.media.shared.message.ConfigOuterClass.Config
 import aap_protobuf.service.media.shared.message.MediaCodecTypeOuterClass.MediaCodecType
 import aap_protobuf.service.media.shared.message.SetupOuterClass.Setup
 import aap_protobuf.service.media.shared.message.StartOuterClass.Start
+import aap_protobuf.service.media.shared.message.StopOuterClass.Stop
 import aap_protobuf.service.media.sink.MediaMessageIdOuterClass.MediaMessageId
 import aap_protobuf.service.media.sink.message.VideoCodecResolutionTypeOuterClass.VideoCodecResolutionType
 import aap_protobuf.service.media.sink.message.VideoConfigurationOuterClass.VideoConfiguration
@@ -29,6 +30,7 @@ import kotlin.concurrent.thread
  *   HU -> VIDEO_FOCUS_NOTIFICATION(PROJECTED), by itself (asked with VIDEO_FOCUS_REQUEST if it does not come)
  *   phone -> START, only once the screen is ours, as Android Auto does
  *   phone -> CODEC_CONFIG (SPS/PPS), then DATA frames; HU -> ACK per frame
+ *   HU -> VIDEO_FOCUS_NOTIFICATION(NATIVE): phone -> STOP; back to PROJECTED: a new START, SPS/PPS, keyframe
  */
 class VideoChannel(
     session: AapSession,
@@ -40,12 +42,17 @@ class VideoChannel(
 
     private var config: VideoConfiguration? = null
     private var configIndex = 0
-    /** START has gone out for this session (once, when the car first gave the screen). */
+    /** A stream is started (START sent, no STOP since). */
     private var started = false
+    /** Each START opens a new stream session. */
+    private var streamSession = 0
 
     @Volatile
     private var focused = false
     private var encoder: VideoEncoder? = null
+    /** The running encoder's SPS/PPS, sent again whenever the car gives the screen back. */
+    @Volatile
+    private var codecConfig: ByteArray? = null
 
     @Volatile
     private var closed = false
@@ -131,9 +138,19 @@ class VideoChannel(
         if (focused == wasFocused) return
         val running = encoder
         when {
-            !focused -> running?.setPaused(true)
+            !focused -> {
+                running?.setPaused(true)
+                stopStream()
+            }
             running == null -> maybeStartStreaming()
-            else -> running.setPaused(false)
+            else -> {
+                // A stream the car saw stop is started again as at the beginning: an Audi MMI (Harman) that only
+                // got the frames again put up "observe the warnings on your phone" a few seconds later
+                startStream()
+                codecConfig?.let { send(MediaMessageId.MEDIA_MESSAGE_CODEC_CONFIG_VALUE, it) }
+                // The resume brings a keyframe
+                running.setPaused(false)
+            }
         }
         // Nobody sees the launcher meanwhile: it stops drawing too, not only the encoder
         if (running != null) projection.setActive(focused)
@@ -145,14 +162,7 @@ class VideoChannel(
         if (closed || !focused || encoder != null) return
         // The stream starts once the car has given the screen: a START while it still shows its own
         // (NATIVE) made an Audi MMI (Harman) put up "observe the warnings on your phone", depending on timing
-        if (!started) {
-            started = true
-            EventLog.log("Video: the screen is ours, starting the stream")
-            send(
-                MediaMessageId.MEDIA_MESSAGE_START_VALUE,
-                Start.newBuilder().setSessionId(SESSION_ID).setConfigurationIndex(configIndex).build(),
-            )
-        }
+        startStream()
 
         val (width, height) = cfg.size()
         val fps = cfg.fps()
@@ -166,7 +176,10 @@ class VideoChannel(
             encoder = newEncoder.name,
         )
         newEncoder.start(
-            onCodecConfig = { send(MediaMessageId.MEDIA_MESSAGE_CODEC_CONFIG_VALUE, it) },
+            onCodecConfig = {
+                codecConfig = it
+                send(MediaMessageId.MEDIA_MESSAGE_CODEC_CONFIG_VALUE, it)
+            },
             frameHeadroom = MEDIA_TIMESTAMP_BYTES,
             onFrame = ::sendFrame,
         )
@@ -175,6 +188,25 @@ class VideoChannel(
         projection.start(newEncoder.inputSurface, width, height, density)
         active = this
         startWatchdog()
+    }
+
+    private fun startStream() {
+        if (started) return
+        started = true
+        EventLog.log("Video: the screen is ours, starting the stream (session $streamSession)")
+        send(
+            MediaMessageId.MEDIA_MESSAGE_START_VALUE,
+            Start.newBuilder().setSessionId(streamSession).setConfigurationIndex(configIndex).build(),
+        )
+    }
+
+    /** The car shows its own screen: the stream ends there, as Android Auto ends it. */
+    private fun stopStream() {
+        if (!started) return
+        started = false
+        streamSession++
+        EventLog.log("Video: the car took the screen, stream stopped")
+        send(MediaMessageId.MEDIA_MESSAGE_STOP_VALUE, Stop.getDefaultInstance())
     }
 
     /**
@@ -295,7 +327,6 @@ class VideoChannel(
         var active: VideoChannel? = null
             private set
 
-        private const val SESSION_ID = 0
         private const val WINDOW_TIMEOUT_MS = 500L
         private const val WATCHDOG_PERIOD_MS = 1000L
         private const val STALL_MS = 3000L

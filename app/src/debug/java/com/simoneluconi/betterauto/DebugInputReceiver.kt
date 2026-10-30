@@ -18,6 +18,7 @@ import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.car.VehicleField
 import com.simoneluconi.betterauto.car.VehicleSource
+import com.simoneluconi.betterauto.exlap.ExlapData
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
@@ -112,6 +113,8 @@ import kotlin.concurrent.thread
  *                            on, to find which one a car objects to ("" opens them all again)
  *   ... --ei videoConfig 1   use the car's video configuration 1 (its list order, see "video config N" in the
  *                            log) from the next session on, if the car accepts it; -1 back to the car's choice
+ *   ... --es exlapDump doorState  log the Exlap values the car sent last whose object name contains the text
+ *                            (raw, as received: to see what a car really sends for an object)
  *   ... --es location 45.46,9.19[,50]  a pretend position (and km/h) until --es location off
  *   ... --es drive 2000,50[,90]  a pretend drive through the home place: starts 2000 m away, 50 km/h, goes past
  *                            and away, so the adaptive interval, arriving, the hysteresis and leaving show in the
@@ -121,6 +124,11 @@ import kotlin.concurrent.thread
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.hasExtra("night")) CarState.nightMode.value = intent.getBooleanExtra("night", false)
+        intent.getStringExtra("exlapDump")?.let { filter ->
+            val found = ExlapData.values.value.values.filter { it.url.contains(filter, ignoreCase = true) }
+            EventLog.log("Debug: ${found.size} Exlap values for \"$filter\"")
+            found.forEach { EventLog.log("Debug:   ${it.url}/${it.name} = ${it.value} ${it.unit.orEmpty()}") }
+        }
         intent.getStringExtra("problem")?.let { name ->
             if (name == "off") {
                 AapService.cancelProblem(context)

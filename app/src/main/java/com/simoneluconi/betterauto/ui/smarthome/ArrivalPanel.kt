@@ -48,6 +48,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -173,17 +174,21 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
                 .padding(horizontal = 26.dp, vertical = 22.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            var firstUsed = false
-            inside.forEach { (provider, place) ->
+            // Every place's devices first: where the knob lands must not depend on which part recomposes
+            // (a device's state changing redraws only its row, which would lose the knob's landing place)
+            val groups = inside.map { (provider, place) ->
                 val catalog by provider.catalog.collectAsStateWithLifecycle()
+                val arrival = (choices[provider.id] ?: ProviderChoice()).arrivalAt(place)
+                val ids = arrival?.devices.orEmpty()
+                // In the order the driver dragged them into on the phone
+                Triple(provider, place, catalog?.devices.orEmpty().filter { it.id in ids }.let { list -> arrival?.sorted(list) { it.id } ?: list })
+            }
+            val firstDevice = groups.firstNotNullOfOrNull { it.third.firstOrNull() }
+            groups.forEach { (provider, place, devices) ->
                 val states by provider.states.collectAsStateWithLifecycle()
                 val feedback by SmartHome.feedback.collectAsStateWithLifecycle()
                 val link by provider.link.collectAsStateWithLifecycle()
                 val homeName by provider.homeName.collectAsStateWithLifecycle()
-                val arrival = (choices[provider.id] ?: ProviderChoice()).arrivalAt(place)
-                val ids = arrival?.devices.orEmpty()
-                // In the order the driver dragged them into on the phone
-                val devices = catalog?.devices.orEmpty().filter { it.id in ids }.let { list -> arrival?.sorted(list) { it.id } ?: list }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     ProviderIcon(provider, 34)
                     Column(Modifier.weight(1f)) {
@@ -194,24 +199,27 @@ fun ArrivalPanel(modifier: Modifier = Modifier) {
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     for (device in devices) {
-                        val focus = if (!firstUsed) first.also { firstUsed = true } else null
                         SmartDeviceTile(
                             provider, device, states[device.id], feedback[device.key],
                             onAction = { SmartHome.perform(provider, device, it) },
                             modifier = Modifier.width(290.dp),
                             container = colors.surface2,
-                            focus = focus,
+                            focus = first.takeIf { device === firstDevice },
                         )
                     }
                 }
             }
             // Last in the knob's order, after every device: the likely action is a device, not Close
-            Row(Modifier.align(Alignment.End)) { CloseButton(if (firstUsed) null else first) }
+            Row(Modifier.align(Alignment.End)) { CloseButton(first.takeIf { firstDevice == null }) }
         }
-        LaunchedEffect(Unit) {
-            returnFocus = FocusMemory.last
+        LaunchedEffect(Unit) { returnFocus = FocusMemory.last }
+        // Opened as the session starts, the car screen may not take focus yet: asked again once it does,
+        // so the knob's first move already acts in the panel
+        val windowFocused = LocalWindowInfo.current.isWindowFocused
+        LaunchedEffect(windowFocused) {
+            if (!windowFocused) return@LaunchedEffect
             withFrameNanos { }
-            runCatching { first.requestFocus() }
+            if (!ArrivalPanelShown.hasFocus) runCatching { first.requestFocus() }
         }
     }
 }

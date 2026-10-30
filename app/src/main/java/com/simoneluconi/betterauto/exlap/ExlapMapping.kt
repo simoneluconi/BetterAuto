@@ -25,15 +25,16 @@ object ExlapMapping {
     /** Followed whatever is on screen: who is aboard drives the notification privacy, the clock widget shows the outside temperature. */
     private val ALWAYS = setOf("Comfort_CarSeatsStatus", "outsideTemperature")
 
-    /** What the vehicle overview shows. */
+    /** What the vehicle overview shows (the drawing's front wheels follow the steering wheel). */
     private val OVERVIEW = setOf(
         "tankLevelPrimary", "fuelWarningPrimaryTank", "totalDistance", "dayMilage",
         "tyrePressures", "doorState", "lightState_front", "blinkingState", "currentGear", "reverseGear", "parkingBrake",
+        "wheelAngle",
     )
 
     /** Only on the full list. */
     private val DETAIL = setOf(
-        "oilTemperature", "coolantTemperature", "batteryVoltage", "vehicleSpeed", "engineSpeed", "wheelAngle",
+        "oilTemperature", "coolantTemperature", "batteryVoltage", "vehicleSpeed", "engineSpeed",
         "shortTermConsumptionPrimary", "longTermConsumptionPrimary", "serviceOil", "serviceInspection",
     )
 
@@ -242,7 +243,8 @@ object ExlapMapping {
                 }
             } else {
                 when {
-                    "hazard" in value || "warn" in value || "both" in value -> hazard = true
+                    // Hazards may come as both sides at once ("left_right")
+                    "hazard" in value || "warn" in value || "both" in value || ("left" in value && "right" in value) -> hazard = true
                     "left" in value -> left = true
                     "right" in value -> right = true
                     value in setOf("none", "inactive", "noblinking", "idle") -> Unit

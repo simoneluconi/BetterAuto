@@ -33,6 +33,18 @@ class VehicleMergerTest {
     }
 
     @Test
+    fun theHighestOdometerIsTheTotal() {
+        // The car sends the distance since the start where the total belongs; the other source has the total
+        val states = listOf(
+            state(car, true, VehicleField.Odometer to Timed(11.2, 2_000)),
+            state(extra, true, VehicleField.Odometer to Timed(122_559.0, 1_000)),
+        )
+        val pick = VehicleMerger.pick(VehicleField.Odometer, states)!!
+        assertEquals(122_559.0, pick.value.value)
+        assertSame(extra, pick.source)
+    }
+
+    @Test
     fun anotherSourceFillsWhatTheStandardSensorsLack() {
         val states = listOf(
             state(car, true, VehicleField.FuelLevel to Timed(40, 1_000)),

@@ -72,6 +72,9 @@ object VoiceAssistant {
     private var heard = ""
     private var pendingCommand: VoiceCommand? = null
     private var startedAt = 0L
+    private var request: Intent? = null
+    /** This round already moved from the on-device recognizer to the phone's speech service. */
+    private var usingSpeechService = false
     private lateinit var appContext: Context
 
     private val choiceTimeout = Runnable {
@@ -115,6 +118,7 @@ object VoiceAssistant {
         stopRecognition()
         heard = ""
         pendingCommand = null
+        usingSpeechService = false
         startedAt = SystemClock.elapsedRealtime()
         loadContacts()
 
@@ -140,6 +144,7 @@ object VoiceAssistant {
 
         val rec = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
         recognizer = rec
+        request = intent
         rec.setRecognitionListener(listener)
         show(VoiceState.Listening("", 0f, carMic, hint()), speak = false)
         main.postDelayed(giveUp, MAX_LISTEN_MS)
@@ -232,7 +237,11 @@ object VoiceAssistant {
 
         override fun onError(error: Int) {
             EventLog.log("Voice: recognizer error $error")
-            finish(understood = pendingCommand != null)
+            when {
+                error != SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE || pendingCommand != null -> finish(understood = pendingCommand != null)
+                !usingSpeechService && SpeechRecognizer.isRecognitionAvailable(appContext) -> useSpeechService()
+                else -> modelMissing()
+            }
         }
     }
 
@@ -270,6 +279,43 @@ object VoiceAssistant {
         }
         EventLog.log("Voice: not understood after ${SystemClock.elapsedRealtime() - startedAt} ms")
         show(VoiceState.Done(heard, message, understood = false), speak = true)
+    }
+
+    /**
+     * The on-device recognizer lacks the voice language, while the phone's speech service (Speech Services by
+     * Google, also asked to stay offline) often has it: the same request, same microphone, goes there instead.
+     * The on-device model is still asked for, for next time.
+     */
+    private fun useSpeechService() {
+        val intent = request ?: return modelMissing()
+        usingSpeechService = true
+        recognizer?.let {
+            if (Build.VERSION.SDK_INT >= 33) runCatching { it.triggerModelDownload(intent) }
+            it.setRecognitionListener(null)
+            runCatching { it.cancel() }
+            it.destroy()
+        }
+        EventLog.log("Voice: no on-device model for ${AppLocales.voice(appContext).toLanguageTag()}, using the phone's speech service")
+        val rec = SpeechRecognizer.createSpeechRecognizer(appContext)
+        recognizer = rec
+        rec.setRecognitionListener(listener)
+        rec.startListening(intent)
+    }
+
+    /** The voice language has no on-device model (e.g. the language was changed): it is fetched for next time. */
+    private fun modelMissing() {
+        if (_state.value !is VoiceState.Listening) return
+        val rec = recognizer
+        val intent = request
+        if (Build.VERSION.SDK_INT >= 33 && rec != null && intent != null) {
+            runCatching { rec.triggerModelDownload(intent) }
+                .onSuccess { EventLog.log("Voice: no on-device model for ${AppLocales.voice(appContext).toLanguageTag()}, download asked") }
+                .onFailure { EventLog.log("Voice: model download refused: $it") }
+        }
+        stopRecognition()
+        restoreMusic()
+        Speech.cancelTone()
+        show(VoiceState.Done("", voiceText(R.string.voice_model_missing), understood = false), speak = false)
     }
 
     private fun execute(command: VoiceCommand) {
@@ -406,6 +452,7 @@ object VoiceAssistant {
             it.destroy()
         }
         recognizer = null
+        request = null
         CarMicrophone.stop()
         feed?.offer(ByteArray(0))
         feed = null

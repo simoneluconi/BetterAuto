@@ -153,7 +153,10 @@ appears both in the car's settings screen and in the phone app.
 - Video START goes out only once the car has given the screen (VIDEO_FOCUS PROJECTED), as Android Auto
   does: sent earlier, an Audi MMI (Harman MHI2) put up "observe the warnings on your phone" over the
   picture a few seconds in, depending on timing. A VIDEO_FOCUS_REQUEST goes out only if the car gives
-  nothing within 1.5 s (Crankshaft waits for it).
+  nothing within 1.5 s (Crankshaft waits for it). When the car takes the screen back (its own voice
+  assistant, MEDIA key) the stream gets STOP, and a new START + SPS/PPS + keyframe when it returns: only
+  resuming the frames brought the same warning. The car microphone opens only inside a
+  VOICE_SESSION_NOTIFICATION START/END.
 - Channels the cars offer that are not implemented yet: system audio, navigation status,
   notifications, media browser, radio. The guidance (navigation prompts) stream is tried on the bench
   only; in the car it still has to be heard.
