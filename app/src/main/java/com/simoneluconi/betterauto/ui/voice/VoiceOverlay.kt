@@ -97,6 +97,7 @@ fun VoiceOverlay(modifier: Modifier = Modifier) {
                 is VoiceState.Choosing -> Choosing(current)
                 is VoiceState.Calling -> Calling(current)
                 is VoiceState.Done -> Done(current)
+                is VoiceState.Searching -> Searching(current)
                 VoiceState.Idle -> Unit
             }
         }
@@ -110,7 +111,7 @@ private class Last { var value: VoiceState? = null }
 @Composable
 fun VoiceScrim(modifier: Modifier = Modifier) {
     val state by VoiceAssistant.state.collectAsStateWithLifecycle()
-    val waiting = state is VoiceState.Listening || state is VoiceState.Choosing || state is VoiceState.Calling
+    val waiting = state is VoiceState.Listening || state is VoiceState.Choosing || state is VoiceState.Calling || state is VoiceState.Searching
     AnimatedVisibility(visible = waiting, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
         Box(
             Modifier
@@ -231,6 +232,24 @@ private fun Calling(state: VoiceState.Calling) {
             Box(Modifier.fillMaxWidth().height(6.dp).background(colors.surface2, RoundedCornerShape(3.dp))) {
                 Box(Modifier.fillMaxWidth(progress.value).height(6.dp).background(Color(0xFF2E9E5B), RoundedCornerShape(3.dp)))
             }
+        }
+        CancelButton(cancel)
+    }
+}
+
+/** Looking for the place that was said: what was heard, the search under way, and Cancel under the knob. */
+@Composable
+private fun Searching(state: VoiceState.Searching) {
+    val colors = LocalCarColors.current
+    val cancel = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        Box(Modifier.size(64.dp).background(colors.surface2, CircleShape), contentAlignment = Alignment.Center) {
+            CarIcon(CarIcons.Search, colors.text, Modifier.size(30.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (state.heard.isNotBlank()) CarLabel("“${state.heard}”", 19.sp, colors.text2, maxLines = 1)
+            CarLabel(state.message, 28.sp, colors.text, weight = FontWeight.ExtraBold, maxLines = 2, lineHeight = 34.sp)
         }
         CancelButton(cancel)
     }

@@ -10,7 +10,20 @@ import kotlinx.coroutines.flow.StateFlow
 
 enum class ThemeMode { AUTO, DAY, NIGHT }
 
+/** LEFT: beside the screen, on the driver's side (the name stays from before right-hand drive was handled). */
 enum class BarPosition { AUTO, LEFT, BOTTOM }
+
+/** Which side the driver sits: Auto follows the car (left when it says nothing). */
+enum class DriverSide {
+    AUTO, LEFT, RIGHT;
+
+    /** True when the bar and the big home widget go on the right. */
+    fun onRight(carSays: Boolean?): Boolean = when (this) {
+        AUTO -> carSays == true
+        LEFT -> false
+        RIGHT -> true
+    }
+}
 
 enum class HomeLayout(val slots: Int) { SINGLE(1), SPLIT(2), TRIO(3) }
 
@@ -35,6 +48,9 @@ enum class MapOrientation { HEADING, NORTH }
 /** How close the map starts and comes back to (MapLibre zoom levels); the knob still zooms from there. */
 enum class MapZoom(val level: Double) { CLOSE(19.0), MEDIUM(17.0), FAR(16.0) }
 
+/** What the navigation says: every instruction, only the arrivals (stops, destination), or nothing. */
+enum class GuidanceVoice { FULL, ALERTS, MUTE }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -46,8 +62,22 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _barPosition = MutableStateFlow(enumOf(KEY_BAR, BarPosition.AUTO))
     val barPosition: StateFlow<BarPosition> = _barPosition
 
+    private val _driverSide = MutableStateFlow(enumOf(KEY_DRIVER_SIDE, DriverSide.AUTO))
+    val driverSide: StateFlow<DriverSide> = _driverSide
+
     private val _layout = MutableStateFlow(enumOf(KEY_LAYOUT, HomeLayout.TRIO))
     val layout: StateFlow<HomeLayout> = _layout
+
+    /**
+     * How much of the home the big widget takes beside the others (two or three widgets), as a share of the
+     * width (height in portrait): set by dragging the line between them, in the car (touchscreens) or on the phone.
+     */
+    private val _homeSplit = MutableStateFlow(prefs.getFloat(KEY_HOME_SPLIT, DEFAULT_HOME_SPLIT).coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT))
+    val homeSplit: StateFlow<Float> = _homeSplit
+
+    /** With three widgets, the first small one's share of the two; null until dragged (the layout's own then). */
+    private val _homeSplitSide = MutableStateFlow(prefs.getFloat(KEY_HOME_SPLIT_SIDE, -1f).takeIf { it > 0f }?.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT))
+    val homeSplitSide: StateFlow<Float?> = _homeSplitSide
 
     private val _section = MutableStateFlow(enumOf(KEY_SECTION, Section.HOME))
     val section: StateFlow<Section> = _section
@@ -55,6 +85,10 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _widgets = MutableStateFlow(loadWidgets())
     /** The home slots, always [HomeSlots.COUNT]: the layout shows the first one, two or three. */
     val widgets: StateFlow<List<WidgetChoice>> = _widgets
+
+    private val _stacks = MutableStateFlow(HomeSlots.decodeStacks(prefs.getString(KEY_STACKS, null)))
+    /** The widgets each slot also holds, a swipe away from its main one ([widgets]); see [HomeSlots.pages]. */
+    val stacks: StateFlow<List<List<WidgetChoice>>> = _stacks
 
     private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, false))
     /** Music section: player plus library panel (true) or full-screen player (false, the default); the screen remembers how it was left. */
@@ -92,6 +126,10 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     /** The speed limit of the road, on the map. */
     private val _showSpeedLimit = boolFlow(KEY_SHOW_SPEED_LIMIT, true)
     val showSpeedLimit: StateFlow<Boolean> = _showSpeedLimit
+
+    /** The navigation's voice, kept as the driver last left it (on the map or here). */
+    private val _guidanceVoice = MutableStateFlow(enumOf(KEY_GUIDANCE_VOICE, GuidanceVoice.FULL))
+    val guidanceVoice: StateFlow<GuidanceVoice> = _guidanceVoice
 
 
     private val _showEngineLight = boolFlow(KEY_SHOW_ENGINE, true)
@@ -213,6 +251,20 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setLayout(value: HomeLayout) = saveEnum(KEY_LAYOUT, value, _layout)
 
+    fun setDriverSide(value: DriverSide) = saveEnum(KEY_DRIVER_SIDE, value, _driverSide)
+
+    fun setHomeSplitSide(value: Float?) {
+        val side = value?.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT)
+        _homeSplitSide.value = side
+        prefs.edit { if (side == null) remove(KEY_HOME_SPLIT_SIDE) else putFloat(KEY_HOME_SPLIT_SIDE, side) }
+    }
+
+    fun setHomeSplit(value: Float) {
+        val split = value.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT)
+        _homeSplit.value = split
+        prefs.edit { putFloat(KEY_HOME_SPLIT, split) }
+    }
+
     /** The section shown before the current one (not saved): where the notifications screen goes back to. */
     private var previousSection = Section.HOME
 
@@ -251,6 +303,15 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setWidget(index: Int, choice: WidgetChoice) = saveWidgets(HomeSlots.pick(widgets.value, index, choice))
 
     fun setWidgets(value: List<WidgetChoice>) = saveWidgets(HomeSlots.decode(HomeSlots.encode(value)))
+
+    /** Slot [index] shows [pages] in this order: the first as its main widget, the others a swipe away. */
+    fun setStack(index: Int, pages: List<WidgetChoice>) {
+        if (pages.isEmpty() || index !in 0 until HomeSlots.COUNT) return
+        saveWidgets(HomeSlots.pick(widgets.value, index, pages.first()))
+        val stacks = HomeSlots.withStack(_stacks.value, index, pages.drop(1))
+        _stacks.value = stacks
+        prefs.edit { putString(KEY_STACKS, HomeSlots.encodeStacks(stacks)) }
+    }
 
     private fun saveWidgets(value: List<WidgetChoice>) {
         _widgets.value = value
@@ -296,6 +357,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setMapAutoZoom(value: Boolean) = saveBool(KEY_MAP_AUTO_ZOOM, value, _mapAutoZoom)
 
     fun setShowSpeedLimit(value: Boolean) = saveBool(KEY_SHOW_SPEED_LIMIT, value, _showSpeedLimit)
+
+    fun setGuidanceVoice(value: GuidanceVoice) = saveEnum(KEY_GUIDANCE_VOICE, value, _guidanceVoice)
 
     fun setShowEngineLight(value: Boolean) = saveBool(KEY_SHOW_ENGINE, value, _showEngineLight)
 
@@ -401,6 +464,14 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_THEME = "theme_mode"
         private const val KEY_BAR = "bar_position"
         private const val KEY_LAYOUT = "home_layout"
+        private const val KEY_HOME_SPLIT = "home_split"
+        private const val KEY_HOME_SPLIT_SIDE = "home_split_side"
+        private const val KEY_DRIVER_SIDE = "driver_side"
+        private const val KEY_STACKS = "home_stacks"
+        const val DEFAULT_HOME_SPLIT = 0.6f
+        const val MIN_HOME_SPLIT = 0.3f
+        // Beyond this the other widgets get too narrow to show anything useful
+        const val MAX_HOME_SPLIT = 0.7f
         private const val KEY_SECTION = "section"
         private const val KEY_START_HOME = "start_on_home"
         /** Not the earlier "widgets" (every widget in a rotating order): the slots started over from the new default. */
@@ -426,6 +497,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MAP_ZOOM = "map_zoom"
         private const val KEY_MAP_AUTO_ZOOM = "map_auto_zoom"
         private const val KEY_SHOW_SPEED_LIMIT = "show_speed_limit"
+        private const val KEY_GUIDANCE_VOICE = "guidance_voice"
         private const val KEY_UNITS = "unit_system"
         private const val KEY_TEMPERATURE = "temperature_unit"
         private const val KEY_VOICE_LANGUAGE = "voice_language"

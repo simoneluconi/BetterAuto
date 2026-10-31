@@ -311,10 +311,17 @@ internal fun ListRow(
 @Composable
 internal fun PanelMessage(text: String) {
     val colors = LocalCarColors.current
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        CarLabel(text, 22.sp, colors.text2, maxLines = 3, textAlign = TextAlign.Center)
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // A short card (a small home widget) has no room for margins above and below: the words come first
+        val short = maxHeight < SHORT_MESSAGE_HEIGHT
+        CarLabel(
+            text, if (short) 18.sp else 22.sp, colors.text2, maxLines = if (short) 2 else 3, textAlign = TextAlign.Center, shrinkToFit = short,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = if (short) 0.dp else 24.dp),
+        )
     }
 }
+
+private val SHORT_MESSAGE_HEIGHT = 120.dp
 
 /** Folders shorter than this are quick enough to scroll with the knob. */
 private const val AZ_MIN_ITEMS = 20

@@ -19,6 +19,12 @@ sealed interface VoiceCommand {
     data class Quiet(val on: Boolean) : VoiceCommand
     data object ReadNotifications : VoiceCommand
     data object Cancel : VoiceCommand
+    /** Drive to [place]: an address, a town, a shop or a restaurant ("roadhouse"), "casa". */
+    data class Navigate(val place: String) : VoiceCommand
+    /** A stop on the way to the destination ("fermati al benzinaio"). */
+    data class AddStop(val place: String) : VoiceCommand
+    data object SkipStop : VoiceCommand
+    data object EndNavigation : VoiceCommand
 }
 
 /**
@@ -56,14 +62,34 @@ class CommandParser(private val contacts: List<String>) {
         if (t in ReadWords) return VoiceCommand.ReadNotifications
         if (t in QuietOn) return VoiceCommand.Quiet(true)
         if (t in QuietOff) return VoiceCommand.Quiet(false)
+        if (t in SkipStopWords) return VoiceCommand.SkipStop
+        if (t in EndNavigationWords) return VoiceCommand.EndNavigation
         startAfter(t, OpenWords)?.let { rest -> sectionOf(rest)?.let { return VoiceCommand.Open(it) } }
         sectionOf(t)?.let { return VoiceCommand.Open(it) }
+        // "vai a" a section was handled above: anything else after it is a place to drive to
+        place(t, AddStopRegex)?.let { return sectionOf(it)?.let { s -> VoiceCommand.Open(s) } ?: VoiceCommand.AddStop(it) }
+        place(t, NavigateRegex)?.let { return VoiceCommand.Navigate(it) }
         startAfter(t, PlayWords)?.takeIf { it.isNotBlank() }?.let { query ->
             // "metti la musica" / "play music" just resumes
             if (query in GenericMusic) return VoiceCommand.Resume
             return VoiceCommand.Play(query.removePrefix("la ").removePrefix("il ").removePrefix("i "))
         }
         return null
+    }
+
+    /**
+     * "Portami al roadhouse", "naviga verso piazza del campo", "voglio andare all'ospedale", "take me to the
+     * station", "fermati al benzinaio": the place after the words that ask to drive (or stop) and the preposition
+     * that follows them.
+     */
+    private fun place(t: String, regex: Regex): String? {
+        val m = regex.matchEntire(t) ?: return null
+        var place = m.groupValues[2].trim()
+        // "the" / "il" left before the place in English or after a bare verb
+        place = place.split(' ').dropWhile { it in Articles }.joinToString(" ")
+        // "vai avanti", "go back": a direction, not a place; "vai alla prossima canzone": the music, not a place
+        if (place in NotPlaces || place.split(' ').any { it in MusicWords }) return null
+        return place.takeIf { it.isNotBlank() }
     }
 
     private fun call(rest: String): VoiceCommand? {
@@ -151,22 +177,90 @@ class CommandParser(private val contacts: List<String>) {
 
         private val CallWords = listOf("chiama", "telefona a", "telefona", "fai una chiamata a", "call", "phone", "dial")
         private val PlayWords = listOf("metti", "riproduci", "ascolta", "fammi sentire", "play", "put on", "listen to")
-        private val OpenWords = listOf("apri", "vai a", "vai su", "vai alla", "vai al", "mostra", "open", "go to", "show")
+        private val OpenWords = listOf("apri", "vai a", "vai su", "vai alla", "vai al", "passa a", "passa alla", "passa al", "mostra", "open", "go to", "show")
         private val Fillers = setOf("sul", "al", "a", "il", "su", "on", "the", "at", "di")
         private val NumberTypes = listOf(
             listOf("cellulare", "cell", "mobile", "telefonino") to "mobile",
             listOf("casa", "home", "fisso") to "home",
             listOf("lavoro", "ufficio", "work", "office") to "work",
         )
-        private val PauseWords = setOf("pausa", "metti in pausa", "metti in pausa la musica", "ferma", "ferma la musica", "stop", "pause", "stop the music")
+        private val PauseWords = setOf(
+            "pausa", "metti in pausa", "metti in pausa la musica", "ferma", "ferma la musica", "stoppa", "stoppa la musica",
+            "stop", "pause", "stop the music", "stop music", "pause the music", "pause music",
+        )
         private val ResumeWords = setOf("riprendi", "continua", "play", "riproduci", "resume", "metti la musica", "fai partire la musica")
-        private val NextWords = setOf("avanti", "prossima", "prossimo", "prossima canzone", "brano successivo", "salta", "next", "skip", "next song")
-        private val PreviousWords = setOf("indietro", "precedente", "canzone precedente", "brano precedente", "previous", "back", "previous song")
+        private val NextWords = setOf(
+            "avanti", "prossima", "prossimo", "prossima canzone", "prossimo brano", "brano successivo", "canzone successiva",
+            "salta", "passa alla prossima", "passa alla prossima canzone", "passa al prossimo brano", "passa al brano successivo",
+            "passa alla canzone successiva", "vai alla prossima", "vai al prossimo", "vai alla prossima canzone", "vai al prossimo brano",
+            "vai al brano successivo", "vai alla canzone successiva", "next", "skip", "next song", "next track", "skip this song",
+        )
+        private val PreviousWords = setOf(
+            "indietro", "precedente", "canzone precedente", "brano precedente", "torna indietro", "passa alla precedente",
+            "passa alla canzone precedente", "passa al brano precedente", "vai alla precedente", "vai alla canzone precedente",
+            "vai al brano precedente", "torna alla canzone precedente", "previous", "back", "previous song", "previous track",
+        )
         private val ReadWords = setOf("leggi i messaggi", "leggi messaggi", "leggi le notifiche", "leggi notifiche", "read messages", "read my messages", "read notifications")
         private val QuietOn = setOf("modalita silenziosa", "silenzia le notifiche", "silenzia notifiche", "non disturbare", "quiet mode", "do not disturb")
         private val QuietOff = setOf("disattiva modalita silenziosa", "disattiva il silenzioso", "riattiva le notifiche", "quiet mode off")
         private val Cancel = setOf("annulla", "niente", "lascia stare", "lascia perdere", "cancel", "nothing", "never mind")
         private val GenericMusic = setOf("musica", "la musica", "music", "some music")
+
+        /** The ways to ask to be driven somewhere (normalized: no accents, apostrophes as spaces). */
+        private val NavigateVerbs = listOf(
+            "portami", "accompagnami", "guidami", "conducimi", "naviga", "navigare", "avvia la navigazione", "avvia navigazione",
+            "andiamo", "vai", "voglio andare", "devo andare", "dobbiamo andare", "vorrei andare", "fammi andare",
+            "indicazioni stradali", "indicazioni", "percorso", "strada", "come arrivo", "come si arriva", "come ci arrivo",
+            "imposta la destinazione", "imposta destinazione", "destinazione", "navigazione",
+            "take me", "navigate", "drive me", "drive", "directions", "go", "get me", "route me", "route", "lets go", "let s go",
+            "set destination", "set the destination", "how do i get",
+        )
+
+        /** What may come between the verb and the place ("al", "all'", "fino alla", "verso", "to"...). */
+        private val NavigatePrepositions = listOf(
+            "fino a", "fino al", "fino alla", "fino all", "fino allo", "verso il", "verso la", "verso",
+            "a", "ad", "al", "allo", "alla", "all", "ai", "agli", "alle", "in", "nel", "nello", "nella", "nell",
+            "da", "dal", "dallo", "dalla", "dall", "dai", "dagli", "dalle", "per", "su", "sul", "sulla", "presso",
+            "to the", "to", "towards", "for", "at",
+        )
+
+        /** The ways to ask for a stop on the way. */
+        private val AddStopVerbs = listOf(
+            "fermati", "fermiamoci", "facciamo tappa", "fai tappa", "fai una tappa", "facciamo una tappa", "fai una sosta",
+            "facciamo una sosta", "aggiungi una tappa", "aggiungi tappa", "aggiungi una sosta", "aggiungi sosta",
+            "tappa", "sosta",
+            // Not "via": in Italian it is the street ("via Roma")
+            "stop", "stop by", "add a stop", "add stop", "make a stop",
+        ) + listOf("passa", "passiamo").flatMap { verb ->
+            // "Passa" alone is also "passa al prossimo brano": a stop only with "da" or "per"
+            listOf("da", "dal", "dallo", "dalla", "dall", "dai", "dagli", "dalle", "per").map { "$verb $it" }
+        }
+
+        /** Words of the music: what they name is a song or a command, never a place to drive to. */
+        private val MusicWords = setOf(
+            "brano", "brani", "canzone", "canzoni", "traccia", "tracce", "prossima", "prossimo", "precedente",
+            "successiva", "successivo", "musica", "radio", "volume", "playlist", "podcast", "album",
+            "song", "songs", "track", "tracks", "music", "next", "previous",
+        )
+
+        private val NavigateRegex = verbsThenPlace(NavigateVerbs)
+        private val AddStopRegex = verbsThenPlace(AddStopVerbs)
+
+        private fun verbsThenPlace(verbs: List<String>) = Regex(
+            "^(" + verbs.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } + ")" +
+                "(?: (?:" + NavigatePrepositions.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } + "))? (.+)$",
+        )
+        private val SkipStopWords = setOf(
+            "salta la tappa", "salta tappa", "salta la prossima tappa", "salta questa tappa", "salta la sosta",
+            "skip the stop", "skip stop", "skip the next stop", "skip this stop",
+        )
+        private val EndNavigationWords = setOf(
+            "termina la navigazione", "termina navigazione", "ferma la navigazione", "interrompi la navigazione", "annulla la navigazione",
+            "chiudi la navigazione", "stop navigation", "stop the navigation", "end navigation", "end the navigation", "cancel navigation",
+            "cancel the navigation",
+        )
+        private val Articles = setOf("il", "lo", "la", "i", "gli", "le", "the")
+        private val NotPlaces = setOf("avanti", "indietro", "back", "forward", "on", "ahead", "home screen")
         private val Sections = mapOf(
             setOf("home", "la home", "schermata principale") to Section.HOME,
             setOf("musica", "la musica", "music") to Section.MUSIC,

@@ -11,6 +11,27 @@ class HomeSlotsTest {
     private val weather = WidgetChoice(WidgetType.WEATHER)
 
     @Test
+    fun aPlaceShowsItsMainWidgetThenItsOthers() {
+        val mains = listOf(music, clock, notifications)
+        val map = WidgetChoice(WidgetType.MAP)
+        val stacks = listOf(listOf(map, clock, weather), emptyList(), emptyList())
+        // The clock is the second place's own: not shown twice
+        assertEquals(listOf(music, map, weather), HomeSlots.pages(mains, stacks, 0, visible = 2))
+        // With one place shown, nothing else is
+        assertEquals(listOf(music, map, clock, weather), HomeSlots.pages(mains, stacks, 0, visible = 1))
+        assertEquals(listOf(clock), HomeSlots.pages(mains, stacks, 1, visible = 2))
+    }
+
+    @Test
+    fun aWidgetMovesBetweenPlacesAndTheListsSurviveTheirFormat() {
+        val stacks = listOf(listOf(weather), listOf(favorites), emptyList())
+        val moved = HomeSlots.withStack(stacks, 1, listOf(weather, favorites))
+        assertEquals(listOf(emptyList(), listOf(weather, favorites), emptyList<WidgetChoice>()), moved)
+        assertEquals(moved, HomeSlots.decodeStacks(HomeSlots.encodeStacks(moved)))
+        assertEquals(List(HomeSlots.COUNT) { emptyList<WidgetChoice>() }, HomeSlots.decodeStacks(null))
+    }
+
+    @Test
     fun nothingSavedGivesTheDefault() {
         assertEquals(listOf(music, clock, notifications), HomeSlots.decode(null))
     }

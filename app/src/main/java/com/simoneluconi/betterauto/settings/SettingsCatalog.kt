@@ -310,10 +310,19 @@ object SettingsCatalog {
             "app_bar", display, R.string.settings_app_bar, R.string.settings_app_bar_desc,
             listOf(
                 SettingOption(BarPosition.AUTO, R.string.option_auto),
-                SettingOption(BarPosition.LEFT, R.string.option_left),
+                SettingOption(BarPosition.LEFT, R.string.option_bar_side),
                 SettingOption(BarPosition.BOTTOM, R.string.option_bottom),
             ),
             { it.barPosition }, LauncherSettings::setBarPosition,
+        ),
+        ChoiceSetting(
+            "driver_side", display, R.string.settings_driver_side, R.string.settings_driver_side_desc,
+            listOf(
+                SettingOption(DriverSide.AUTO, R.string.option_auto),
+                SettingOption(DriverSide.LEFT, R.string.option_left),
+                SettingOption(DriverSide.RIGHT, R.string.option_right),
+            ),
+            { it.driverSide }, LauncherSettings::setDriverSide, more = true,
         ),
         RailLayoutSetting("rail_layout", display, R.string.settings_rail_layout, R.string.settings_rail_layout_desc, R.string.settings_shown_summary),
         ChoiceSetting(
@@ -423,6 +432,15 @@ object SettingsCatalog {
         ChoiceSetting(
             "speed_limit", SettingsCategory.MAP, R.string.settings_speed_limit, R.string.settings_speed_limit_desc, shownHidden,
             { it.showSpeedLimit }, LauncherSettings::setShowSpeedLimit,
+        ),
+        ChoiceSetting(
+            "guidance_voice", SettingsCategory.MAP, R.string.settings_guidance_voice, R.string.settings_guidance_voice_desc,
+            listOf(
+                SettingOption(GuidanceVoice.FULL, R.string.option_guidance_full),
+                SettingOption(GuidanceVoice.ALERTS, R.string.option_guidance_alerts),
+                SettingOption(GuidanceVoice.MUTE, R.string.option_guidance_mute),
+            ),
+            { it.guidanceVoice }, LauncherSettings::setGuidanceVoice,
         ),
 
         // Vehicle and units

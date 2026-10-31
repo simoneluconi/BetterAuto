@@ -12,6 +12,7 @@ import aap_protobuf.service.control.message.HeadUnitInfoOuterClass.HeadUnitInfo
 import aap_protobuf.service.control.message.PingRequestOuterClass.PingRequest
 import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
+import aap_protobuf.service.control.message.DriverPositionOuterClass.DriverPosition
 import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.ServiceDiscoveryResponse
 import aap_protobuf.service.control.message.VoiceSessionNotificationOuterClass.VoiceSessionNotification
 import aap_protobuf.service.control.message.VoiceSessionStatusOuterClass.VoiceSessionStatus
@@ -171,6 +172,14 @@ class AapSession(
         val services = response.channelsList
         val hu = headUnitInfo(response)
         EventLog.log("Head unit: ${hu.headUnitMake} ${hu.headUnitModel} (sw ${hu.headUnitSoftwareVersion}), car: ${hu.make} ${hu.model}")
+        // Right-hand drive puts the bar and the big home widget on the right
+        CarState.driverOnRight.value = when {
+            !response.hasDriverPosition() -> null
+            response.driverPosition == DriverPosition.DRIVER_POSITION_RIGHT -> true
+            response.driverPosition == DriverPosition.DRIVER_POSITION_LEFT -> false
+            else -> null
+        }
+        EventLog.log("Head unit: driver position ${if (response.hasDriverPosition()) response.driverPosition.name else "not given"}")
         established = true
         onEstablished()
         val sensors = services.firstOrNull { it.hasSensorSourceService() }?.sensorSourceService
@@ -228,6 +237,8 @@ class AapSession(
         service.hasInputSourceService() -> {
             val touchscreen = service.inputSourceService.touchscreenList.firstOrNull()
             EventLog.log("    touchscreen: ${touchscreen?.width}x${touchscreen?.height}")
+            // Units without one report none, or one with no size ("nullxnull" on Harman MMX2)
+            CarState.touchscreen.value = touchscreen != null && touchscreen.width > 0 && touchscreen.height > 0
             val keys = service.inputSourceService.keycodesSupportedList
             EventLog.log("    keys: ${keys.joinToString()}")
             InputChannel(this, service.id, touchscreen?.width ?: 0, touchscreen?.height ?: 0, keys, projection)
@@ -246,6 +257,7 @@ class AapSession(
         service.hasVendorExtensionService() -> VendorExtensionChannel(this, service.id, service.vendorExtensionService.name)
         service.hasBluetoothService() -> BluetoothChannel(this, service.id, service.bluetoothService, projection.context)
         service.hasPhoneStatusService() -> PhoneStatusChannel(this, service.id, projection.context)
+        service.hasNavigationStatusService() -> NavigationStatusChannel(this, service.id, service.navigationStatusService, projection.context)
         else -> null
     }
 

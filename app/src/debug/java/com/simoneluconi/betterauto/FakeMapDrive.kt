@@ -7,6 +7,8 @@ import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.car.VehicleField
 import com.simoneluconi.betterauto.car.VehicleSource
 import com.simoneluconi.betterauto.map.MapLocation
+import com.simoneluconi.betterauto.map.nav.NavRoute
+import com.simoneluconi.betterauto.map.nav.Navigation
 import com.simoneluconi.betterauto.map.roads.RoadInfo
 import com.simoneluconi.betterauto.map.roads.RoadMatcher
 import com.simoneluconi.betterauto.map.roads.RoadSegment
@@ -113,6 +115,61 @@ object FakeMapDrive {
                     }
                 }
                 publish(lat, lon, heading, speed)
+                delay(1_000L)
+            }
+        }
+    }
+
+    /**
+     * Along the route being navigated, at [kmh] (50 by default), from the point of it nearest to the car; after a
+     * new route (the car left the old one), along the new one. Stops at the end.
+     */
+    fun alongRoute(kmh: Double?) {
+        stop(clear = false)
+        TripRecorder.paused = true
+        job = scope.launch {
+            val speed = kmh ?: 50.0
+            var route: NavRoute? = null
+            var index = 0
+            var lat = 0.0
+            var lon = 0.0
+            var heading = 0.0
+            EventLog.log("Debug: pretend car driving along the route at $speed km/h")
+            while (isActive) {
+                val current = Navigation.state.value?.route
+                if (current == null) {
+                    if (route != null) break
+                    delay(500L)
+                    continue
+                }
+                if (current !== route) {
+                    // A (new) route: start from its point nearest to where the car is
+                    index = if (route == null) 0 else (0 until current.size).minByOrNull { distance(lat, lon, current.lat(it), current.lon(it)) } ?: 0
+                    route = current
+                    lat = current.lat(index)
+                    lon = current.lon(index)
+                }
+                var metres = speed / 3.6
+                while (metres > 0.01 && index < route.size - 1) {
+                    val d = distance(lat, lon, route.lat(index + 1), route.lon(index + 1))
+                    heading = bearing(lat, lon, route.lat(index + 1), route.lon(index + 1))
+                    if (d <= metres) {
+                        index++
+                        lat = route.lat(index)
+                        lon = route.lon(index)
+                        metres -= d
+                    } else {
+                        val p = advance(lat, lon, heading, metres)
+                        lat = p.first
+                        lon = p.second
+                        metres = 0.0
+                    }
+                }
+                publish(lat, lon, heading, if (index >= route.size - 1) 0.0 else speed)
+                if (index >= route.size - 1) {
+                    EventLog.log("Debug: pretend car at the end of the route")
+                    break
+                }
                 delay(1_000L)
             }
         }

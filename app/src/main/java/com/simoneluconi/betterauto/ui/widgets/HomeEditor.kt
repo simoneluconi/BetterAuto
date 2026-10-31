@@ -47,6 +47,7 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.car.CarMotion
 import com.simoneluconi.betterauto.car.CarMotionState
+import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.HomeSlots
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -138,6 +139,10 @@ internal fun HomeEditor(settings: LauncherSettings, modifier: Modifier = Modifie
     val context = LocalContext.current
     val layout by settings.layout.collectAsStateWithLifecycle()
     val slots by settings.widgets.collectAsStateWithLifecycle()
+    val split by settings.homeSplit.collectAsStateWithLifecycle()
+    val savedSide by settings.homeSplitSide.collectAsStateWithLifecycle()
+    val driverSide by settings.driverSide.collectAsStateWithLifecycle()
+    val carDriverOnRight by CarState.driverOnRight.collectAsStateWithLifecycle()
     val picking by HomeEdit.picking.collectAsStateWithLifecycle()
     // Reads the installed apps (weather) and the smart-home groups: once per edit
     val offered = remember { HomeWidgets.choices(context) }
@@ -165,7 +170,7 @@ internal fun HomeEditor(settings: LauncherSettings, modifier: Modifier = Modifie
                 val slot = @Composable { index: Int, mod: Modifier ->
                     EditSlot(index, slots.getOrNull(index), mod.focusRequester(slotFocus[index]))
                 }
-                if (portrait) PortraitSlots(layout, slot) else LandscapeSlots(layout, slot)
+                HomePlaces(layout, split, sideShare(savedSide, portrait), portrait, Gap, driverSide.onRight(carDriverOnRight), slot)
             }
         }
         picking?.let { index ->
@@ -235,42 +240,6 @@ private fun EditSlot(index: Int, choice: WidgetChoice?, modifier: Modifier) {
         CarLabel(label, 24.sp, colors.text, weight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center, shrinkToFit = true)
         Box(Modifier.background(colors.surface2, RoundedCornerShape(50)).padding(horizontal = 24.dp, vertical = 10.dp)) {
             CarLabel(stringResource(R.string.home_edit_change), 19.sp, colors.text, weight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun PortraitSlots(layout: HomeLayout, slot: @Composable (Int, Modifier) -> Unit) {
-    when (layout) {
-        HomeLayout.SINGLE -> slot(0, Modifier.fillMaxSize())
-        HomeLayout.SPLIT -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Gap)) {
-            slot(0, Modifier.weight(3f).fillMaxWidth())
-            slot(1, Modifier.weight(2f).fillMaxWidth())
-        }
-        HomeLayout.TRIO -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Gap)) {
-            slot(0, Modifier.weight(3f).fillMaxWidth())
-            Row(Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
-                slot(1, Modifier.weight(1f).fillMaxHeight())
-                slot(2, Modifier.weight(1f).fillMaxHeight())
-            }
-        }
-    }
-}
-
-@Composable
-private fun LandscapeSlots(layout: HomeLayout, slot: @Composable (Int, Modifier) -> Unit) {
-    when (layout) {
-        HomeLayout.SINGLE -> slot(0, Modifier.fillMaxSize())
-        HomeLayout.SPLIT -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
-            slot(0, Modifier.weight(3f).fillMaxHeight())
-            slot(1, Modifier.weight(2f).fillMaxHeight())
-        }
-        HomeLayout.TRIO -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
-            slot(0, Modifier.weight(3f).fillMaxHeight())
-            Column(Modifier.weight(2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Gap)) {
-                slot(1, Modifier.weight(3f).fillMaxWidth())
-                slot(2, Modifier.weight(2f).fillMaxWidth())
-            }
         }
     }
 }

@@ -113,6 +113,25 @@ object CarIcons {
     val Stop = icon("M7 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z")
     /** Back to the car on the map: a crosshair. */
     val Recenter = icon(circle(12f, 12f, 7f), circle(12f, 12f, 2.5f), "M12 2v3M12 19v3M2 12h3M19 12h3")
+    // Maneuvers, as on a navigation display: the road coming from below, the arrow showing where it goes
+    val TurnStraight = icon("M12 21V4", "M6 10l6-6 6 6")
+    val TurnRight = icon("M7 21v-7a5 5 0 0 1 5-5h8", "M15 4l5 5-5 5")
+    val TurnLeft = icon("M17 21v-7a5 5 0 0 0-5-5H4", "M9 4L4 9l5 5")
+    val TurnSlightRight = icon("M9 21v-7l8-8", "M10 6h7v7")
+    val TurnSlightLeft = icon("M15 21v-7L7 6", "M14 6H7v7")
+    val TurnSharpRight = icon("M7 21V6a3 3 0 0 1 5-2l7 9", "M19 7v6h-6")
+    val TurnSharpLeft = icon("M17 21V6a3 3 0 0 0-5-2l-7 9", "M5 7v6h6")
+    val UTurn = icon("M8 21V9a5 5 0 0 1 10 0v6", "M14 12l4 4 4-4")
+    val Roundabout = icon(circle(12f, 9f, 4.5f), "M12 13.5V21", "M16.5 4.5L20 1", "M15 1h5v5")
+    val Arrive = icon("M6 21V4", "M6 4h11l-2.5 4 2.5 4H6")
+    val Search = icon(circle(10.5f, 10.5f, 6.5f), "M15.5 15.5L21 21")
+    /** The handle a row is dragged by. */
+    val DragHandle = icon("M5 9h14", "M5 15h14")
+    /** A row picked up with the knob: it moves up or down. */
+    val MoveVertical = icon("M12 4v16", "M8 8l4-4 4 4", "M8 16l4 4 4-4")
+    /** Voice guidance: only the alerts (the speaker with an exclamation mark), or muted (crossed out). */
+    val SpeakerAlert = icon("M11 5L6 9H3v6h3l5 4V5z", "M18 7v6", circle(18f, 17f, 0.6f))
+    val SpeakerMute = icon("M11 5L6 9H3v6h3l5 4V5z", "M16 9.5l5 5", "M21 9.5l-5 5")
     val Plus = icon("M12 5v14M5 12h14")
     val Minus = icon("M5 12h14")
 

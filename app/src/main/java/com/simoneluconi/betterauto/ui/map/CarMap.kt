@@ -34,9 +34,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.map.MapFix
 import com.simoneluconi.betterauto.map.MapLocation
 import com.simoneluconi.betterauto.map.MapStyle
+import com.simoneluconi.betterauto.map.distanceM
+import com.simoneluconi.betterauto.map.nav.NavRoute
+import com.simoneluconi.betterauto.map.nav.Navigation
 import com.simoneluconi.betterauto.map.roads.RoadInfo
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.sources.GeoJsonSource
 import com.simoneluconi.betterauto.settings.MapOrientation
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.theme.MapColors
@@ -50,6 +59,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.OnCameraTrackingChangedListener
+import org.maplibre.android.location.OnLocationCameraTransitionListener
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
@@ -94,8 +104,12 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         zoomChosen = true
         zoom = (zoom + steps).coerceIn(MIN_ZOOM, MAX_ZOOM)
         val component = map.locationComponent
-        if (following && component.isLocationComponentActivated) component.zoomWhileTracking(zoom, ZOOM_MS)
-        else map.animateCamera(CameraUpdateFactory.zoomTo(zoom), ZOOM_MS.toInt())
+        when {
+            // Ignored by MapLibre meanwhile: applied as the transition ends
+            transitioning() -> Unit
+            following && component.isLocationComponentActivated && component.cameraMode in Tracking -> component.zoomWhileTracking(zoom, ZOOM_MS)
+            else -> map.animateCamera(CameraUpdateFactory.zoomTo(zoom), ZOOM_MS.toInt())
+        }
     }
 
     /** Back to the car, at the default zoom (as far out as the speed asks). */
@@ -127,7 +141,7 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         if (zoomChosen || !following) return
         zoom = speedZoom()
         val component = map?.locationComponent ?: return
-        if (component.isLocationComponentActivated && component.cameraMode in Tracking) component.zoomWhileTracking(zoom, SPEED_ZOOM_MS)
+        if (!transitioning() && component.isLocationComponentActivated && component.cameraMode in Tracking) component.zoomWhileTracking(zoom, SPEED_ZOOM_MS)
     }
 
     private fun speedZoom() = (defaultZoom - speedBand).coerceIn(MIN_ZOOM, MAX_ZOOM)
@@ -139,23 +153,70 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
     /** The camera went to the car once: until then it waits far out for the first position. */
     internal var placed = false
 
+    /**
+     * When a camera mode change started ([SystemClock.uptimeMillis]), 0 with none: MapLibre ignores zoom, tilt and
+     * padding until it ends, so they wait for its end ([settle]).
+     */
+    private var transitionSince = 0L
+
+    private fun transitioning(): Boolean {
+        // Never stuck: a transition that never reported its end is over anyway
+        if (transitionSince != 0L && SystemClock.uptimeMillis() - transitionSince > TRANSITION_MAX_MS) transitionSince = 0L
+        return transitionSince != 0L
+    }
+
+    private val transitionEnd = object : OnLocationCameraTransitionListener {
+        override fun onLocationCameraTransitionFinished(cameraMode: Int) = settle()
+        override fun onLocationCameraTransitionCanceled(cameraMode: Int) = settle()
+    }
+
+    /** The mode change is over: what was asked meanwhile (a knob zoom, the size, the speed, the orientation) now. */
+    private fun settle() {
+        transitionSince = 0L
+        map?.let { camera(it, animate = true) }
+    }
+
     /** Follows the car: turning with it and looking ahead, or north up with the car in the middle. */
     internal fun camera(map: MapLibreMap, animate: Boolean) {
         val component = map.locationComponent
         if (!component.isLocationComponentActivated || !following || MapLocation.fix.value == null) return
         placed = true
+        if (transitioning()) return
         val heading = orientation == MapOrientation.HEADING
         val duration = if (animate) CAMERA_MS else 0L
         val pitch = if (heading) tilt else 0.0
+        val mode = if (heading) CameraMode.TRACKING_GPS else CameraMode.TRACKING_GPS_NORTH
         // Looking ahead: the car sits low on the screen, the road in front gets the room
         component.paddingWhileTracking(doubleArrayOf(0.0, if (heading) heightPx * AHEAD_SHARE else 0.0, 0.0, 0.0), duration)
-        val wasTracking = component.cameraMode in Tracking
-        component.setCameraMode(if (heading) CameraMode.TRACKING_GPS else CameraMode.TRACKING_GPS_NORTH, duration, zoom, null, pitch, null)
-        // The zoom and tilt above count only when following starts: already following, they are set apart
-        if (wasTracking) {
+        if (component.cameraMode == mode) {
+            // Already following this way: a new mode would start a transition that swallows the zoom and tilt
             component.zoomWhileTracking(zoom, duration)
             component.tiltWhileTracking(pitch, duration)
+            return
         }
+        transitionSince = SystemClock.uptimeMillis()
+        component.setCameraMode(mode, duration, zoom, null, pitch, transitionEnd)
+    }
+
+    /**
+     * Following, but the camera is not with the car: tracking lost on the way, or a camera that says it tracks while
+     * it stays put (a big jump of the position, e.g. the phone's GPS to the car's, can leave MapLibre in a
+     * transition that never ends). Judged by what is on screen: far from the car, the camera goes there at once.
+     */
+    internal fun keepTracking(map: MapLibreMap, fix: MapFix) {
+        val component = map.locationComponent
+        if (!following || !component.isLocationComponentActivated) return
+        val target = map.cameraPosition.target
+        val away = target?.let { distanceM(it.latitude, it.longitude, fix.latitude, fix.longitude) } ?: 0.0
+        if (away > LOST_CAMERA_M) {
+            EventLog.log("Map: the camera was ${away.roundToInt()} m from the car, back to it")
+            transitionSince = 0L
+            component.cameraMode = CameraMode.NONE
+            map.moveCamera(CameraUpdateFactory.newLatLng(LatLng(fix.latitude, fix.longitude)))
+            camera(map, animate = false)
+            return
+        }
+        if (component.cameraMode !in Tracking && !transitioning()) camera(map, animate = true)
     }
 
     companion object {
@@ -163,6 +224,10 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         const val MAX_ZOOM = 20.0
         private const val ZOOM_MS = 250L
         private const val CAMERA_MS = 750L
+        private const val TRANSITION_MAX_MS = CAMERA_MS + 1_500L
+
+        /** Farther than this from the car while following, the camera is lost (looking ahead keeps it much closer). */
+        private const val LOST_CAMERA_M = 500.0
         private const val AHEAD_SHARE = 0.35
         /** A zoom change for speed is slow, the eye barely notices it. */
         private const val SPEED_ZOOM_MS = 2_500L
@@ -267,7 +332,7 @@ fun CarMap(
         MapLocation.fix.filterNotNull().collect {
             map.locationComponent.forceLocationUpdate(it.toLocation())
             // The map opened before any position, far out: the first one brings it down to the car
-            if (!state.placed) state.camera(map, animate = true)
+            if (!state.placed) state.camera(map, animate = true) else state.keepTracking(map, it)
         }
     }
 
@@ -275,8 +340,20 @@ fun CarMap(
         style?.let { MapStyle.apply(context, it, palette.map) }
     }
 
+    // The route being followed, under the street names and the car
+    LaunchedEffect(style) {
+        val loaded = style ?: return@LaunchedEffect
+        Navigation.state.map { it?.route }.distinctUntilChanged().collect { showRoute(loaded, it) }
+    }
+
+    // The route in the focus colour; the car's arrow on it keeps a wide edge to stand apart
     LaunchedEffect(style, palette.focus, palette.map.halo) {
-        style?.addImage(PUCK, puckBitmap(context, arrow.value, palette.focus, palette.map.halo))
+        style?.let { colorRoute(it, palette.focus, palette.map.halo) }
+    }
+
+    // The car in the labels' grey (slate by day, light at night): it stands out on the blue route
+    LaunchedEffect(style, palette.text2, palette.map.halo) {
+        style?.addImage(PUCK, puckBitmap(context, arrow.value, palette.text2, palette.map.halo))
     }
 
     LaunchedEffect(style, orientation) {
@@ -374,6 +451,51 @@ private fun setUp(
     }
 }
 
+/** Draws [route] (or nothing), adding its source and lines the first time: below the road names, so they stay readable. */
+private fun showRoute(style: Style, route: NavRoute?) {
+    val source = style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE) ?: GeoJsonSource(ROUTE_SOURCE).also { s ->
+        style.addSource(s)
+        val width = { near: Float, far: Float ->
+            Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(), Expression.stop(10, far), Expression.stop(18, near))
+        }
+        val casing = LineLayer(ROUTE_CASING, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineWidth(width(30f, 7f)),
+        )
+        val line = LineLayer(ROUTE_LINE, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineWidth(width(22f, 4f)),
+        )
+        if (style.getLayer(FIRST_LABEL) != null) {
+            style.addLayerBelow(casing, FIRST_LABEL)
+            style.addLayerBelow(line, FIRST_LABEL)
+        } else {
+            style.addLayer(casing)
+            style.addLayer(line)
+        }
+    }
+    source.setGeoJson(route?.let { lineGeoJson(it) } ?: """{"type":"FeatureCollection","features":[]}""")
+}
+
+private fun colorRoute(style: Style, line: Color, casing: Color) {
+    style.getLayer(ROUTE_LINE)?.setProperties(PropertyFactory.lineColor(line.toArgb()))
+    style.getLayer(ROUTE_CASING)?.setProperties(PropertyFactory.lineColor(casing.toArgb()))
+}
+
+private fun lineGeoJson(route: NavRoute): String = buildString {
+    append("""{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[""")
+    for (i in 0 until route.size) {
+        if (i > 0) append(',')
+        append('[').append(route.lon(i)).append(',').append(route.lat(i)).append(']')
+    }
+    append("]}}")
+}
+
+private const val ROUTE_SOURCE = "betterauto-route"
+private const val ROUTE_LINE = "betterauto-route-line"
+private const val ROUTE_CASING = "betterauto-route-casing"
+
+/** The style's lowest label layer (res/raw/map_style.json): the route goes under it. */
+private const val FIRST_LABEL = "label_road"
+
 /**
  * The car's arrow stands up facing the driver instead of lying on the tilted map, where it looked squashed.
  * [locked]: the map turns with the car, so the arrow just points up; turning it as well, two animations that
@@ -412,7 +534,7 @@ private fun MapViewLifecycle(mapView: MapView, lifecycle: Lifecycle) {
     }
 }
 
-/** The car: an arrow in the focus color, outlined so it stands out on any road. */
+/** The car: an arrow in [fill], outlined in [outline] so it stands out on any road and on the route. */
 private fun puckBitmap(context: Context, sizeDp: Float, fill: Color, outline: Color): Bitmap {
     val metrics = context.resources.displayMetrics
     val size = (sizeDp * metrics.density).roundToInt().coerceAtLeast(16)
@@ -429,7 +551,8 @@ private fun puckBitmap(context: Context, sizeDp: Float, fill: Color, outline: Co
     val canvas = Canvas(bitmap)
     canvas.drawPath(arrow, Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = s * 0.1f
+        // A wide edge: it keeps the arrow apart from the route drawn under it
+        strokeWidth = s * 0.15f
         strokeJoin = Paint.Join.ROUND
         color = outline.toArgb()
     })

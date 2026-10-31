@@ -16,6 +16,10 @@ import android.speech.SpeechRecognizer
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.audio.CarMicrophone
+import com.simoneluconi.betterauto.map.MapLocation
+import com.simoneluconi.betterauto.map.nav.Navigation
+import com.simoneluconi.betterauto.map.nav.PlaceSearch
+import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.notifications.NotificationContent
@@ -26,7 +30,9 @@ import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
 import com.simoneluconi.betterauto.settings.NameOrder
+import com.simoneluconi.betterauto.settings.Section
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +56,9 @@ sealed interface VoiceState {
     data class Calling(val name: String, val numberLabel: String, val until: Long) : VoiceState
 
     data class Done(val heard: String, val message: String, val understood: Boolean) : VoiceState
+
+    /** Looking for the place [heard] names ([message] says so): Back or the voice key cancel it. */
+    data class Searching(val heard: String, val message: String) : VoiceState
 }
 
 /**
@@ -94,9 +103,10 @@ object VoiceAssistant {
 
     /** Listening, or waiting for the driver (a choice, a call about to start): Back and the voice key cancel. */
     val isBusy: Boolean
-        get() = _state.value.let { it is VoiceState.Listening || it is VoiceState.Choosing || it is VoiceState.Calling }
+        get() = _state.value.let { it is VoiceState.Listening || it is VoiceState.Choosing || it is VoiceState.Calling || it is VoiceState.Searching }
 
     private var callNumber: String? = null
+    private var search: Job? = null
     private val placeCall = Runnable {
         val number = callNumber ?: return@Runnable
         if (_state.value !is VoiceState.Calling) return@Runnable
@@ -110,6 +120,8 @@ object VoiceAssistant {
         val settings = LauncherSettings.get(appContext)
         if (!settings.voiceEnabled.value) return
         main.removeCallbacks(backToIdle)
+        search?.cancel()
+        search = null
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
             EventLog.log("Voice: no on-device speech recognition on this phone")
             show(VoiceState.Done("", voiceText(R.string.voice_unavailable), understood = false), speak = false)
@@ -162,6 +174,8 @@ object VoiceAssistant {
         main.removeCallbacks(placeCall)
         main.removeCallbacks(choiceTimeout)
         callNumber = null
+        search?.cancel()
+        search = null
         stopRecognition()
         Speech.cancelTone()
         restoreMusic()
@@ -254,8 +268,11 @@ object VoiceAssistant {
         pendingCommand = command
         main.removeCallbacks(runPending)
         // A command that holds still for a moment is what the driver meant. Not a call: a pause after
-        // "call Mario" may come before the surname, so calls wait for the end of the sentence.
-        if (command != null && command !is VoiceCommand.Call) main.postDelayed(runPending, STABLE_MS)
+        // "call Mario" may come before the surname, so calls wait for the end of the sentence. Nor a place to drive
+        // to: "portami a piazza" may go on with "del Campo".
+        if (command != null && command !is VoiceCommand.Call && command !is VoiceCommand.Navigate && command !is VoiceCommand.AddStop) {
+            main.postDelayed(runPending, STABLE_MS)
+        }
     }
 
     private fun finish(understood: Boolean) {
@@ -395,8 +412,72 @@ object VoiceAssistant {
                 _state.value = VoiceState.Idle
                 return
             }
+            is VoiceCommand.Navigate -> {
+                searchPlace(command.place, asStop = false)
+                return
+            }
+            is VoiceCommand.AddStop -> {
+                searchPlace(command.place, asStop = true)
+                return
+            }
+            VoiceCommand.SkipStop -> {
+                val places = Trip.places.value
+                if (places.size > 1) {
+                    Trip.removeAt(0)
+                    done(voiceText(R.string.voice_stop_skipped, places.first().name))
+                } else {
+                    done(voiceText(R.string.voice_no_stops))
+                }
+            }
+            VoiceCommand.EndNavigation -> {
+                if (Trip.places.value.isNotEmpty()) {
+                    Navigation.end()
+                    done(voiceText(R.string.voice_navigation_ended))
+                } else {
+                    done(voiceText(R.string.voice_no_navigation))
+                }
+            }
         }
         restoreMusic()
+    }
+
+    /**
+     * The nearest place by that name (the driver's "roadhouse" is the one nearby), then a trip to it or, as a stop
+     * ([asStop]), on the way. The search may take a while: the panel says so, and Back or the voice key cancel it;
+     * an answer that comes after that does nothing.
+     */
+    private fun searchPlace(place: String, asStop: Boolean) {
+        resumeMusic = true
+        show(VoiceState.Searching(heard, voiceText(R.string.voice_searching_place, place)), speak = false)
+        search = scope.launch {
+            val found = PlaceSearch.search(appContext, place, limit = 1).firstOrNull()?.destination
+            search = null
+            if (_state.value !is VoiceState.Searching) return@launch
+            val settings = LauncherSettings.get(appContext)
+            when {
+                found == null -> {
+                    EventLog.log("Voice: no place found ${if (asStop) "for a stop" else "to drive to"}")
+                    show(VoiceState.Done(heard, voiceText(R.string.voice_place_not_found, place), understood = false), speak = true)
+                }
+                Trip.places.value.isEmpty() -> {
+                    // No trip yet: a stop too is where to go
+                    Trip.newDestination(found)
+                    settings.setSection(Section.MAP)
+                    done(voiceText(R.string.voice_navigating, listOfNotNull(found.name, found.address).joinToString(", ")))
+                }
+                asStop -> {
+                    val fix = MapLocation.fix.value
+                    val added = Trip.addStop(found, fix?.latitude, fix?.longitude)
+                    done(voiceText(if (added) R.string.voice_stop_added else R.string.voice_stop_already, found.name))
+                }
+                else -> {
+                    // During a trip the driver says on the screen: a stop, or the new destination
+                    Trip.choose(found)
+                    done(voiceText(R.string.voice_choose_stop, found.name))
+                }
+            }
+            restoreMusic()
+        }
     }
 
     private fun call(name: String, numberType: String?) {

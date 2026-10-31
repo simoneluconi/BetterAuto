@@ -36,6 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -156,12 +159,13 @@ private fun HeaderButton(
     label: String,
     active: Boolean,
     text: String? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(50)
     Row(
-        Modifier
+        modifier
             .carClickable(shape, label, onClick = onClick)
             .background(if (active) colors.focus.copy(alpha = 0.25f) else colors.surface2, shape)
             .height(52.dp)
@@ -256,6 +260,12 @@ private fun NotificationAvatar(n: CarNotification, size: androidx.compose.ui.uni
 @Composable
 private fun Detail(n: CarNotification, settings: LauncherSettings, hidden: Boolean, onClose: () -> Unit) {
     val colors = LocalCarColors.current
+    // The opened notification takes the knob: the row that opened it is gone
+    val first = remember { FocusRequester() }
+    LaunchedEffect(n.key) {
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -268,7 +278,7 @@ private fun Detail(n: CarNotification, settings: LauncherSettings, hidden: Boole
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            HeaderButton(CarIcons.Back, stringResource(R.string.music_back), active = false, onClick = onClose)
+            HeaderButton(CarIcons.Back, stringResource(R.string.music_back), active = false, modifier = Modifier.focusRequester(first), onClick = onClose)
             NotificationAvatar(n, 52.dp)
             Column(Modifier.weight(1f)) {
                 CarLabel(n.title, 24.sp, colors.text, weight = FontWeight.ExtraBold)

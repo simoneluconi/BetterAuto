@@ -23,12 +23,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,11 +50,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.os.SystemClock
 import com.simoneluconi.betterauto.EventLog
+import kotlinx.coroutines.delay
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.map.MapLocation
 import com.simoneluconi.betterauto.map.MapLocationProblem
 import com.simoneluconi.betterauto.map.MapSource
+import com.simoneluconi.betterauto.map.nav.Navigation
+import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.map.roads.RoadInfo
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
@@ -77,9 +84,30 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val autoZoom by settings.mapAutoZoom.collectAsStateWithLifecycle()
     val showLimit by settings.showSpeedLimit.collectAsStateWithLifecycle()
     val road by RoadInfo.state.collectAsStateWithLifecycle()
+    val nav by Navigation.state.collectAsStateWithLifecycle()
+    val places by Trip.places.collectAsStateWithLifecycle()
+    val offer by Trip.offer.collectAsStateWithLifecycle()
+    val guidance by settings.guidanceVoice.collectAsStateWithLifecycle()
+    val planning by Navigation.planning.collectAsStateWithLifecycle()
     val state = remember { CarMapState(zoom.level, tilt = SECTION_TILT) }
     LaunchedEffect(zoom) { state.setDefaultZoom(zoom.level) }
     var focused by remember { mutableStateOf(false) }
+    var panelOpen by remember { mutableStateOf(false) }
+    val mapFocus = remember { FocusRequester() }
+    // The knob's hint, and the zoom button the last knob step matches (+1, -1, 0 for none)
+    var hint by remember { mutableStateOf(false) }
+    var lit by remember { mutableIntStateOf(0) }
+    var litStep by remember { mutableIntStateOf(0) }
+    LaunchedEffect(hint) {
+        if (hint) {
+            delay(HINT_MS)
+            hint = false
+        }
+    }
+    LaunchedEffect(litStep) {
+        delay(LIT_MS)
+        lit = 0
+    }
     val shape = RoundedCornerShape(32.dp)
 
     Box(
@@ -88,22 +116,41 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
             .background(colors.map.land)
             .carZone()
             .contentFocus()
-            .onFocusChanged { focused = it.isFocused }
+            .focusRequester(mapFocus)
+            .onFocusChanged {
+                focused = it.isFocused
+                // What the knob does here, until the driver uses it on the map; then again only after a good rest.
+                // Being given the focus is not using it: the map takes it by itself when a trip starts
+                if (it.isFocused && SystemClock.elapsedRealtime() - mapKnobUsedAt > HINT_AGAIN_MS) hint = true
+            }
             .onPreviewKeyEvent { event ->
+                // The destinations panel and the stop-or-destination choice have the knob while they are open
+                if (panelOpen || offer != null) return@onPreviewKeyEvent false
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
                     // The knob turns: clockwise closer, the other way farther
                     Key.Tab -> {
                         if (down) {
-                            state.zoomBy(if (event.isShiftPressed) -1.0 else 1.0)
+                            mapKnobUsedAt = SystemClock.elapsedRealtime()
+                            val step = if (event.isShiftPressed) -1 else 1
+                            state.zoomBy(step.toDouble())
+                            lit = step
+                            litStep++
                             EventLog.log("Map: knob zoom to ${"%.1f".format(state.zoom)}")
                         }
                         true
                     }
+                    // A press: back to the car if the map was moved away, else where to go
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         if (down) {
-                            state.recenter()
-                            EventLog.log("Map: back to the car")
+                            mapKnobUsedAt = SystemClock.elapsedRealtime()
+                            hint = false
+                            if (!state.following) {
+                                state.recenter()
+                                EventLog.log("Map: back to the car")
+                            } else {
+                                panelOpen = true
+                            }
                         }
                         true
                     }
@@ -114,7 +161,17 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     ) {
         CarMap(state, orientation, interactive = true, Modifier.fillMaxSize(), autoZoom = autoZoom)
 
-        MapStatus(Modifier.align(Alignment.TopStart).padding(18.dp))
+        // The next maneuver while a route is on, the word on the position under it
+        Column(Modifier.align(Alignment.TopStart).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // A trip waiting for its route says why where the maneuver goes
+            val waiting = planning
+            if (waiting != null && places.isNotEmpty()) {
+                PlanningCard(waiting, places, onRetry = { Navigation.retry() }, onEnd = { Navigation.end() })
+            } else {
+                nav?.let { ManeuverCard(it, onEnd = { Navigation.end() }) }
+            }
+            MapStatus()
+        }
         // The credits up in the free corner: the bottom is for the road
         MapAttribution(Modifier.align(Alignment.TopEnd).padding(14.dp))
 
@@ -122,6 +179,22 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         road?.let { current ->
             if (showLimit) current.limit?.let { SpeedLimitSign(it, 84.dp, Modifier.align(Alignment.BottomStart).padding(18.dp)) }
             RoadNamePill(current, Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp))
+        }
+
+        // What the knob does on the map, above the road's name
+        AnimatedVisibility(
+            visible = hint && focused,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 76.dp),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            CarLabel(
+                stringResource(R.string.map_knob_hint), 18.sp, colors.text, weight = FontWeight.Bold, maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.surface)
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+            )
         }
 
         // Zoom always in the same place; recenter comes and goes to its left, so nothing moves under the finger
@@ -137,18 +210,56 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
             ) {
                 MapButton(CarIcons.Recenter, stringResource(R.string.map_recenter), BUTTON_SIZE, CircleShape) { state.recenter() }
             }
-            Column(
-                Modifier.clip(RoundedCornerShape(BUTTON_SIZE / 2)).background(colors.surface),
-            ) {
-                MapButton(CarIcons.Plus, stringResource(R.string.map_zoom_in), BUTTON_SIZE, null) { state.zoomBy(1.0) }
-                Box(Modifier.width(BUTTON_SIZE).padding(horizontal = 12.dp).height(1.dp).background(colors.line))
-                MapButton(CarIcons.Minus, stringResource(R.string.map_zoom_out), BUTTON_SIZE, null) { state.zoomBy(-1.0) }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // The voice guidance during a trip, above the rest so nothing moves when it comes
+                if (places.isNotEmpty()) {
+                    MapButton(guidance.icon(), stringResource(R.string.nav_voice), BUTTON_SIZE, CircleShape) {
+                        settings.setGuidanceVoice(guidance.next())
+                    }
+                }
+                MapButton(CarIcons.Search, stringResource(R.string.nav_destinations), BUTTON_SIZE, CircleShape) { panelOpen = true }
+                Column(
+                    Modifier.clip(RoundedCornerShape(BUTTON_SIZE / 2)).background(colors.surface),
+                ) {
+                    // The button a knob step matches lights up a moment: the knob does the same as these
+                    MapButton(CarIcons.Plus, stringResource(R.string.map_zoom_in), BUTTON_SIZE, null, lit = lit > 0) { state.zoomBy(1.0) }
+                    Box(Modifier.width(BUTTON_SIZE).padding(horizontal = 12.dp).height(1.dp).background(colors.line))
+                    MapButton(CarIcons.Minus, stringResource(R.string.map_zoom_out), BUTTON_SIZE, null, lit = lit < 0) { state.zoomBy(-1.0) }
+                }
             }
         }
 
         // The knob's focus on the whole map, drawn inside: the map fills the screen, there is no room around it
         if (focused) {
             Box(Modifier.matchParentSize().border(3.dp, colors.focus, shape))
+        }
+
+        if (panelOpen && offer == null) {
+            DestinationPanel(onClose = {
+                panelOpen = false
+                // The knob goes back to the map
+                runCatching { mapFocus.requestFocus() }
+            })
+        }
+        offer?.let { place ->
+            fun done() {
+                Trip.clearOffer()
+                panelOpen = false
+                runCatching { mapFocus.requestFocus() }
+            }
+            TripChoice(
+                place, places.lastOrNull(),
+                onStop = {
+                    val fix = MapLocation.fix.value
+                    Trip.addStop(place, fix?.latitude, fix?.longitude)
+                    done()
+                },
+                onNewDestination = {
+                    Trip.newDestination(place)
+                    done()
+                },
+                onCancel = { done() },
+            )
         }
     }
 }
@@ -193,8 +304,10 @@ internal fun MapStatus(modifier: Modifier = Modifier, compact: Boolean = false) 
 @Composable
 internal fun MapAttribution(modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
+    // With a route on the map, its source too
+    val routed by remember { Navigation.state.map { it != null }.distinctUntilChanged() }.collectAsStateWithLifecycle(Navigation.state.value != null)
     CarLabel(
-        stringResource(R.string.map_attribution), 11.sp, colors.text2, maxLines = 1,
+        stringResource(if (routed) R.string.map_attribution_route else R.string.map_attribution), 11.sp, colors.text2, maxLines = 1,
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(colors.surface.copy(alpha = 0.75f))
@@ -204,12 +317,13 @@ internal fun MapAttribution(modifier: Modifier = Modifier) {
 
 /** A touch button over the map; the knob has its own way to do the same, so it never takes the focus. */
 @Composable
-private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?, onTap: () -> Unit) {
+private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?, lit: Boolean = false, onTap: () -> Unit) {
     val colors = LocalCarColors.current
     Box(
         Modifier
             .size(size)
             .then(if (shape != null) Modifier.clip(shape).background(colors.surface) else Modifier)
+            .then(if (lit) Modifier.clip(shape ?: CircleShape).background(colors.focus.copy(alpha = 0.35f)) else Modifier)
             .semantics { contentDescription = label }
             .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) },
         contentAlignment = Alignment.Center,
@@ -219,4 +333,10 @@ private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?,
 }
 
 private val BUTTON_SIZE = 52.dp
+
+/** When the knob was last used on the map ([SystemClock.elapsedRealtime]): the hint comes back only after a rest. */
+private var mapKnobUsedAt = 0L
+private const val HINT_MS = 3_000L
+private const val HINT_AGAIN_MS = 2 * 60_000L
+private const val LIT_MS = 350L
 private const val SECTION_TILT = 45.0

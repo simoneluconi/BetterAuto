@@ -209,7 +209,7 @@ private fun MicButton() {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val voice by VoiceAssistant.state.collectAsStateWithLifecycle()
-    val active = voice is VoiceState.Listening || voice is VoiceState.Choosing || voice is VoiceState.Calling
+    val active = voice is VoiceState.Listening || voice is VoiceState.Choosing || voice is VoiceState.Calling || voice is VoiceState.Searching
     Box(
         Modifier
             .carClickable(CircleShape, stringResource(if (active) R.string.voice_stop else R.string.voice_start)) { VoiceAssistant.toggle(context) }

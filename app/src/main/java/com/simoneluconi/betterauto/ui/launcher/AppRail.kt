@@ -92,6 +92,8 @@ fun AppRail(
     vertical: Boolean,
     firstFocus: FocusRequester,
     onOpenGroup: (RailSlot) -> Unit,
+    /** Beside the screen on the right (right-hand drive): its hairline on the screen's side, the left. */
+    onRight: Boolean = false,
 ) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
@@ -115,7 +117,8 @@ fun AppRail(
         .background(colors.surface)
         .drawBehind {
             val stroke = 1.dp.toPx()
-            if (vertical) drawLine(colors.line, Offset(size.width, 0f), Offset(size.width, size.height), stroke)
+            val x = if (onRight) 0f else size.width
+            if (vertical) drawLine(colors.line, Offset(x, 0f), Offset(x, size.height), stroke)
             else drawLine(colors.line, Offset(0f, 0f), Offset(size.width, 0f), stroke)
         }
         .padding(16.dp)

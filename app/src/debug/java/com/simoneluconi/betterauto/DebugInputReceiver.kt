@@ -19,11 +19,16 @@ import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.car.VehicleField
 import com.simoneluconi.betterauto.car.VehicleSource
 import com.simoneluconi.betterauto.exlap.ExlapData
+import com.simoneluconi.betterauto.map.MapLocation
+import com.simoneluconi.betterauto.map.nav.Destination
+import com.simoneluconi.betterauto.map.nav.Navigation
+import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreenState
 import com.simoneluconi.betterauto.notifications.CarNotifications
 import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
+import com.simoneluconi.betterauto.settings.DriverSide
 import com.simoneluconi.betterauto.settings.FormatRegion
 import com.simoneluconi.betterauto.settings.HomeLayout
 import com.simoneluconi.betterauto.settings.HomeSlots
@@ -69,6 +74,7 @@ import kotlin.concurrent.thread
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto;
  *                            --es formats uk: dates and numbers as in italy, us, uk or auto
+ *                            --es driverSide right: the bar and the big widget on the right (left, auto)
  *   ... --es screen 9:16     pretend the car screen has this shape (or a size like 1280x480) inside the
  *                            real frame, to try portrait and wide layouts on any head unit; "off" to stop
  *   ... --es section music   open a section: home, music, map, phone or settings
@@ -125,6 +131,9 @@ import kotlin.concurrent.thread
  *                            roads from the nearest one, at their limits (or the given km/h), turning now and then
  *                            at junctions; "tunnel" takes every GPS away (the phone's too) while the speed goes
  *                            on, so the map estimates; "exit" ends the tunnel; "off" stops it all
+ *   ... --es navigate "43.3188,11.3316"  a new trip there (or an address: "Piazza del Campo, Siena"); "off" ends it.
+ *   ... --es navStop "43.32,11.33"       a stop on the way (same forms); navChoose: as picked in the car (asks stop or destination).
+ *                            --es mapDrive route[,50] then drives the pretend car along the route
  *   ... --es replay latest[,4]  play a recorded drive again as the car's data (4 times faster): every session in a
  *                            debug build records the car's movement to files/trips (TripRecorder); "latest", a
  *                            trip's file name, or a GPX file's path on the phone (/sdcard/Download/route.gpx);
@@ -179,6 +188,10 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("formats")?.let { name ->
             FormatRegion.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setFormatRegion(it) }
+        }
+        intent.getStringExtra("driverSide")?.let { name ->
+            DriverSide.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.let { LauncherSettings.get(context).setDriverSide(it) }
         }
         intent.getStringExtra("temperature")?.let { name ->
             TemperatureUnit.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -288,11 +301,27 @@ class DebugInputReceiver : BroadcastReceiver() {
             val p = spec.split(',').mapNotNull { it.trim().toDoubleOrNull() }
             when {
                 spec == "off" -> FakeMapDrive.stop()
+                spec.startsWith("route") -> FakeMapDrive.alongRoute(p.getOrNull(0))
                 spec == "tunnel" -> FakeMapDrive.tunnel(true)
                 spec == "exit" -> FakeMapDrive.tunnel(false)
                 spec.startsWith("roads") && p.size >= 2 -> FakeMapDrive.onRoads(context, p[0], p[1], p.getOrNull(2))
                 p.size >= 3 -> FakeMapDrive.straight(p[0], p[1], p[2], p.getOrNull(3) ?: 0.0)
             }
+        }
+        intent.getStringExtra("navigate")?.let { spec ->
+            Trip.init(context)
+            if (spec == "off") Navigation.end() else debugPlace(context, spec) { Trip.newDestination(it) }
+        }
+        intent.getStringExtra("navStop")?.let { spec ->
+            Trip.init(context)
+            debugPlace(context, spec) { place ->
+                val fix = MapLocation.fix.value
+                Trip.addStop(place, fix?.latitude, fix?.longitude)
+            }
+        }
+        intent.getStringExtra("navChoose")?.let { spec ->
+            Trip.init(context)
+            debugPlace(context, spec) { Trip.choose(it) }
         }
         intent.getStringExtra("replay")?.let { spec ->
             val what = spec.substringBefore(',').trim()
@@ -443,6 +472,19 @@ class DebugInputReceiver : BroadcastReceiver() {
         } finally {
             connection.close()
             EventLog.log("Shizuku probe: done, ${connection.router.runCatching { status() }.getOrDefault("service gone")}")
+        }
+    }
+
+    /** "lat,lon" or an address (the phone's geocoder, off the main thread), as a place; [use] on the main thread. */
+    private fun debugPlace(context: Context, spec: String, use: (Destination) -> Unit) {
+        val p = spec.split(',').mapNotNull { it.trim().toDoubleOrNull() }
+        if (p.size == 2) return use(Destination("%.4f, %.4f".format(java.util.Locale.ROOT, p[0], p[1]), null, p[0], p[1]))
+        thread(name = "debug-geocode") {
+            @Suppress("DEPRECATION")
+            val found = runCatching { android.location.Geocoder(context).getFromLocationName(spec, 1)?.firstOrNull() }.getOrNull()
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (found == null) EventLog.log("Debug: address not found") else use(Destination(spec, found.getAddressLine(0), found.latitude, found.longitude))
+            }
         }
     }
 

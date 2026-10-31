@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simoneluconi.betterauto.map.nav.Trip
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -57,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -110,7 +112,9 @@ class MainActivity : ComponentActivity() {
                         onOpenWireless = { page = PhonePage.WIRELESS },
                         onOpenSettings = { page = PhonePage.SETTINGS },
                         onOpenSmartHome = { page = PhonePage.SMART_HOME },
+                        onOpenLicences = { page = PhonePage.LICENCES },
                     )
+                    PhonePage.LICENCES -> LicencesPage(onBack = { page = PhonePage.HOME })
                     PhonePage.SETUP -> SetupPage(onBack = { page = PhonePage.HOME })
                     PhonePage.WIRELESS -> WirelessPage(onBack = { page = PhonePage.HOME })
                     PhonePage.SETTINGS -> PhoneSettingsPage(onBack = { page = PhonePage.HOME })
@@ -127,7 +131,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class PhonePage { HOME, SETUP, WIRELESS, SETTINGS, SMART_HOME }
+private enum class PhonePage { HOME, SETUP, WIRELESS, SETTINGS, SMART_HOME, LICENCES }
 
 private enum class StepState { DONE, TODO, OPTIONAL }
 
@@ -181,6 +185,7 @@ private fun PhoneHome(
     onOpenWireless: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSmartHome: () -> Unit,
+    onOpenLicences: () -> Unit,
 ) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
@@ -200,6 +205,7 @@ private fun PhoneHome(
             CarLabel(stringResource(R.string.home_subtitle), 16.sp, colors.text2, maxLines = 2)
         }
         ConnectionCard()
+        NavigationCard()
         SetupCard(steps, onOpenSetup)
         WirelessCard(onOpenWireless)
         SettingsCard(onOpenSettings)
@@ -209,6 +215,12 @@ private fun PhoneHome(
             context.startActivity(Intent(context, CarPreviewActivity::class.java))
         }
         LogCard()
+        // Last, quietly: what BetterAuto is built with
+        CarLabel(
+            stringResource(R.string.licences_title), 15.sp, colors.focus,
+            Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpenLicences).padding(horizontal = 4.dp, vertical = 6.dp),
+            weight = FontWeight.Bold,
+        )
     }
 }
 
@@ -384,6 +396,43 @@ private fun SetupPage(onBack: () -> Unit) {
 }
 
 private val StepDoneGreen = Color(0xFF2E9E5B)
+
+/** The trip: where the car is going and how many stops, or a word on planning one; opens the trip page. */
+@Composable
+private fun NavigationCard() {
+    val colors = LocalCarColors.current
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { Trip.init(context) }
+    val places by Trip.places.collectAsStateWithLifecycle()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(colors.surface)
+            .clickable { context.startActivity(Intent(context, DestinationActivity::class.java)) }
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(44.dp).background(if (places.isEmpty()) colors.surface2 else colors.focus, CircleShape), contentAlignment = Alignment.Center) {
+            CarIcon(CarIcons.Map, if (places.isEmpty()) colors.text2 else Color.White, Modifier.size(22.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            CarLabel(stringResource(R.string.nav_card_title), 18.sp, colors.text, weight = FontWeight.Bold)
+            val text = if (places.isEmpty()) {
+                stringResource(R.string.nav_card_none)
+            } else {
+                val stops = places.size - 1
+                listOfNotNull(
+                    stringResource(R.string.nav_card_trip, places.last().name),
+                    if (stops > 0) pluralStringResource(R.plurals.nav_card_stops, stops, stops) else null,
+                ).joinToString(" · ")
+            }
+            CarLabel(text, 15.sp, colors.text2, maxLines = 3)
+        }
+        CarIcon(CarIcons.Chevron, colors.text2, Modifier.size(22.dp))
+    }
+}
 
 /** Opens the car screen settings page. */
 @Composable

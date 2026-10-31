@@ -81,9 +81,13 @@ import com.simoneluconi.betterauto.ui.theme.CarTheme
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.MusicScreen
 import com.simoneluconi.betterauto.ui.map.MapScreen
+import com.simoneluconi.betterauto.ui.map.NavOverlayShown
+import com.simoneluconi.betterauto.map.nav.Navigation
+import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlin.math.min
 
@@ -153,7 +157,41 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val contentFocus = remember { FocusRequester() }
     var railHasFocus by remember { mutableStateOf(false) }
     var railVertical by remember { mutableStateOf(true) }
+    // Right-hand drive: the bar beside the screen sits on the right
+    val driverSide by settings.driverSide.collectAsStateWithLifecycle()
+    val carDriverOnRight by CarState.driverOnRight.collectAsStateWithLifecycle()
+    val railRight = driverSide.onRight(carDriverOnRight)
     var openGroup by remember { mutableStateOf<RailSlot?>(null) }
+    // The trip (set on the phone, said, picked in the panel, or left from before a break) is guided while the car's
+    // screen is up (focus is only given there: never for the preview on the phone, which may sit in the background);
+    // the map comes forward when one starts, or when a place waits for the driver's choice
+    val projected = focus != null
+    DisposableEffect(projected) {
+        if (projected) Navigation.screenShown(context)
+        onDispose { if (projected) Navigation.screenGone() }
+    }
+    // The map brought forward takes the knob, unless the driver is on the bar
+    var focusMap by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusMap) {
+        if (focusMap == 0) return@LaunchedEffect
+        // Once the map is drawn
+        withFrameNanos { }
+        withFrameNanos { }
+        if (!railHasFocus) runCatching { contentFocus.requestFocus() }
+    }
+    LaunchedEffect(Unit) {
+        var had = false
+        Trip.places.collect { places ->
+            if (places.isNotEmpty() && !had) {
+                settings.setSection(Section.MAP)
+                focusMap++
+            }
+            had = places.isNotEmpty()
+        }
+    }
+    LaunchedEffect(Unit) {
+        Trip.offer.filterNotNull().collect { settings.setSection(Section.MAP) }
+    }
     // After a group closes, the focus goes back to the bar once it shows the new section
     var refocusRail by remember { mutableIntStateOf(0) }
     LaunchedEffect(refocusRail) {
@@ -178,6 +216,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 // The arrival panel waits for the driver: the first knob move lands in it, not on the bar behind
                 ArrivalPanelShown.value && ArrivalPanelShown.first != null -> {
                     runCatching { ArrivalPanelShown.first?.requestFocus() }
+                    true
+                }
+                // So do the map's destinations panel and its stop-or-destination choice
+                NavOverlayShown.value && NavOverlayShown.first != null -> {
+                    runCatching { NavOverlayShown.first?.requestFocus() }
                     true
                 }
                 else -> {
@@ -224,10 +267,30 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         if (down) ArrivalPanelShown.first?.let { runCatching { it.requestFocus() } }
                         return@onPreviewKeyEvent true
                     }
+                    // The map's overlays the same way: Back goes one level back in them (a place put down, the trip
+                    // page, the overlay), wherever the focus is; a knob move from outside lands in them
+                    if (NavOverlayShown.value && shownCall == null) {
+                        if (event.key == Key.Back || event.key == Key.Escape) {
+                            if (!down) NavOverlayShown.back?.invoke()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (!NavOverlayShown.hasFocus && event.key in KnobKeys) {
+                            if (down) NavOverlayShown.first?.let { runCatching { it.requestFocus() } }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
                     // Knob nudges move between zones (the bar, each widget or panel of the screen); turning goes
                     // through every control. Not out of a panel that waits for the driver: there they move inside it
-                    val toScreen = if (railVertical) Key.DirectionRight else Key.DirectionUp
-                    val toBar = if (railVertical) Key.DirectionLeft else Key.DirectionDown
+                    val toScreen = when {
+                        !railVertical -> Key.DirectionUp
+                        railRight -> Key.DirectionLeft
+                        else -> Key.DirectionRight
+                    }
+                    val toBar = when {
+                        !railVertical -> Key.DirectionDown
+                        railRight -> Key.DirectionRight
+                        else -> Key.DirectionLeft
+                    }
                     val nudge = when (event.key) {
                         Key.DirectionLeft -> FocusDirection.Left
                         Key.DirectionRight -> FocusDirection.Right
@@ -235,7 +298,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         Key.DirectionDown -> FocusDirection.Down
                         else -> null
                     }
-                    val panelOpen = ArrivalPanelShown.value || VoiceAssistant.isBusy || BarEditor.open.value || HomeEdit.active.value
+                    val panelOpen = ArrivalPanelShown.value || NavOverlayShown.value || VoiceAssistant.isBusy || BarEditor.open.value || HomeEdit.active.value
                     if (shownCall == null && hasFocus && !panelOpen && nudge != null) {
                         if (railHasFocus) {
                             if (event.key == toScreen) {
@@ -277,6 +340,8 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     if (event.type == KeyEventType.KeyUp && section != Section.HOME) {
                         // The notifications are a detour: back to where the driver came from; elsewhere, home
                         if (section == Section.NOTIFICATIONS) settings.closeNotifications() else settings.setSection(Section.HOME)
+                        // The ring follows to the bar's entry of the section now shown, not left on the old one or lost
+                        if (hasFocus) refocusRail++
                     }
                     section != Section.HOME
                 }
@@ -293,7 +358,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
             }
             val rail = @Composable { vertical: Boolean ->
                 Box(Modifier.onFocusChanged { railHasFocus = it.hasFocus }) {
-                    AppRail(settings, section, vertical = vertical, firstFocus = railFocus, onOpenGroup = { openGroup = it })
+                    AppRail(settings, section, vertical = vertical, firstFocus = railFocus, onOpenGroup = { openGroup = it }, onRight = vertical && railRight)
                 }
             }
             val current = shownCall
@@ -302,8 +367,9 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 CallScreen(current, callFocus, Modifier.fillMaxSize())
             } else if (left) {
                 Row(Modifier.fillMaxSize()) {
-                    rail(true)
+                    if (!railRight) rail(true)
                     main(Modifier.weight(1f))
+                    if (railRight) rail(true)
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {

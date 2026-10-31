@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -153,23 +154,48 @@ fun MusicWidget(modifier: Modifier = Modifier, extended: Boolean = false, onShow
     }
 }
 
+/**
+ * Cover on the left, the rest beside it. The progress and the buttons always fit: on a short card (a wide,
+ * low dashboard screen) the title takes what is left, smaller, and the source row and "up next" go.
+ */
 @Composable
 private fun WidePlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
+    val short = height < SHORT_CARD_HEIGHT
+    val gap = if (short) 24.dp else 40.dp
+    // The column beside the cover keeps room for the buttons; the cover gives way, or goes when it would be a stamp
+    val cover = minOf(height, width * 0.46f, width - gap - MIN_CONTROLS_WIDTH).takeIf { it >= MIN_COVER }
+    val column = width - (cover?.plus(gap) ?: 0.dp)
     Row(
         Modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(40.dp),
+        horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        Cover(track, size = minOf(height, width * 0.46f), badge = false)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            SourceRow(track, extended, onShowPanel)
-            TitleBlock(track, titleSize = 44.sp, maxLines = 2)
+        cover?.let { Cover(track, size = it, badge = short) }
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(if (short) 10.dp else 18.dp, Alignment.CenterVertically)) {
+            if (!short) SourceRow(track, extended, onShowPanel)
+            BoxWithConstraints(Modifier.weight(1f, fill = false), contentAlignment = Alignment.CenterStart) {
+                when {
+                    maxHeight >= 150.dp -> TitleBlock(track, titleSize = 44.sp, maxLines = 2)
+                    maxHeight >= 90.dp -> TitleBlock(track, titleSize = 28.sp, maxLines = 1, scale = 0.75f, album = false)
+                    else -> CarLabel(
+                        track.title.ifBlank { stringResource(R.string.music_unknown_title) }, 22.sp, LocalCarColors.current.text,
+                        weight = FontWeight.ExtraBold, maxLines = 1,
+                    )
+                }
+            }
             Progress(track)
-            Transport(track, playSize = (height * 0.25f).coerceIn(104.dp, 160.dp))
-            track.upNext?.let { UpNext(it) }
+            // Previous, play and next side by side within the column
+            Transport(track, playSize = (height * 0.25f).coerceIn(if (short) 60.dp else 104.dp, 160.dp).coerceAtMost(column / 2.8f))
+            if (!short) track.upNext?.let { UpNext(it) }
         }
     }
 }
+
+/** Lower than this, the wide card keeps only what matters: title, progress, buttons. */
+private val SHORT_CARD_HEIGHT = 260.dp
+
+/** What the column beside the cover needs for previous, play and next. */
+private val MIN_CONTROLS_WIDTH = 240.dp
 
 @Composable
 private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
@@ -191,17 +217,31 @@ private fun NarrowPlayer(track: Track, width: Dp, height: Dp, extended: Boolean,
     }
 }
 
+/**
+ * Portrait screens, and narrow home cards (the big widget made wide beside it): the cover takes only what the
+ * rest leaves, and goes where it would be a stamp; small cards get smaller text and no "up next".
+ */
 @Composable
 private fun TallPlayer(track: Track, width: Dp, height: Dp, extended: Boolean, onShowPanel: (() -> Unit)?) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+    val small = width < SMALL_CARD_WIDTH
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(if (small) 10.dp else 16.dp)) {
         SourceRow(track, extended, onShowPanel)
-        Cover(track, size = minOf(width, height * 0.5f), badge = false, modifier = Modifier.align(Alignment.CenterHorizontally))
-        TitleBlock(track, titleSize = 42.sp, maxLines = 2)
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val size = minOf(maxWidth, maxHeight)
+            if (size >= MIN_COVER) Cover(track, size = size, badge = false)
+        }
+        TitleBlock(track, titleSize = if (small) 28.sp else 42.sp, maxLines = 2, scale = if (small) 0.75f else 1f)
         Progress(track)
-        Transport(track, playSize = (height * 0.13f).coerceIn(104.dp, 150.dp))
-        track.upNext?.let { UpNext(it) }
+        Transport(track, playSize = (height * 0.13f).coerceIn(if (small) 76.dp else 104.dp, 150.dp))
+        if (!small) track.upNext?.let { UpNext(it) }
     }
 }
+
+/** Narrower than this, the tall card shrinks its text. */
+private val SMALL_CARD_WIDTH = 420.dp
+
+/** A cover smaller than this says nothing: left out. */
+private val MIN_COVER = 96.dp
 
 @Composable
 private fun EmptyPlayer(hasAccess: Boolean) {
@@ -254,18 +294,20 @@ private fun Cover(track: Track, size: Dp, badge: Boolean, modifier: Modifier = M
 @Composable
 private fun SourceRow(track: Track, extended: Boolean, onShowPanel: (() -> Unit)?) {
     val colors = LocalCarColors.current
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            Modifier
-                .background(colors.text.copy(alpha = 0.08f), RoundedCornerShape(50))
-                .padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            track.appIcon?.let { Image(it, contentDescription = null, modifier = Modifier.size(28.dp).clip(CircleShape)) }
-            CarLabel(track.appLabel, 18.sp, colors.text, weight = FontWeight.Bold)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // The app's chip gives way to the buttons on a narrow card: its name shortens instead
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            Row(
+                Modifier
+                    .background(colors.text.copy(alpha = 0.08f), RoundedCornerShape(50))
+                    .padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                track.appIcon?.let { Image(it, contentDescription = null, modifier = Modifier.size(28.dp).clip(CircleShape)) }
+                CarLabel(track.appLabel, 18.sp, colors.text, weight = FontWeight.Bold, maxLines = 1)
+            }
         }
-        Spacer(Modifier.weight(1f))
         Row(Modifier.focusRequester(LocalPlayerLinks.current?.secondary ?: remember { FocusRequester() }), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (extended) CustomActions(track)
             ShuffleRepeat(track)
@@ -347,7 +389,7 @@ private fun ToggleButton(icon: ImageVector, label: String, active: Boolean, onCl
 }
 
 @Composable
-private fun TitleBlock(track: Track, titleSize: TextUnit, maxLines: Int, modifier: Modifier = Modifier) {
+private fun TitleBlock(track: Track, titleSize: TextUnit, maxLines: Int, modifier: Modifier = Modifier, scale: Float = 1f, album: Boolean = true) {
     val colors = LocalCarColors.current
     Column(modifier) {
         CarLabel(
@@ -355,12 +397,12 @@ private fun TitleBlock(track: Track, titleSize: TextUnit, maxLines: Int, modifie
             weight = FontWeight.ExtraBold, maxLines = maxLines, lineHeight = 1.24.em,
         )
         if (track.artist.isNotBlank()) {
-            Spacer(Modifier.height(16.dp))
-            InfoLine(CarIcons.Artist, track.artist, 26.sp)
+            Spacer(Modifier.height(16.dp * scale))
+            InfoLine(CarIcons.Artist, track.artist, 26.sp * scale)
         }
-        if (track.album.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
-            InfoLine(CarIcons.Album, track.album, 23.sp)
+        if (album && track.album.isNotBlank()) {
+            Spacer(Modifier.height(8.dp * scale))
+            InfoLine(CarIcons.Album, track.album, 23.sp * scale)
         }
     }
 }

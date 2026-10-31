@@ -18,6 +18,12 @@ object CarState {
     /** Visible area of the video frame negotiated with the head unit. Null before the video starts. */
     val viewport = MutableStateFlow<Viewport?>(null)
 
+    /** The car's screen takes touches (it says so among its input sources); false for knob-only cars and before. */
+    val touchscreen = MutableStateFlow(false)
+
+    /** Where the car says the driver sits: true on the right, false on the left, null when it does not say. */
+    val driverOnRight = MutableStateFlow<Boolean?>(null)
+
     /** Development: pretend the car screen has this shape ("9:16", "1280x480"), inside the real frame. */
     val simulatedScreen = MutableStateFlow<String?>(null)
 
@@ -44,6 +50,8 @@ object CarState {
         audio.value = null
         link.value = null
         viewport.value = null
+        touchscreen.value = false
+        driverOnRight.value = null
     }
 }
 

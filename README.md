@@ -85,7 +85,13 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
   otherwise the phone's (switched on only while a map is on screen), heading from the way the car
   moves, and through tunnels an estimate from the car's speed. The road's name and number and its speed
   limit (only where the map data states it), a zoom that widens with speed. Zoom with the knob, press to
-  come back to the car; also as a home widget. Free OpenStreetMap data, no account. No directions yet.
+  come back to the car; also as a home widget. Free OpenStreetMap data, no account.
+- 🧭 **Directions** (first version): a destination sent from another app ("Share" on a place), searched on
+  the phone, picked among the recent ones or said ("take me to…"); stops on the way, reordered in the car or
+  from the phone by a passenger; spoken prompts (full, alerts only or muted); the next turn on the car's
+  instrument cluster where the car offers it. A trip broken off by switching the car off goes on at the
+  next connection. Routes come from Valhalla's public demonstration server while the routing source for
+  everyday use is chosen.
 - 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
   calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
 - 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the
@@ -97,7 +103,7 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
 - 📐 **Any screen shape**, from 800×480 to wide dashboards and portrait displays.
 - 🌍 English and Italian, following the phone's language.
 
-Ideas for what could come next: speed camera warnings, turn-by-turn directions, more smart-home
+Ideas for what could come next: speed camera warnings, fuel stations on the map, more smart-home
 services, a trip log, wireless Android Auto.
 
 ## Trying it
@@ -180,4 +186,20 @@ The map is drawn with [MapLibre Native](https://github.com/maplibre/maplibre-nat
 from the free vector tiles of [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles), with map data
 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). Road names, numbers and
 speed limits come from the transportation tiles of [Overture Maps](https://overturemaps.org) (built
-from OpenStreetMap, ODbL).
+from OpenStreetMap, ODbL). Routes come from [Valhalla](https://github.com/valhalla/valhalla) (MIT), on
+the public server run by [FOSSGIS e.V.](https://www.fossgis.de); places are searched with
+[Photon](https://photon.komoot.io) by komoot (OpenStreetMap data).
+
+BetterAuto is built with:
+
+| Part | What for | Licence |
+|---|---|---|
+| [aasdk](https://github.com/opencardev/aasdk) protocol definitions | The Android Auto messages | GPL-3.0 |
+| [MapLibre Native](https://github.com/maplibre/maplibre-native) | The map (with the components listed in its notice) | BSD-2-Clause |
+| [Protocol Buffers](https://github.com/protocolbuffers/protobuf) | Reading and writing the messages | BSD-3-Clause |
+| [Jetpack Compose, AndroidX, Media3](https://developer.android.com/jetpack/androidx) | Screens, media sessions, cover colours | Apache-2.0 |
+| [Kotlin, kotlinx.coroutines](https://kotlinlang.org) | The language and its background work | Apache-2.0 |
+| [OkHttp, Okio](https://square.github.io/okhttp/) | Internet connections | Apache-2.0 |
+| [Shizuku API](https://github.com/RikkaApps/Shizuku-API) | Moving the sound to the car | MIT |
+
+The app shows the same list under *Open source licences*, with the full licence texts.

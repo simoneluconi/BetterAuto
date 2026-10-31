@@ -57,6 +57,32 @@ object HomeSlots {
     fun rotate(slots: List<WidgetChoice>): List<WidgetChoice> =
         if (slots.size < 2) slots else slots.drop(1) + slots.first()
 
+    /**
+     * What slot [index] shows, in order: its main widget, then those it also holds ([stacks]), a swipe away;
+     * never one that another of the [visible] slots shows as its main.
+     */
+    fun pages(mains: List<WidgetChoice>, stacks: List<List<WidgetChoice>>, index: Int, visible: Int): List<WidgetChoice> {
+        val main = mains.getOrNull(index) ?: return emptyList()
+        val others = mains.take(visible).filterIndexed { i, _ -> i != index }
+        return (listOf(main) + stacks.getOrNull(index).orEmpty()).distinct().filter { it == main || it !in others }
+    }
+
+    /** "A,B|C|": the widgets each slot holds besides its main one, slot by slot. */
+    fun encodeStacks(stacks: List<List<WidgetChoice>>): String = stacks.joinToString("|") { stack -> stack.joinToString(",") { it.encode() } }
+
+    /** Always [COUNT] lists; unknown names dropped. */
+    fun decodeStacks(saved: String?): List<List<WidgetChoice>> {
+        val parts = saved?.split("|").orEmpty()
+        return List(COUNT) { i ->
+            parts.getOrNull(i)?.split(",")?.filter { it.isNotBlank() }?.mapNotNull { WidgetChoice.decode(it) }
+                ?.filter { !it.type.takesParam || it.param != null }?.distinct().orEmpty()
+        }
+    }
+
+    /** Slot [index] now holds [pages] besides its main one: they leave any other slot's list. */
+    fun withStack(stacks: List<List<WidgetChoice>>, index: Int, pages: List<WidgetChoice>): List<List<WidgetChoice>> =
+        List(COUNT) { i -> if (i == index) pages.distinct() else stacks.getOrNull(i).orEmpty().filter { it !in pages } }
+
     private fun fill(list: List<WidgetChoice>): List<WidgetChoice> {
         // Never a smart-home group out of nowhere: types that need a parameter only come from the driver
         val spare = (Default + WidgetType.entries.filter { !it.takesParam }.map { WidgetChoice(it) }).distinct().filter { it !in list }
