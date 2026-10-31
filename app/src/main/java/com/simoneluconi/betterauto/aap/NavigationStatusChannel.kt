@@ -45,6 +45,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.time.LocalTime
@@ -94,6 +96,8 @@ class NavigationStatusChannel(
     channelId: Int,
     private val service: NavigationStatusService,
     private val context: Context,
+    /** Asks the car to let us be its navigation ([AapSession]'s navigation focus). */
+    private val requestNavFocus: () -> Unit,
 ) : ServiceChannel(session, channelId) {
     override val name = "navigation status"
 
@@ -113,6 +117,10 @@ class NavigationStatusChannel(
     override fun onOpened() {
         val image = if (service.hasImageOptions()) service.imageOptions.let { ", picture ${it.width}x${it.height} ${it.colourDepthBits}-bit" } else ""
         EventLog.log("Navigation status: cluster ${service.type.name.lowercase()}$image, every ${service.minimumIntervalMs} ms at most; waiting for the car")
+        // The car starts its cluster for the navigation that has the focus: asked each time a guidance starts
+        scope.launch {
+            Navigation.state.map { it != null }.distinctUntilChanged().collect { guiding -> if (guiding) requestNavFocus() }
+        }
     }
 
     override fun onChannelMessage(msg: AapMessage) {
@@ -164,7 +172,8 @@ class NavigationStatusChannel(
         latest = state?.takeUnless { it.rerouting }
         if (state == null || state.rerouting) return
         val next = state.next ?: return
-        val key = TurnKey(next.kind, next.street ?: next.instruction.ifBlank { null }, next.roundaboutExit, next.beginIndex, clockwise())
+        // The road only: the server's whole sentence does not fit a cluster, read at a glance
+        val key = TurnKey(next.kind, next.street, next.roundaboutExit, next.beginIndex, clockwise())
         if (key != turn) {
             turn = key
             sendTurn(key)

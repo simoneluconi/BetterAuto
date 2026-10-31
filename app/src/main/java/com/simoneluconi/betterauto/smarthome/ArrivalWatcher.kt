@@ -234,9 +234,27 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
             }
         }
         if (inside.isEmpty()) open = false
+        // Driving away with the panel still up (it came as the car left the garage, or passing by): it goes, the
+        // buttons stay in the status bar until the place is left
+        val nearest = trackers.filterKeys { it in inside }.values.minOfOrNull { it.fence.distanceM(latitude, longitude) }
+        if (!open || nearest == null) {
+            closestOpen = null
+        } else if (accuracyM == null || accuracyM < MOVING_AWAY_M / 2) {
+            // A vague phone fix wanders by more than that: only precise ones tell
+            val closest = closestOpen?.let { minOf(it, nearest) } ?: nearest
+            closestOpen = closest
+            if (nearest > closest + MOVING_AWAY_M) {
+                EventLog.log("Smart home: driving away (${nearest.roundToInt()} m): arrival panel closed, buttons kept in the status bar")
+                open = false
+                closestOpen = null
+            }
+        }
         _state.value = ArrivalState(inside, open)
         if (verbose) logDecision(null)
     }
+
+    /** The nearest the car came to the place since the panel opened. */
+    private var closestOpen: Double? = null
 
     /** The soonest any fence edge could be reached, at the car's speed when known. */
     @Synchronized
@@ -332,5 +350,8 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
         const val PHONE_FIX_MAX_ERROR_M = 500f
         const val FIX_TIMEOUT_MS = 30_000L
         const val FAKE_CAR_PERIOD_MS = 2_000L
+
+        /** This much farther than the nearest the car came: it is driving away, not looking for the gate. */
+        const val MOVING_AWAY_M = 80.0
     }
 }

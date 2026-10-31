@@ -40,7 +40,7 @@ object RoadInfo {
     private var store: RoadTileStore? = null
     private val lock = Mutex()
     private val matcher = RoadMatcher()
-    private var lastSegment: RoadSegment? = null
+    @Volatile private var lastSegment: RoadSegment? = null
 
     /** Tiles in memory, the latest used last. */
     private val tiles = LinkedHashMap<Pair<Int, Int>, List<RoadSegment>>(16, 0.75f, true)
@@ -94,6 +94,24 @@ object RoadInfo {
     }
 
     /**
+     * Where the map draws the car with no route to follow: on the road it is on, when the GPS puts it within [SNAP_M]
+     * and, moving, going the road's way (just past a junction the road matched is still the one left behind: no).
+     * Null otherwise. Main thread; the road comes from the last lookup.
+     */
+    fun snap(fix: MapFix): MapFix? {
+        if (users == 0) return null
+        val road = lastSegment ?: return null
+        val point = road.nearestPoint(fix.latitude, fix.longitude) ?: return null
+        if (point.distanceM > SNAP_M) return null
+        val bearing = fix.bearing
+        if ((fix.speedMs ?: 0f) < MOVING_MS || bearing == null) return fix.copy(latitude = point.latitude, longitude = point.longitude)
+        val diff = RoadMatcher.angleDiff(bearing.toDouble(), point.bearing)
+        if (minOf(diff, 180 - diff) > SNAP_ANGLE_DEG) return null
+        val along = if (diff <= 90) point.bearing else (point.bearing + 180) % 360
+        return fix.copy(latitude = point.latitude, longitude = point.longitude, bearing = along.toFloat())
+    }
+
+    /**
      * The roads within reach of a point: its tile, plus the next ones when it is near their edge (a road there
      * may be drawn only in the neighbour). Null when the tile itself can't be had (no network, nothing cached).
      */
@@ -142,4 +160,9 @@ object RoadInfo {
 
     private const val MAX_TILES = 12
     private const val EDGE_M = 150.0
+
+    /** A few metres: the GPS's error, not a road beside the one the car is on. */
+    private const val SNAP_M = 8.0
+    private const val SNAP_ANGLE_DEG = 30.0
+    private const val MOVING_MS = 4f
 }

@@ -34,8 +34,11 @@ object TripReplay {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
 
-    /** [what]: "latest", a recorded trip's name, or a path to a .gpx file on the phone. */
-    fun play(context: Context, what: String, speed: Double) {
+    /**
+     * [what]: "latest", a recorded trip's name, or a path to a .gpx file on the phone. [fromS]: seconds into it to
+     * start at, what came before published at once (the car as it was then).
+     */
+    fun play(context: Context, what: String, speed: Double, fromS: Double = 0.0) {
         stop()
         val file = when {
             what == "latest" -> TripRecorder.trips(context).firstOrNull()
@@ -49,12 +52,13 @@ object TripReplay {
         val events = runCatching { if (file.name.endsWith(".gpx", true)) gpx(file) else recorded(file) }
             .onFailure { EventLog.log("Debug: ${file.name} unreadable: ${it.message}") }
             .getOrNull() ?: return
-        EventLog.log("Debug: replaying ${file.name} (${events.size} readings, ${(events.lastOrNull()?.first ?: 0) / 1000} s) at ${speed}x")
+        val fromMs = (fromS * 1000).toLong()
+        EventLog.log("Debug: replaying ${file.name} (${events.size} readings, ${(events.lastOrNull()?.first ?: 0) / 1000} s) at ${speed}x from ${fromMs / 1000} s")
         TripRecorder.paused = true
         job = scope.launch {
             val start = System.currentTimeMillis()
             for ((t, publish) in events) {
-                val wait = (t / speed).toLong() - (System.currentTimeMillis() - start)
+                val wait = ((t - fromMs) / speed).toLong() - (System.currentTimeMillis() - start)
                 if (wait > 0) delay(wait)
                 publish()
             }

@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.map.nav
 
+import com.simoneluconi.betterauto.map.distanceM
 import org.json.JSONObject
 
 /** What a maneuver looks like on its sign: the arrow shown in the next-turn card. */
@@ -22,6 +23,8 @@ data class Maneuver(
     val roundaboutExit: Int? = null,
     /** The arrival at a stop on the way: which one (0 the first); null for every other maneuver and the destination. */
     val stop: Int? = null,
+    /** Where a roundabout is left (index into the route's points), for the arrow drawn on the map. */
+    val exitIndex: Int? = null,
 )
 
 /**
@@ -38,6 +41,39 @@ class NavRoute(
     val size: Int get() = points.size / 2
     fun lat(i: Int) = points[2 * i]
     fun lon(i: Int) = points[2 * i + 1]
+
+    /** How far along the route each point is, in metres (the first at 0). */
+    val cumulative: DoubleArray by lazy {
+        val out = DoubleArray(size)
+        for (i in 1 until size) out[i] = out[i - 1] + distanceM(lat(i - 1), lon(i - 1), lat(i), lon(i))
+        out
+    }
+
+    /**
+     * The piece of the route's line from [fromM] to [toM] along it (latitude, longitude pairs), cut where those
+     * distances fall between points; empty when it has no length.
+     */
+    fun slice(fromM: Double, toM: Double): DoubleArray {
+        val c = cumulative
+        val from = fromM.coerceIn(0.0, c.last())
+        val to = toM.coerceIn(0.0, c.last())
+        if (to <= from) return DoubleArray(0)
+        val out = ArrayList<Double>()
+        fun at(m: Double) {
+            val i = (c.indexOfLast { it <= m }).coerceIn(0, size - 2)
+            val length = c[i + 1] - c[i]
+            val t = if (length <= 0) 0.0 else ((m - c[i]) / length).coerceIn(0.0, 1.0)
+            out += lat(i) + (lat(i + 1) - lat(i)) * t
+            out += lon(i) + (lon(i + 1) - lon(i)) * t
+        }
+        at(from)
+        for (i in 0 until size) if (c[i] > from && c[i] < to) {
+            out += lat(i)
+            out += lon(i)
+        }
+        at(to)
+        return out.toDoubleArray()
+    }
 
     companion object {
         /**
@@ -61,7 +97,12 @@ class NavRoute(
                     val m = list.getJSONObject(i)
                     // The way out of a roundabout is already in its entry ("take the 2nd exit"): shown twice, the
                     // card and the cluster would show a second roundabout right after the first
-                    if (m.optInt("type") == ROUNDABOUT_EXIT) continue
+                    if (m.optInt("type") == ROUNDABOUT_EXIT) {
+                        // Where the arrow over the roundabout ends
+                        val last = maneuvers.lastOrNull()
+                        if (last?.kind == ManeuverKind.ROUNDABOUT) maneuvers[maneuvers.size - 1] = last.copy(exitIndex = offset + m.optInt("begin_shape_index"))
+                        continue
+                    }
                     val instruction = m.optString("instruction")
                     val kind = kindOf(m.optInt("type"))
                     maneuvers += Maneuver(

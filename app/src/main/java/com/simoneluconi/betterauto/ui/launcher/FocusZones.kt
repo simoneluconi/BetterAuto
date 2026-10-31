@@ -42,25 +42,53 @@ object CarZones {
 
     private val zones = mutableListOf<Zone>()
 
+    /** The zone the knob was in last, while it is on show: a nudge back from the bar goes there. */
+    private var last: Zone? = null
+
     internal fun add(zone: Zone) {
         zones += zone
     }
 
     internal fun remove(zone: Zone) {
         zones -= zone
+        if (last === zone) last = null
+    }
+
+    internal fun focused(zone: Zone) {
+        last = zone
     }
 
     /**
      * Moves the focus to the zone beside the focused one toward [direction], skipping zones with nothing to
-     * focus (a clock); false at the edge or when the focus is in no zone.
+     * focus (a clock), back on the control it had there; false at the edge or when the focus is in no zone.
      */
     fun moveBeside(direction: FocusDirection): Boolean {
         val current = zones.firstOrNull { it.hasFocus } ?: return false
         val others = zones.filter { it !== current }
-        return order(current.bounds, others.map { it.bounds }, direction).any { i ->
-            runCatching { others[i].requester.requestFocus() }.getOrDefault(false)
-        }
+        val targets = order(current.bounds, others.map { it.bounds }, direction)
+        if (targets.isEmpty()) return false
+        save(current)
+        return targets.any { i -> enter(others[i]) }
     }
+
+    /** The focused zone remembers its control, the focus about to leave for the bar. */
+    fun leaving() {
+        zones.firstOrNull { it.hasFocus }?.let(::save)
+    }
+
+    /** Back into the zone the knob was in last, on its control; false with none on show (another section). */
+    fun returnToLast(): Boolean = last?.let(::enter) ?: false
+
+    // A focus moved by request skips the zone's own restorer (it saves and restores only for the knob's turns): done here
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun save(zone: Zone) {
+        runCatching { zone.requester.saveFocusedChild() }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun enter(zone: Zone): Boolean =
+        runCatching { zone.requester.restoreFocusedChild() }.getOrDefault(false) ||
+            runCatching { zone.requester.requestFocus() }.getOrDefault(false)
 
     /** The nearest of [candidates] toward [direction] (see [order]), null when none lies that way. */
     internal fun pick(from: Rect, candidates: List<Rect>, direction: FocusDirection): Int? = order(from, candidates, direction).firstOrNull()
@@ -94,7 +122,7 @@ object CarZones {
 
 /**
  * One zone for the knob's nudges (see [CarZones]): entering it lands on the control last focused there,
- * the first one the first time.
+ * the first one the first time, whether the knob turned or was nudged into it.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun Modifier.carZone(): Modifier = composed {
@@ -104,7 +132,10 @@ fun Modifier.carZone(): Modifier = composed {
         onDispose { CarZones.remove(zone) }
     }
     onGloballyPositioned { zone.bounds = it.boundsInRoot() }
-        .onFocusChanged { zone.hasFocus = it.hasFocus }
+        .onFocusChanged {
+            zone.hasFocus = it.hasFocus
+            if (it.hasFocus) CarZones.focused(zone)
+        }
         .focusRequester(zone.requester)
         .focusRestorer()
         .focusGroup()

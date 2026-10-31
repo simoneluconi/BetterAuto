@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.os.SystemClock
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,16 +39,21 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.map.MapFix
 import com.simoneluconi.betterauto.map.MapLocation
 import com.simoneluconi.betterauto.map.MapStyle
+import com.simoneluconi.betterauto.map.bearingDeg
 import com.simoneluconi.betterauto.map.distanceM
+import com.simoneluconi.betterauto.map.nav.Maneuver
+import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import com.simoneluconi.betterauto.map.nav.NavRoute
 import com.simoneluconi.betterauto.map.nav.Navigation
 import com.simoneluconi.betterauto.map.roads.RoadInfo
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import com.simoneluconi.betterauto.settings.MapOrientation
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
+import com.simoneluconi.betterauto.ui.theme.SignWhite
 import com.simoneluconi.betterauto.ui.theme.MapColors
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -198,18 +204,26 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         component.setCameraMode(mode, duration, zoom, null, pitch, transitionEnd)
     }
 
+    /** Positions in a row the camera was not with the car. */
+    private var lostFixes = 0
+
     /**
      * Following, but the camera is not with the car: tracking lost on the way, or a camera that says it tracks while
-     * it stays put (a big jump of the position, e.g. the phone's GPS to the car's, can leave MapLibre in a
-     * transition that never ends). Judged by what is on screen: far from the car, the camera goes there at once.
+     * it stays put (a big jump of the position, e.g. a car GPS back from a garage 3 km off, leaves MapLibre in a
+     * transition that never ends: the map stood still until the car drove off the screen). Following, the camera's
+     * centre is the car, a glide behind at most: farther than the car goes in a few seconds, twice in a row, the
+     * camera goes there at once.
      */
     internal fun keepTracking(map: MapLibreMap, fix: MapFix) {
         val component = map.locationComponent
         if (!following || !component.isLocationComponentActivated) return
         val target = map.cameraPosition.target
         val away = target?.let { distanceM(it.latitude, it.longitude, fix.latitude, fix.longitude) } ?: 0.0
-        if (away > LOST_CAMERA_M) {
+        val allowed = maxOf(LOST_MIN_M, (fix.speedMs ?: 0f).toDouble() * LOST_SECONDS)
+        lostFixes = if (away > allowed && !transitioning()) lostFixes + 1 else 0
+        if (lostFixes >= LOST_FIXES) {
             EventLog.log("Map: the camera was ${away.roundToInt()} m from the car, back to it")
+            lostFixes = 0
             transitionSince = 0L
             component.cameraMode = CameraMode.NONE
             map.moveCamera(CameraUpdateFactory.newLatLng(LatLng(fix.latitude, fix.longitude)))
@@ -226,8 +240,10 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         private const val CAMERA_MS = 750L
         private const val TRANSITION_MAX_MS = CAMERA_MS + 1_500L
 
-        /** Farther than this from the car while following, the camera is lost (looking ahead keeps it much closer). */
-        private const val LOST_CAMERA_M = 500.0
+        /** The camera this far from the car while following, or as far as the car goes in [LOST_SECONDS], is lost. */
+        private const val LOST_MIN_M = 50.0
+        private const val LOST_SECONDS = 3.0
+        private const val LOST_FIXES = 2
         private const val AHEAD_SHARE = 0.35
         /** A zoom change for speed is slow, the eye barely notices it. */
         private const val SPEED_ZOOM_MS = 2_500L
@@ -279,6 +295,7 @@ fun CarMap(
                 .foregroundLoadColor(palette.map.land.toArgb()),
         ).apply {
             isFocusable = false
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             // The map draws in a TextureView, which Compose's rounded clip does not reach: the view rounds itself,
             // like the cards around it
             outlineProvider = object : ViewOutlineProvider() {
@@ -297,6 +314,10 @@ fun CarMap(
 
     DisposableEffect(mapView) {
         mapView.getMapAsync { map ->
+            // MapLibre makes its view focusable as it sets up (the d-pad pans it): the knob stopped on it, an empty
+            // stop between the map and its buttons
+            mapView.isFocusable = false
+            mapView.isFocusableInTouchMode = false
             // No more than the car's video takes: frames beyond it would only cost battery
             mapView.setMaximumFps(MAX_FPS)
             setUp(context, map, state, interactive, colors) { style = it }
@@ -329,10 +350,18 @@ fun CarMap(
     LaunchedEffect(style) {
         val map = state.map ?: return@LaunchedEffect
         if (style == null) return@LaunchedEffect
-        MapLocation.fix.filterNotNull().collect {
-            map.locationComponent.forceLocationUpdate(it.toLocation())
+        var fedAt = 0L
+        MapLocation.fix.filterNotNull().collect { fix ->
+            // A car sends some fixes a tenth of a second after the one before: MapLibre glides to the next one in the
+            // time between the last two, so the car lurched ahead and then stood still for a second. Evenly, at most
+            // about one a second
+            if (fedAt != 0L && fix.at - fedAt in 0 until MIN_FEED_MS) return@collect
+            fedAt = fix.at
+            // On the route, or else on the road, when the GPS is just a few metres beside it
+            val shown = Navigation.snapToRoute(fix) ?: RoadInfo.snap(fix) ?: fix
+            map.locationComponent.forceLocationUpdate(shown.toLocation())
             // The map opened before any position, far out: the first one brings it down to the car
-            if (!state.placed) state.camera(map, animate = true) else state.keepTracking(map, it)
+            if (!state.placed) state.camera(map, animate = true) else state.keepTracking(map, shown)
         }
     }
 
@@ -346,9 +375,18 @@ fun CarMap(
         Navigation.state.map { it?.route }.distinctUntilChanged().collect { showRoute(loaded, it) }
     }
 
+    // The next maneuver drawn on the road, as a factory navigation does: redrawn only when it changes
+    LaunchedEffect(style) {
+        val loaded = style ?: return@LaunchedEffect
+        Navigation.state.map { s -> s?.next?.let { s.route to it } }.distinctUntilChanged().collect { showManeuver(loaded, it?.first, it?.second) }
+    }
+
     // The route in the focus colour; the car's arrow on it keeps a wide edge to stand apart
     LaunchedEffect(style, palette.focus, palette.map.halo) {
-        style?.let { colorRoute(it, palette.focus, palette.map.halo) }
+        style?.let {
+            colorRoute(it, palette.focus, palette.map.halo)
+            it.addImage(MANEUVER_HEAD, arrowHeadBitmap(context, palette.focus))
+        }
     }
 
     // The car in the labels' grey (slate by day, light at night): it stands out on the blue route
@@ -472,7 +510,7 @@ private fun showRoute(style: Style, route: NavRoute?) {
             style.addLayer(line)
         }
     }
-    source.setGeoJson(route?.let { lineGeoJson(it) } ?: """{"type":"FeatureCollection","features":[]}""")
+    source.setGeoJson(route?.let { lineGeoJson(it.points) } ?: EMPTY_FEATURES)
 }
 
 private fun colorRoute(style: Style, line: Color, casing: Color) {
@@ -480,18 +518,143 @@ private fun colorRoute(style: Style, line: Color, casing: Color) {
     style.getLayer(ROUTE_CASING)?.setProperties(PropertyFactory.lineColor(casing.toArgb()))
 }
 
-private fun lineGeoJson(route: NavRoute): String = buildString {
+/**
+ * The next maneuver as an arrow on the route: a white line along the road from a little before the turn to a little
+ * after it (through a roundabout to its exit), with a head at the end, narrower than the route under it, and the same
+ * for the one after when it follows close. Nothing for going straight on or the arrival. Added the first time, above the road names, which give way to it (one written
+ * across it hid the head), and below the car.
+ */
+private fun showManeuver(style: Style, route: NavRoute?, next: Maneuver?) {
+    val line = style.getSourceAs<GeoJsonSource>(MANEUVER_SOURCE) ?: GeoJsonSource(MANEUVER_SOURCE).also { s ->
+        style.addSource(s)
+        style.addSource(GeoJsonSource(MANEUVER_HEAD_SOURCE))
+        val width = Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(), Expression.stop(12, 3f), Expression.stop(18, 18f))
+        val iconSize = Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(), Expression.stop(12, 0.35f), Expression.stop(18, 1.8f))
+        val shaft = LineLayer(MANEUVER_LINE, MANEUVER_SOURCE).withProperties(
+            PropertyFactory.lineCap(Property.LINE_CAP_BUTT), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+            PropertyFactory.lineWidth(width), PropertyFactory.lineColor(SignWhite.toArgb()),
+        )
+        // Unseen marks all along the shaft: the names placed after them (every layer below) keep away from it
+        val clear = SymbolLayer(MANEUVER_CLEAR_LAYER, MANEUVER_SOURCE).withProperties(
+            PropertyFactory.symbolPlacement(Property.SYMBOL_PLACEMENT_LINE),
+            PropertyFactory.symbolSpacing(CLEAR_SPACING_PX),
+            PropertyFactory.iconImage(MANEUVER_HEAD),
+            PropertyFactory.iconOpacity(0f),
+            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_MAP),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconSize(iconSize),
+        )
+        val head = SymbolLayer(MANEUVER_HEAD_LAYER, MANEUVER_HEAD_SOURCE).withProperties(
+            PropertyFactory.iconImage(MANEUVER_HEAD),
+            PropertyFactory.iconRotate(Expression.get("bearing")),
+            // Lying on the road, pointing along it, whatever else is drawn there
+            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_MAP),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconSize(iconSize),
+        )
+        // The location component's layers are the car: the arrow goes under it
+        val car = style.layers.firstOrNull { it.id.startsWith(LOCATION_LAYERS) }?.id
+        for (layer in listOf(shaft, clear, head)) {
+            if (car != null) style.addLayerBelow(layer, car) else style.addLayer(layer)
+        }
+    }
+    val heads = style.getSourceAs<GeoJsonSource>(MANEUVER_HEAD_SOURCE) ?: return
+    // The one after too when it comes right after: the driver gets ready for both
+    val pieces = if (route == null) emptyList() else {
+        listOfNotNull(next, followingSoon(route, next)).map { arrowPiece(route, it) }.filter { it.size >= 4 }
+    }
+    line.setGeoJson(featureCollection(pieces.map { lineGeoJson(it) }))
+    heads.setGeoJson(
+        featureCollection(
+            pieces.map { piece ->
+                val n = piece.size / 2
+                val bearing = bearingDeg(piece[2 * n - 4], piece[2 * n - 3], piece[2 * n - 2], piece[2 * n - 1])
+                """{"type":"Feature","properties":{"bearing":$bearing},"geometry":{"type":"Point","coordinates":[${piece[2 * n - 1]},${piece[2 * n - 2]}]}}"""
+            },
+        ),
+    )
+}
+
+/** The part of [route] [m]'s arrow covers (latitude, longitude pairs); none for going straight on or the arrival. */
+private fun arrowPiece(route: NavRoute, m: Maneuver): DoubleArray {
+    if (m.kind == ManeuverKind.STRAIGHT || m.kind == ManeuverKind.ARRIVE) return DoubleArray(0)
+    val at = route.cumulative[m.beginIndex]
+    val end = m.exitIndex?.let { route.cumulative[it] } ?: at
+    return route.slice(at - ARROW_BEFORE_M, end + ARROW_AFTER_M)
+}
+
+/** The maneuver after [next], when it comes within [FOLLOWING_M] of it (of a roundabout's exit). */
+private fun followingSoon(route: NavRoute, next: Maneuver?): Maneuver? {
+    next ?: return null
+    val after = route.maneuvers.getOrNull(route.maneuvers.indexOf(next) + 1) ?: return null
+    val end = route.cumulative[next.exitIndex ?: next.beginIndex]
+    return after.takeIf { route.cumulative[it.beginIndex] - end <= FOLLOWING_M }
+}
+
+private fun featureCollection(features: List<String>) = """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+
+/**
+ * The head of the maneuver's arrow, pointing up: white, its two sides edged in [edge] so it shows past the route's
+ * sides. The base stays open, flat and white: the shaft runs into it, one shape (edged all round, it looked shut off).
+ */
+private fun arrowHeadBitmap(context: Context, edge: Color): Bitmap {
+    val metrics = context.resources.displayMetrics
+    val size = (metrics.density * ARROW_HEAD_DP).roundToInt().coerceAtLeast(8)
+    // The car screen's density, as for the car's arrow: left at the phone's, MapLibre drew the head a third as big,
+    // no wider than the line (a road test: "it doesn't look like an arrow")
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply { density = metrics.densityDpi }
+    val canvas = android.graphics.Canvas(bitmap)
+    // The two sides, from the base's left corner over the tip to its right one
+    val sides = android.graphics.Path().apply {
+        moveTo(size * 0.08f, size * 0.86f)
+        lineTo(size / 2f, size * 0.08f)
+        lineTo(size * 0.92f, size * 0.86f)
+    }
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { strokeJoin = android.graphics.Paint.Join.ROUND }
+    paint.style = android.graphics.Paint.Style.FILL
+    paint.color = SignWhite.toArgb()
+    canvas.drawPath(android.graphics.Path(sides).apply { close() }, paint)
+    paint.style = android.graphics.Paint.Style.STROKE
+    paint.strokeWidth = size * 0.06f
+    paint.color = edge.toArgb()
+    canvas.drawPath(sides, paint)
+    return bitmap
+}
+
+/** A line through [points] (latitude, longitude pairs) as GeoJSON, which wants longitude first. */
+private fun lineGeoJson(points: DoubleArray): String = buildString {
     append("""{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[""")
-    for (i in 0 until route.size) {
+    for (i in 0 until points.size / 2) {
         if (i > 0) append(',')
-        append('[').append(route.lon(i)).append(',').append(route.lat(i)).append(']')
+        append('[').append(points[2 * i + 1]).append(',').append(points[2 * i]).append(']')
     }
     append("]}}")
 }
 
+private const val EMPTY_FEATURES = """{"type":"FeatureCollection","features":[]}"""
 private const val ROUTE_SOURCE = "betterauto-route"
 private const val ROUTE_LINE = "betterauto-route-line"
 private const val ROUTE_CASING = "betterauto-route-casing"
+private const val MANEUVER_SOURCE = "betterauto-maneuver"
+private const val MANEUVER_LINE = "betterauto-maneuver-line"
+private const val MANEUVER_HEAD_SOURCE = "betterauto-maneuver-head"
+private const val MANEUVER_HEAD_LAYER = "betterauto-maneuver-head"
+private const val MANEUVER_HEAD = "betterauto-maneuver-head-image"
+private const val MANEUVER_CLEAR_LAYER = "betterauto-maneuver-clear"
+private const val CLEAR_SPACING_PX = 12f
+
+/** The start of the ids of the layers MapLibre's location component adds (LocationComponentConstants). */
+private const val LOCATION_LAYERS = "mapbox-location-"
+
+/** The maneuver's arrow starts this far before the turn and ends this far after it (40 and 25 looked long). */
+private const val ARROW_BEFORE_M = 20.0
+private const val ARROW_AFTER_M = 20.0
+
+/** The maneuver after the next one this close after it: an arrow for it too. */
+private const val FOLLOWING_M = 200.0
+private const val ARROW_HEAD_DP = 40f
 
 /** The style's lowest label layer (res/raw/map_style.json): the route goes under it. */
 private const val FIRST_LABEL = "label_road"
@@ -565,6 +728,10 @@ private fun puckBitmap(context: Context, sizeDp: Float, fill: Color, outline: Co
 
 private const val PUCK = "betterauto-car"
 private const val MAX_FPS = 30
+
+
+/** Fixes closer together than this are not drawn one by one (see the position collector). */
+private const val MIN_FEED_MS = 500L
 private const val RECENTER_AFTER_MS = 15_000L
 
 /** Before the first position: Europe from afar. */

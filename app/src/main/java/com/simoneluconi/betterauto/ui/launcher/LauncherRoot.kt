@@ -302,7 +302,8 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     if (shownCall == null && hasFocus && !panelOpen && nudge != null) {
                         if (railHasFocus) {
                             if (event.key == toScreen) {
-                                if (down && !contentFocus.requestFocus()) focusManager.moveFocus(nudge)
+                                // Back where the knob was on this screen; the main control the first time
+                                if (down && !CarZones.returnToLast() && !contentFocus.requestFocus()) focusManager.moveFocus(nudge)
                                 return@onPreviewKeyEvent true
                             }
                             // Along the bar: from section to section
@@ -311,7 +312,10 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                                 when {
                                     CarZones.moveBeside(nudge) -> Unit
                                     // From the last zone toward the bar: the current section
-                                    event.key == toBar -> railFocus.requestFocus()
+                                    event.key == toBar -> {
+                                        CarZones.leaving()
+                                        railFocus.requestFocus()
+                                    }
                                     // Across the bar's axis with no zone that way: within the screen
                                     event.key != toScreen -> focusManager.moveFocus(nudge)
                                 }

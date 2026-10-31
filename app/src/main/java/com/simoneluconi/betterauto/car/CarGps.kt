@@ -19,14 +19,26 @@ class CarGpsGate {
 
     private var firstPositionAt = 0L
 
+    /** The position the car kept sending while blind: still the old one, it is not a fix yet. */
+    private var frozen: Pair<Double, Double>? = null
+
     fun judge(position: Timed<Position>, satellites: Timed<Satellites>?, now: Long = System.currentTimeMillis()): Verdict {
         if (now - position.at > FRESH_MS) return Verdict.STALE
         if (firstPositionAt == 0L) firstPositionAt = now
         // The satellites come a moment after the first position: until then (or a while, for a car that never
         // sends them) the position is not trusted
         if (satellites == null && now - firstPositionAt < SATELLITES_WAIT_MS) return Verdict.WAIT
+        val at = position.value.latitude to position.value.longitude
         val blind = satellites != null && now - satellites.at < FRESH_MS && satellites.value.inUse == 0
-        return if (blind) Verdict.BLIND else Verdict.USE
+        if (blind) {
+            frozen = at
+            return Verdict.BLIND
+        }
+        // Out of a garage the satellites come back long before the position does (an Audi: a minute, 3 km
+        // off, until it moved): blind until the position changes
+        if (at == frozen) return Verdict.BLIND
+        frozen = null
+        return Verdict.USE
     }
 
     companion object {

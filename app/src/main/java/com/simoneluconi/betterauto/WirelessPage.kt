@@ -99,6 +99,8 @@ internal fun WirelessPage(onBack: () -> Unit) {
     val missing = remember(refresh) { WirelessConnector.missingPermissions(context) }
     val devices = remember(refresh, missing.isEmpty()) { if (missing.isEmpty()) paired(context) else emptyList() }
     var selected by remember { mutableStateOf(WirelessConnector.savedDevice(context)) }
+    // The devices that connect by themselves, shown on their rows
+    var watched by remember { mutableStateOf(WirelessAutoConnect.watched(context)) }
     var showAll by remember { mutableStateOf(false) }
     val status by WirelessConnector.status.collectAsStateWithLifecycle()
     // Only those offering wireless Android Auto, unless asked: a phone has many paired devices.
@@ -136,7 +138,7 @@ internal fun WirelessPage(onBack: () -> Unit) {
                 Card { CarLabel(stringResource(R.string.wireless_none_paired), 15.sp, colors.text2, maxLines = 4) }
             }
             for (device in shown) {
-                DeviceRow(device, chosen = device.address == selected) {
+                DeviceRow(device, chosen = device.address == selected, auto = device.address.uppercase() in watched) {
                     selected = device.address
                     WirelessConnector.saveDevice(context, device.address)
                 }
@@ -145,7 +147,7 @@ internal fun WirelessPage(onBack: () -> Unit) {
             if (hidden > 0) {
                 PillButton(stringResource(R.string.wireless_show_all, hidden), primary = false) { showAll = true }
             }
-            if (WirelessAutoConnect.supported()) selected?.let { AutoConnectCard(it) }
+            if (WirelessAutoConnect.supported()) selected?.let { AutoConnectCard(it) { watched = WirelessAutoConnect.watched(context) } }
             if (missing.isEmpty()) DualWifiCard()
         }
 
@@ -178,45 +180,45 @@ internal fun WirelessPage(onBack: () -> Unit) {
 
 /**
  * Auto-connect for the picked device, on by default: Android's dialog to associate it comes up once, then
- * the system tells BetterAuto whenever the device connects over Bluetooth. Picking another device moves it;
- * declining the dialog turns it off.
+ * the system tells BetterAuto whenever the device connects over Bluetooth. Each device has its own: picking
+ * another one adds it, the ones set up before keep connecting by themselves (the car's dongle, a bench head
+ * unit). Turning it off, or declining the dialog, is remembered for that device. [onChange]: which devices
+ * are watched changed.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AutoConnectCard(address: String) {
+private fun AutoConnectCard(address: String, onChange: () -> Unit) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
-    var on by remember { mutableStateOf(WirelessAutoConnect.enabled(context)) }
+    var on by remember(address) { mutableStateOf(WirelessAutoConnect.isWatched(context, address)) }
+    fun set(value: Boolean) {
+        on = value
+        onChange()
+    }
     val dialog = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            on = WirelessAutoConnect.finish(context, address)
+            set(WirelessAutoConnect.finish(context, address))
         } else {
-            WirelessAutoConnect.declined(context)
-            on = false
+            WirelessAutoConnect.declined(context, address)
+            set(false)
         }
     }
     fun turnOn() = WirelessAutoConnect.enable(
         context, address,
         onDialog = { dialog.launch(IntentSenderRequest.Builder(it).build()) },
-        onDone = { on = it },
+        onDone = { set(it) },
     )
-    // On but not set up for this device yet (first time, or another one was picked): set it up
+    // A device picked for the first time: set it up, unless it was turned off for it before
     LaunchedEffect(address) {
-        val watched = WirelessAutoConnect.watched(context)
-        if (on && !watched.equals(address, ignoreCase = true)) {
-            if (watched != null) {
-                WirelessAutoConnect.disable(context, watched)
-            }
-            turnOn()
-        }
+        if (!on && !WirelessAutoConnect.turnedOff(context, address)) turnOn()
     }
     Card {
         CarLabel(stringResource(R.string.wireless_auto_title), 18.sp, colors.text, weight = FontWeight.Bold)
-        CarLabel(stringResource(R.string.wireless_auto_hint), 15.sp, colors.text2, maxLines = 3)
+        CarLabel(stringResource(R.string.wireless_auto_hint), 15.sp, colors.text2, maxLines = 4)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(stringResource(R.string.option_off), selected = !on) {
                 if (on) WirelessAutoConnect.disable(context, address)
-                on = false
+                set(false)
             }
             Chip(stringResource(R.string.option_on), selected = on) { if (!on) turnOn() }
         }
@@ -287,7 +289,7 @@ private fun failureLabel(step: WirelessStep) = when (step) {
 }
 
 @Composable
-private fun DeviceRow(device: Paired, chosen: Boolean, onClick: () -> Unit) {
+private fun DeviceRow(device: Paired, chosen: Boolean, auto: Boolean, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     Row(
         Modifier
@@ -308,7 +310,13 @@ private fun DeviceRow(device: Paired, chosen: Boolean, onClick: () -> Unit) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             CarLabel(device.name, 17.sp, colors.text, weight = FontWeight.Bold, maxLines = 2)
             CarLabel(
-                stringResource(if (device.wireless) R.string.wireless_supported else R.string.wireless_unknown),
+                stringResource(
+                    when {
+                        auto -> R.string.wireless_row_auto
+                        device.wireless -> R.string.wireless_supported
+                        else -> R.string.wireless_unknown
+                    },
+                ),
                 14.sp, colors.text2, maxLines = 2,
             )
         }

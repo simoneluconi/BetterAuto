@@ -17,27 +17,50 @@ import com.simoneluconi.betterauto.EventLog
  * [WirelessCompanionService] whenever the device connects to the phone over Bluetooth, which a dongle or
  * a wireless head unit does by itself when the car is switched on. Being a companion app is also what
  * lets BetterAuto start its service from the background at that moment. Android 12 or newer.
+ *
+ * Every device used is watched, each set up once: the car's dongle and a bench head unit both connect by
+ * themselves, whichever comes up first. A device is set up when picked, unless the user turned it off for it.
  */
 object WirelessAutoConnect {
-    private const val KEY_AUTO = "auto_connect"
-    /** The device the system watches for us now, to set it up once and move it when another is picked. */
-    private const val KEY_WATCHED = "auto_connect_device"
+    /** The devices the system watches for us (Bluetooth addresses, upper case). */
+    private const val KEY_WATCHED = "auto_connect_devices"
+    /** The devices the user turned it off for (or declined Android's dialog): not set up again by themselves. */
+    private const val KEY_TURNED_OFF = "auto_connect_off"
+    /** Before several devices: the one watched, and whether it was on. Read once. */
+    private const val KEY_OLD_DEVICE = "auto_connect_device"
+    private const val KEY_OLD_AUTO = "auto_connect"
 
     fun supported() = Build.VERSION.SDK_INT >= 31
 
-    /** On unless the user turned it off (or declined Android's dialog). */
-    fun enabled(context: Context): Boolean =
-        supported() && context.wirelessPrefs().getBoolean(KEY_AUTO, true)
-
-    fun watched(context: Context): String? =
-        context.wirelessPrefs().getString(KEY_WATCHED, null)
-
-    private fun setWatched(context: Context, address: String?) {
-        context.wirelessPrefs().edit { putString(KEY_WATCHED, address) }
+    fun watched(context: Context): Set<String> {
+        val prefs = context.wirelessPrefs()
+        prefs.getString(KEY_OLD_DEVICE, null)?.let { old ->
+            val on = prefs.getBoolean(KEY_OLD_AUTO, true)
+            prefs.edit {
+                remove(KEY_OLD_DEVICE)
+                remove(KEY_OLD_AUTO)
+                if (on) putStringSet(KEY_WATCHED, setOf(old.uppercase()))
+            }
+        }
+        return prefs.getStringSet(KEY_WATCHED, null).orEmpty()
     }
 
-    private fun setEnabled(context: Context, value: Boolean) {
-        context.wirelessPrefs().edit { putBoolean(KEY_AUTO, value) }
+    /** Auto-connect is set up for [address]. */
+    fun isWatched(context: Context, address: String): Boolean = supported() && address.uppercase() in watched(context)
+
+    /** The user turned it off for [address]: picking it again does not turn it back on. */
+    fun turnedOff(context: Context, address: String): Boolean =
+        address.uppercase() in context.wirelessPrefs().getStringSet(KEY_TURNED_OFF, null).orEmpty()
+
+    private fun setWatched(context: Context, address: String, on: Boolean) {
+        val key = address.uppercase()
+        val prefs = context.wirelessPrefs()
+        val watched = watched(context)
+        val off = prefs.getStringSet(KEY_TURNED_OFF, null).orEmpty()
+        prefs.edit {
+            putStringSet(KEY_WATCHED, if (on) watched + key else watched - key)
+            putStringSet(KEY_TURNED_OFF, if (on) off - key else off + key)
+        }
     }
 
     /**
@@ -67,7 +90,7 @@ object WirelessAutoConnect {
 
             override fun onFailure(error: CharSequence?) {
                 EventLog.log("Wireless: auto-connect not set up: $error")
-                declined(context)
+                declined(context, address)
                 onDone(false)
             }
         }
@@ -92,23 +115,20 @@ object WirelessAutoConnect {
             }
         }
         watching.exceptionOrNull()?.let { EventLog.log("Wireless: cannot watch for the device: $it") }
-        setEnabled(context, watching.isSuccess)
-        setWatched(context, if (watching.isSuccess) address else null)
-        if (watching.isSuccess) EventLog.log("Wireless: auto-connect on")
+        setWatched(context, address, watching.isSuccess)
+        if (watching.isSuccess) EventLog.log("Wireless: auto-connect on (${watched(context).size} device(s))")
         return watching.isSuccess
     }
 
-    /** Android's dialog was declined: off, so it is not asked again until the user turns it on. */
-    fun declined(context: Context) {
-        setEnabled(context, false)
-        setWatched(context, null)
+    /** Android's dialog was declined: off for [address], so it is not asked again until the user turns it on. */
+    fun declined(context: Context, address: String) {
+        setWatched(context, address, false)
     }
 
-    fun disable(context: Context, address: String?) {
-        setEnabled(context, false)
-        setWatched(context, null)
+    fun disable(context: Context, address: String) {
+        setWatched(context, address, false)
         val manager = context.getSystemService(CompanionDeviceManager::class.java) ?: return
-        if (address == null || !supported()) return
+        if (!supported()) return
         runCatching {
             if (Build.VERSION.SDK_INT >= 36) {
                 val id = associationId(manager, address) ?: return@runCatching
@@ -118,7 +138,7 @@ object WirelessAutoConnect {
                 manager.stopObservingDevicePresence(address)
             }
         }
-        EventLog.log("Wireless: auto-connect off")
+        EventLog.log("Wireless: auto-connect off for a device (${watched(context).size} left)")
     }
 
     private fun isAssociated(manager: CompanionDeviceManager, address: String): Boolean =

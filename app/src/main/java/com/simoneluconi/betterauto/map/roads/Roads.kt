@@ -112,6 +112,31 @@ class RoadSegment(
     fun lat(i: Int) = points[2 * i]
     fun lon(i: Int) = points[2 * i + 1]
 
+    /** The point of the road nearest to [latitude], [longitude], how far it is, and the road's direction there. */
+    fun nearestPoint(latitude: Double, longitude: Double): RoadPoint? {
+        val cosLat = cos(Math.toRadians(latitude))
+        var best: RoadPoint? = null
+        for (i in 0 until size - 1) {
+            val ax = Math.toRadians(lon(i) - longitude) * cosLat * EARTH_RADIUS_M
+            val ay = Math.toRadians(lat(i) - latitude) * EARTH_RADIUS_M
+            val dx = Math.toRadians(lon(i + 1) - lon(i)) * cosLat * EARTH_RADIUS_M
+            val dy = Math.toRadians(lat(i + 1) - lat(i)) * EARTH_RADIUS_M
+            val len2 = dx * dx + dy * dy
+            if (len2 == 0.0) continue
+            val t = ((-ax) * dx + (-ay) * dy).div(len2).coerceIn(0.0, 1.0)
+            val d = sqrt((ax + t * dx) * (ax + t * dx) + (ay + t * dy) * (ay + t * dy))
+            if (best == null || d < best.distanceM) {
+                best = RoadPoint(
+                    lat(i) + (lat(i + 1) - lat(i)) * t,
+                    lon(i) + (lon(i + 1) - lon(i)) * t,
+                    d,
+                    (Math.toDegrees(atan2(dx, dy)) + 360) % 360,
+                )
+            }
+        }
+        return best
+    }
+
     /** The limit for a car at [fraction] of the road going [direction]; null when the data says nothing sure. */
     fun limitAt(fraction: Double, direction: TravelDirection?): SpeedLimit? {
         val applying = limits.filter { r -> r.direction == null || direction == null || r.direction == direction }
@@ -124,8 +149,12 @@ class RoadSegment(
 
     private companion object {
         const val EDGE = 0.001
+        const val EARTH_RADIUS_M = 6_371_000.0
     }
 }
+
+/** A point on a road's line, [distanceM] from where it was asked for, with the line's [bearing] (drawing order). */
+data class RoadPoint(val latitude: Double, val longitude: Double, val distanceM: Double, val bearing: Double)
 
 /** Where the car is on a road. */
 data class RoadMatch(val segment: RoadSegment, val fraction: Double, val direction: TravelDirection?, val distanceM: Double)

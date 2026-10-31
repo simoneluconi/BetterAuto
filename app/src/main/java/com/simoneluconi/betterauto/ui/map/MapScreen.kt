@@ -8,7 +8,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,14 +35,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -68,13 +62,15 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
+import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.launcher.carZone
 import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 
 /**
- * The Map section: the map following the car. The knob turns to zoom and presses to come back to the car;
- * touch moves and pinches it, with zoom buttons for one finger and "recenter" while it is moved away.
+ * The Map section: the map following the car. The knob goes from the map to its buttons as on any screen (zoom by
+ * pressing + or −; turning to zoom kept it on the map, a road test); a press on the map comes back to the car or
+ * opens the destinations. Touch moves and pinches it, with "recenter" while it is moved away.
  */
 @Composable
 fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
@@ -94,19 +90,13 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
     val mapFocus = remember { FocusRequester() }
-    // The knob's hint, and the zoom button the last knob step matches (+1, -1, 0 for none)
+    // The knob's hint
     var hint by remember { mutableStateOf(false) }
-    var lit by remember { mutableIntStateOf(0) }
-    var litStep by remember { mutableIntStateOf(0) }
     LaunchedEffect(hint) {
         if (hint) {
             delay(HINT_MS)
             hint = false
         }
-    }
-    LaunchedEffect(litStep) {
-        delay(LIT_MS)
-        lit = 0
     }
     val shape = RoundedCornerShape(32.dp)
 
@@ -124,22 +114,11 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                 if (it.isFocused && SystemClock.elapsedRealtime() - mapKnobUsedAt > HINT_AGAIN_MS) hint = true
             }
             .onPreviewKeyEvent { event ->
-                // The destinations panel and the stop-or-destination choice have the knob while they are open
-                if (panelOpen || offer != null) return@onPreviewKeyEvent false
+                // The destinations panel and the stop-or-destination choice have the knob while they are open; the
+                // buttons over the map take their own presses
+                if (panelOpen || offer != null || !focused) return@onPreviewKeyEvent false
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
-                    // The knob turns: clockwise closer, the other way farther
-                    Key.Tab -> {
-                        if (down) {
-                            mapKnobUsedAt = SystemClock.elapsedRealtime()
-                            val step = if (event.isShiftPressed) -1 else 1
-                            state.zoomBy(step.toDouble())
-                            lit = step
-                            litStep++
-                            EventLog.log("Map: knob zoom to ${"%.1f".format(state.zoom)}")
-                        }
-                        true
-                    }
                     // A press: back to the car if the map was moved away, else where to go
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         if (down) {
@@ -218,13 +197,13 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                     }
                 }
                 MapButton(CarIcons.Search, stringResource(R.string.nav_destinations), BUTTON_SIZE, CircleShape) { panelOpen = true }
+                // Not clipped: the focus ring of either button is drawn just outside the pill
                 Column(
-                    Modifier.clip(RoundedCornerShape(BUTTON_SIZE / 2)).background(colors.surface),
+                    Modifier.background(colors.surface, RoundedCornerShape(BUTTON_SIZE / 2)),
                 ) {
-                    // The button a knob step matches lights up a moment: the knob does the same as these
-                    MapButton(CarIcons.Plus, stringResource(R.string.map_zoom_in), BUTTON_SIZE, null, lit = lit > 0) { state.zoomBy(1.0) }
+                    MapButton(CarIcons.Plus, stringResource(R.string.map_zoom_in), BUTTON_SIZE, null) { zoomBy(state, 1.0) }
                     Box(Modifier.width(BUTTON_SIZE).padding(horizontal = 12.dp).height(1.dp).background(colors.line))
-                    MapButton(CarIcons.Minus, stringResource(R.string.map_zoom_out), BUTTON_SIZE, null, lit = lit < 0) { state.zoomBy(-1.0) }
+                    MapButton(CarIcons.Minus, stringResource(R.string.map_zoom_out), BUTTON_SIZE, null) { zoomBy(state, -1.0) }
                 }
             }
         }
@@ -315,17 +294,20 @@ internal fun MapAttribution(modifier: Modifier = Modifier) {
     )
 }
 
-/** A touch button over the map; the knob has its own way to do the same, so it never takes the focus. */
+private fun zoomBy(state: CarMapState, step: Double) {
+    state.zoomBy(step)
+    EventLog.log("Map: zoom to ${"%.1f".format(state.zoom)}")
+}
+
+/** A button over the map, for touch and the knob alike. [shape]: its own round background, else none (in a pill). */
 @Composable
-private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?, lit: Boolean = false, onTap: () -> Unit) {
+private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?, onTap: () -> Unit) {
     val colors = LocalCarColors.current
     Box(
         Modifier
             .size(size)
-            .then(if (shape != null) Modifier.clip(shape).background(colors.surface) else Modifier)
-            .then(if (lit) Modifier.clip(shape ?: CircleShape).background(colors.focus.copy(alpha = 0.35f)) else Modifier)
-            .semantics { contentDescription = label }
-            .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) },
+            .carClickable(shape ?: CircleShape, label, onClick = onTap)
+            .then(if (shape != null) Modifier.clip(shape).background(colors.surface) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         CarIcon(icon, colors.text, Modifier.size(26.dp))
@@ -338,5 +320,4 @@ private val BUTTON_SIZE = 52.dp
 private var mapKnobUsedAt = 0L
 private const val HINT_MS = 3_000L
 private const val HINT_AGAIN_MS = 2 * 60_000L
-private const val LIT_MS = 350L
 private const val SECTION_TILT = 45.0

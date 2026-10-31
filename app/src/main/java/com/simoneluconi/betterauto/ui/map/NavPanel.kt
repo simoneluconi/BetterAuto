@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.map.nav.Destination
+import com.simoneluconi.betterauto.map.nav.Maneuver
 import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import com.simoneluconi.betterauto.map.nav.NavState
 import com.simoneluconi.betterauto.map.nav.RoutePlanning
@@ -53,6 +50,7 @@ import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.LocalFormatLocale
+import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.theme.SignWhite
 import com.simoneluconi.betterauto.ui.vehicle.rememberUnits
@@ -95,8 +93,7 @@ fun ManeuverCard(nav: NavState, modifier: Modifier = Modifier, onEnd: (() -> Uni
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val distance = if (nav.rerouting) null else distanceText(nav.toNextM, units)
                 CarLabel(distance ?: "…", 34.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true)
-                val street = next?.street ?: next?.instruction
-                if (street != null) CarLabel(street, 20.sp, colors.text2, weight = FontWeight.Bold, maxLines = 2, shrinkToFit = true)
+                if (next != null) CarLabel(maneuverLabel(next), 20.sp, colors.text2, weight = FontWeight.Bold, maxLines = 1, shrinkToFit = true)
             }
         }
         Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(1.dp).background(colors.line))
@@ -148,7 +145,7 @@ private fun roundaboutsClockwise(): Boolean {
 
 /**
  * A trip without a route to follow, where the maneuver card goes: being calculated, or why none came, with a way
- * to ask again and to end it (for touch; the knob has both in the destinations panel).
+ * to ask again and to end it.
  */
 @Composable
 fun PlanningCard(planning: RoutePlanning, places: List<Destination>, onRetry: () -> Unit, onEnd: () -> Unit, modifier: Modifier = Modifier) {
@@ -174,10 +171,9 @@ fun PlanningCard(planning: RoutePlanning, places: List<Destination>, onRetry: ()
                 Box(
                     Modifier
                         .height(40.dp)
+                        .carClickable(RoundedCornerShape(50), label, onClick = onRetry)
                         .clip(RoundedCornerShape(50))
                         .background(colors.surface2)
-                        .semantics { contentDescription = label }
-                        .pointerInput(Unit) { detectTapGestures { onRetry() } }
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -191,9 +187,8 @@ fun PlanningCard(planning: RoutePlanning, places: List<Destination>, onRetry: ()
 }
 
 /**
- * The end of the navigation, for touch (the knob ends it from the panel): a first tap asks, showing what it does,
- * a second one ends it, so a trip with its stops is not lost to a slip of the finger. The question goes away by
- * itself after a while.
+ * The end of the navigation: a first tap or press asks, showing what it does, a second one ends it, so a trip with
+ * its stops is not lost to a slip of the finger. The question goes away by itself after a while.
  */
 @Composable
 private fun EndButton(onEnd: () -> Unit) {
@@ -210,10 +205,9 @@ private fun EndButton(onEnd: () -> Unit) {
         Modifier
             .height(40.dp)
             .widthIn(min = 40.dp)
+            .carClickable(RoundedCornerShape(50), label) { if (asking) onEnd() else asking = true }
             .clip(RoundedCornerShape(50))
             .background(if (asking) colors.focus else colors.surface2)
-            .semantics { contentDescription = label }
-            .pointerInput(Unit) { detectTapGestures { if (asking) onEnd() else asking = true } }
             .padding(horizontal = if (asking) 16.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -223,6 +217,31 @@ private fun EndButton(onEnd: () -> Unit) {
 }
 
 private const val END_ASK_MS = 4_000L
+
+/**
+ * What the card says under the distance, read at a glance: the street it leads onto, else a few words for the
+ * maneuver, never the server's whole sentence ("Svolta a destra su… Poi…"). A roundabout says its exit first.
+ */
+@Composable
+private fun maneuverLabel(m: Maneuver): String {
+    val exit = m.roundaboutExit?.takeIf { m.kind == ManeuverKind.ROUNDABOUT }?.let { stringResource(R.string.nav_card_exit, it) }
+    val street = m.street?.substringBefore('/')?.trim()?.takeIf { it.isNotEmpty() }
+    if (exit != null) return if (street != null) "$exit · $street" else exit
+    return street ?: stringResource(
+        when (m.kind) {
+            ManeuverKind.STRAIGHT -> R.string.nav_card_straight
+            ManeuverKind.SLIGHT_RIGHT -> R.string.nav_card_slight_right
+            ManeuverKind.RIGHT -> R.string.nav_card_right
+            ManeuverKind.SHARP_RIGHT -> R.string.nav_card_sharp_right
+            ManeuverKind.SLIGHT_LEFT -> R.string.nav_card_slight_left
+            ManeuverKind.LEFT -> R.string.nav_card_left
+            ManeuverKind.SHARP_LEFT -> R.string.nav_card_sharp_left
+            ManeuverKind.U_TURN -> R.string.nav_card_u_turn
+            ManeuverKind.ROUNDABOUT -> R.string.nav_card_roundabout
+            ManeuverKind.ARRIVE -> R.string.nav_destination_label
+        },
+    )
+}
 
 /** A maneuver's arrow: on the card, and drawn for the car's cluster. */
 internal fun iconOf(kind: ManeuverKind): ImageVector = when (kind) {

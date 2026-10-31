@@ -34,6 +34,18 @@ class CarGpsGateTest {
     }
 
     @Test
+    fun satellitesBackButTheSamePositionStaysBlindUntilItMoves() {
+        val gate = CarGpsGate()
+        assertEquals(CarGpsGate.Verdict.BLIND, gate.judge(Timed(position, 1_000), Timed(Satellites(0, 16), 1_000), now = 1_000))
+        // Satellites in use again, the position still the one kept from before the garage
+        assertEquals(CarGpsGate.Verdict.BLIND, gate.judge(Timed(position, 20_000), Timed(Satellites(7, 12), 20_000), now = 20_000))
+        val fix = position.copy(latitude = 45.03, accuracyM = 20.0)
+        assertEquals(CarGpsGate.Verdict.USE, gate.judge(Timed(fix, 21_000), Timed(Satellites(8, 12), 21_000), now = 21_000))
+        // Standing still with a real fix afterwards stays trusted
+        assertEquals(CarGpsGate.Verdict.USE, gate.judge(Timed(fix, 22_000), Timed(Satellites(8, 12), 22_000), now = 22_000))
+    }
+
+    @Test
     fun oldSatelliteCountDoesNotBlind() {
         val gate = CarGpsGate()
         val now = 2 * CarGpsGate.FRESH_MS

@@ -18,11 +18,19 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VideoStats
 import com.simoneluconi.betterauto.projection.Projection
+import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.video.VideoEncoder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.math.roundToInt
 
 /**
  * Video sink of the head unit. Flow:
@@ -72,11 +80,21 @@ class VideoChannel(
     private var statsBytes = 0L
     private var statsStart = 0L
 
+    private val settings = LauncherSettings.get(projection.context)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onOpened() {
         send(
             MediaMessageId.MEDIA_MESSAGE_SETUP_VALUE,
             Setup.newBuilder().setType(MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP).build(),
         )
+        // Another size: the car screen drawn again at the new density (while one is shown)
+        scope.launch {
+            settings.uiSize.drop(1).collect {
+                EventLog.log("Video: size on the car screen ${it.name.lowercase()}, drawing it again")
+                synchronized(this@VideoChannel) { if (encoder != null) restartStreaming() }
+            }
+        }
     }
 
     override fun onChannelMessage(msg: AapMessage) {
@@ -184,7 +202,8 @@ class VideoChannel(
             onFrame = ::sendFrame,
         )
         CarState.viewport.value = cfg.viewport()
-        val density = if (cfg.density > 0) cfg.density else 160
+        // As big as the driver chose ("Size on the car screen"), from the density the car states
+        val density = ((if (cfg.density > 0) cfg.density else 160) * settings.uiSize.value.scale).roundToInt()
         projection.start(newEncoder.inputSurface, width, height, density)
         active = this
         startWatchdog()
@@ -308,6 +327,7 @@ class VideoChannel(
 
     override fun close() {
         closed = true
+        scope.cancel()
         watchdog?.interrupt()
         synchronized(this) {
             if (active === this) active = null

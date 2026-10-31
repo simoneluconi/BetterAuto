@@ -9,6 +9,9 @@ import aap_protobuf.service.control.message.ByeByeRequestOuterClass.ByeByeReques
 import aap_protobuf.service.control.message.ByeByeResponseOuterClass.ByeByeResponse
 import aap_protobuf.service.control.message.ControlMessageTypeOuterClass.ControlMessageType
 import aap_protobuf.service.control.message.HeadUnitInfoOuterClass.HeadUnitInfo
+import aap_protobuf.service.control.message.NavFocusNotificationOuterClass.NavFocusNotification
+import aap_protobuf.service.control.message.NavFocusRequestNotificationOuterClass.NavFocusRequestNotification
+import aap_protobuf.service.control.message.NavFocusTypeOuterClass.NavFocusType
 import aap_protobuf.service.control.message.PingRequestOuterClass.PingRequest
 import aap_protobuf.service.control.message.PingResponseOuterClass.PingResponse
 import aap_protobuf.service.control.message.ServiceDiscoveryRequestOuterClass.ServiceDiscoveryRequest
@@ -119,6 +122,8 @@ class AapSession(
                     sink?.onFocus(focus.focusState)
                 }
             }
+            ControlMessageType.MESSAGE_NAV_FOCUS_NOTIFICATION_VALUE ->
+                EventLog.log("Navigation focus from car: ${NavFocusNotification.parseFrom(msg.payload).focusType}")
             // Flags too: a wireless dongle sends an empty message 0 right before it hangs up, not yet understood
             else -> EventLog.log(
                 "Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes, " +
@@ -257,7 +262,8 @@ class AapSession(
         service.hasVendorExtensionService() -> VendorExtensionChannel(this, service.id, service.vendorExtensionService.name)
         service.hasBluetoothService() -> BluetoothChannel(this, service.id, service.bluetoothService, projection.context)
         service.hasPhoneStatusService() -> PhoneStatusChannel(this, service.id, projection.context)
-        service.hasNavigationStatusService() -> NavigationStatusChannel(this, service.id, service.navigationStatusService, projection.context)
+        service.hasNavigationStatusService() ->
+            NavigationStatusChannel(this, service.id, service.navigationStatusService, projection.context, ::requestNavFocus)
         else -> null
     }
 
@@ -295,6 +301,19 @@ class AapSession(
         send(
             ControlMessageType.MESSAGE_AUDIO_FOCUS_REQUEST_VALUE,
             AudioFocusRequestNotification.newBuilder().setRequest(type).build(),
+            encrypted = true,
+        )
+    }
+
+    /**
+     * Asks to be the car's navigation, as navigation apps do when they start guiding: the car stops its own guidance
+     * and hands its cluster over (an Audi MMI offered the cluster but never started it without this).
+     */
+    private fun requestNavFocus() {
+        EventLog.log("Navigation focus: asking the car")
+        send(
+            ControlMessageType.MESSAGE_NAV_FOCUS_REQUEST_VALUE,
+            NavFocusRequestNotification.newBuilder().setFocusType(NavFocusType.NAV_FOCUS_PROJECTED).build(),
             encrypted = true,
         )
     }

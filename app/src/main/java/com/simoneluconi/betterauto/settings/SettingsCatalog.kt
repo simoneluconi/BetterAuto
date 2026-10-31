@@ -324,6 +324,16 @@ object SettingsCatalog {
             ),
             { it.driverSide }, LauncherSettings::setDriverSide, more = true,
         ),
+        ChoiceSetting(
+            "ui_size", display, R.string.settings_ui_size, R.string.settings_ui_size_desc,
+            listOf(
+                SettingOption(UiSize.SMALLER, R.string.option_size_smaller),
+                SettingOption(UiSize.AUTO, R.string.option_auto),
+                SettingOption(UiSize.LARGER, R.string.option_size_larger),
+                SettingOption(UiSize.LARGEST, R.string.option_size_largest),
+            ),
+            { it.uiSize }, LauncherSettings::setUiSize,
+        ),
         RailLayoutSetting("rail_layout", display, R.string.settings_rail_layout, R.string.settings_rail_layout_desc, R.string.settings_shown_summary),
         ChoiceSetting(
             "clock", display, R.string.settings_clock, R.string.settings_clock_desc,

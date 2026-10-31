@@ -9,7 +9,7 @@ import com.simoneluconi.betterauto.AapService
 import com.simoneluconi.betterauto.EventLog
 
 /**
- * Woken by the system when the associated head unit or dongle connects to the phone over Bluetooth (see
+ * Woken by the system when an associated head unit or dongle connects to the phone over Bluetooth (see
  * [WirelessAutoConnect]): starts the wireless connection. Each Android version calls a different method;
  * a repeated call is harmless, the service ignores an automatic start while it is already connected.
  */
@@ -32,15 +32,15 @@ class WirelessCompanionService : CompanionDeviceService() {
     }
 
     private fun appeared(address: String?) {
-        // Only the device picked on the Wireless page, by its address as Bluetooth spells it
-        val saved = WirelessConnector.savedDevice(this) ?: return
-        if (!WirelessAutoConnect.enabled(this)) return
-        if (address != null && !address.equals(saved, ignoreCase = true)) return
+        // The device that came up, if auto-connect is on for it (the car's dongle, a bench head unit...); with no
+        // address (older Android) the one picked on the Wireless page. Upper case, as Bluetooth spells it
+        val device = (address ?: WirelessConnector.savedDevice(this))?.uppercase() ?: return
+        if (!WirelessAutoConnect.isWatched(this, device)) return
         EventLog.log("Wireless: the head unit is in range, connecting automatically")
         runCatching {
             startForegroundService(
                 Intent(this, AapService::class.java).setAction(AapService.ACTION_CONNECT_WIRELESS)
-                    .putExtra(AapService.EXTRA_DEVICE, saved)
+                    .putExtra(AapService.EXTRA_DEVICE, device)
                     .putExtra(AapService.EXTRA_AUTO, true)
             )
         }.onFailure { EventLog.log("Wireless: could not start the automatic connection: $it") }

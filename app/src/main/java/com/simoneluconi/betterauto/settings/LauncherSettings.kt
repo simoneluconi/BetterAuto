@@ -51,6 +51,9 @@ enum class MapZoom(val level: Double) { CLOSE(19.0), MEDIUM(17.0), FAR(16.0) }
 /** What the navigation says: every instruction, only the arrivals (stops, destination), or nothing. */
 enum class GuidanceVoice { FULL, ALERTS, MUTE }
 
+/** How big the car screen is drawn: [scale] times the density the car states (Auto: as it states). */
+enum class UiSize(val scale: Double) { SMALLER(0.9), AUTO(1.0), LARGER(1.1), LARGEST(1.2) }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -64,6 +67,9 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _driverSide = MutableStateFlow(enumOf(KEY_DRIVER_SIDE, DriverSide.AUTO))
     val driverSide: StateFlow<DriverSide> = _driverSide
+
+    private val _uiSize = MutableStateFlow(enumOf(KEY_UI_SIZE, UiSize.AUTO))
+    val uiSize: StateFlow<UiSize> = _uiSize
 
     private val _layout = MutableStateFlow(enumOf(KEY_LAYOUT, HomeLayout.TRIO))
     val layout: StateFlow<HomeLayout> = _layout
@@ -252,6 +258,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     fun setLayout(value: HomeLayout) = saveEnum(KEY_LAYOUT, value, _layout)
 
     fun setDriverSide(value: DriverSide) = saveEnum(KEY_DRIVER_SIDE, value, _driverSide)
+
+    fun setUiSize(value: UiSize) = saveEnum(KEY_UI_SIZE, value, _uiSize)
 
     fun setHomeSplitSide(value: Float?) {
         val side = value?.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT)
@@ -467,6 +475,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_HOME_SPLIT = "home_split"
         private const val KEY_HOME_SPLIT_SIDE = "home_split_side"
         private const val KEY_DRIVER_SIDE = "driver_side"
+        private const val KEY_UI_SIZE = "ui_size"
         private const val KEY_STACKS = "home_stacks"
         const val DEFAULT_HOME_SPLIT = 0.6f
         const val MIN_HOME_SPLIT = 0.3f

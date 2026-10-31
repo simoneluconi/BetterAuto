@@ -134,7 +134,8 @@ import kotlin.concurrent.thread
  *   ... --es navigate "43.3188,11.3316"  a new trip there (or an address: "Piazza del Campo, Siena"); "off" ends it.
  *   ... --es navStop "43.32,11.33"       a stop on the way (same forms); navChoose: as picked in the car (asks stop or destination).
  *                            --es mapDrive route[,50] then drives the pretend car along the route
- *   ... --es replay latest[,4]  play a recorded drive again as the car's data (4 times faster): every session in a
+ *   ... --es replay latest[,4[,190]]  play a recorded drive again as the car's data (4 times faster, from 190 s into
+ *                            it, the car as it was then): every session in a
  *                            debug build records the car's movement to files/trips (TripRecorder); "latest", a
  *                            trip's file name, or a GPX file's path on the phone (/sdcard/Download/route.gpx);
  *                            "off" stops it. --ez trips true lists the recorded drives in the log
@@ -324,9 +325,9 @@ class DebugInputReceiver : BroadcastReceiver() {
             debugPlace(context, spec) { Trip.choose(it) }
         }
         intent.getStringExtra("replay")?.let { spec ->
-            val what = spec.substringBefore(',').trim()
-            if (what == "off") TripReplay.stop()
-            else TripReplay.play(context, what, spec.substringAfter(',', "1").trim().toDoubleOrNull() ?: 1.0)
+            val parts = spec.split(',').map { it.trim() }
+            if (parts[0] == "off") TripReplay.stop()
+            else TripReplay.play(context, parts[0], parts.getOrNull(1)?.toDoubleOrNull() ?: 1.0, parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0)
         }
         if (intent.hasExtra("trips")) {
             val trips = TripRecorder.trips(context)

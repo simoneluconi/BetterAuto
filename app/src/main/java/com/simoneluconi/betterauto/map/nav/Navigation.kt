@@ -105,14 +105,18 @@ object Navigation {
 
     // Following the route
     private var lastIndex = 0
+    private var lastAlong = 0.0
     private var lastFixAt = 0L
     private var offRouteFixes = 0
     private var nextRerouteAt = 0L
     private var rerouteGap = REROUTE_EVERY_MS
     private var onRouteSince = 0L
     private var standingNearSince = 0L
-    private var spokenSoon = -1
-    private var spokenNow = -1
+
+    // The maneuvers already announced, by where they are: a new route (the trip changed, a reroute) brings the same
+    // turn again under another index, and the driver heard it already
+    private var spokenSoon: SpokenManeuver? = null
+    private var spokenNow: SpokenManeuver? = null
 
     /**
      * A car screen came up: the trip there is, or one set later, is guided while a screen is up. A trip broken off
@@ -183,6 +187,8 @@ object Navigation {
         nextRerouteAt = 0L
         rerouteGap = REROUTE_EVERY_MS
         onRouteSince = 0L
+        spokenSoon = null
+        spokenNow = null
         _planning.value = RoutePlanning.CALCULATING
         EventLog.log(if (resumed) "Navigation: trip resumed" else "Navigation: started")
         job = scope.launch {
@@ -279,10 +285,9 @@ object Navigation {
         }
         EventLog.log("Navigation: route of ${(route.lengthM / 1000).format1()} km, ${route.maneuvers.size} maneuvers, ${places.size - 1} stop(s)")
         lastIndex = 0
+        lastAlong = 0.0
         offRouteFixes = 0
         standingNearSince = 0L
-        spokenSoon = -1
-        spokenNow = -1
         arrivalJob?.cancel()
         arrivalJob = null
         _planning.value = null
@@ -368,7 +373,7 @@ object Navigation {
         val maxAhead = if (offRouteFixes >= OFF_ROUTE_FIXES) Double.MAX_VALUE else RouteProgress.aheadAllowance(speed, elapsedS)
         // The heading only when moving well: crawling in a queue or turning in a car park, it is noise
         val heading = fix.bearing.takeIf { speed > HEADING_MIN_MS }
-        val progress = RouteProgress.locate(route, fix.latitude, fix.longitude, lastIndex, maxAhead, heading)
+        val progress = RouteProgress.locate(route, fix.latitude, fix.longitude, lastIndex, maxAhead, heading, lastAlong)
 
         // Standing a while by the next place: reached, even where the road the route ends on is out of reach (a
         // car park beside it)
@@ -382,8 +387,11 @@ object Navigation {
         val stoodThere = standingNearSince != 0L && now - standingNearSince >= STOOD_NEAR_MS
         if (stoodThere && places.size > 1) return stopReached(places)
 
+        // Turned round on the route's own road: still on its line, so 45 m away from it would come late (a road test:
+        // 12 s after the U-turn). Driving well along it the other way counts as off it
+        val wrongWay = progress.againstM < WRONG_WAY_M && progress.offRouteM > progress.againstM + WRONG_WAY_MARGIN_M
         // Off the route for a few fixes in a row: a new one from here, less and less often while it goes on
-        if (progress.offRouteM > OFF_ROUTE_M) {
+        if (progress.offRouteM > OFF_ROUTE_M || wrongWay) {
             onRouteSince = 0L
             if (stoodThere) return arrive()
             // An estimate (a tunnel) or a vague fix is no proof, and by the place the car is looking for a spot
@@ -392,14 +400,16 @@ object Navigation {
             if (++offRouteFixes >= OFF_ROUTE_FIXES && now >= nextRerouteAt) {
                 nextRerouteAt = now + rerouteGap
                 rerouteGap = min(rerouteGap * 2, MAX_REROUTE_GAP_MS)
-                EventLog.log("Navigation: off the route, a new one")
-                route(fix, places)
+                EventLog.log(if (wrongWay) "Navigation: turned round, a new route" else "Navigation: off the route, a new one")
+                // Not the way to start again ("head east, then…"): the next turn is announced as it comes
+                route(fix, places, speakFirst = false)
             }
             return
         }
         offRouteFixes = 0
         if (onRouteSince == 0L) onRouteSince = now else if (now - onRouteSince > BACK_ON_ROUTE_MS) rerouteGap = REROUTE_EVERY_MS
         lastIndex = progress.index
+        lastAlong = progress.alongM
         val along = progress.alongM
         // A stop reached: off the trip, which brings a route on to the next place
         val toStop = if (places.size > 1 && route.legEnds.size > 1) progress.cumulative[route.legEnds[0]] - along else null
@@ -418,15 +428,39 @@ object Navigation {
         if (next == null) return
         // Spoken twice: well ahead (time to change lanes), then right before
         val pace = max(speed, MIN_SPEED_MS)
-        if (nextIndex != spokenSoon && toNext < max(SOON_MIN_M, pace * SOON_S) && toNext > pace * NOW_S * 2) {
-            spokenSoon = nextIndex
+        val spoken = SpokenManeuver(next.kind, route.lat(next.beginIndex), route.lon(next.beginIndex))
+        if (!spoken.same(spokenSoon) && toNext < max(SOON_MIN_M, pace * SOON_S) && toNext > pace * NOW_S * 2) {
+            spokenSoon = spoken
             appContext?.let { say(NavVoice.aheadPhrase(it, toNext, next.spokenSoon), alert = next.kind == ManeuverKind.ARRIVE) }
         }
-        if (nextIndex != spokenNow && toNext < max(NOW_MIN_M, pace * NOW_S)) {
-            spokenNow = nextIndex
-            spokenSoon = nextIndex
+        if (!spoken.same(spokenNow) && toNext < max(NOW_MIN_M, pace * NOW_S)) {
+            spokenNow = spoken
+            spokenSoon = spoken
             say(next.spokenNow, alert = next.kind == ManeuverKind.ARRIVE)
         }
+    }
+
+    /**
+     * Where the map draws the car while it follows the route: on the line, heading along it, when the GPS puts it
+     * within [SNAP_M] and going its way (a fix wanders a few metres to either side of the road). Null otherwise: off
+     * the route, or no route. Looks from where the guidance last placed the car, so a later part of the route passing
+     * close by is not taken. Main thread.
+     */
+    fun snapToRoute(fix: MapFix): MapFix? {
+        val route = _state.value?.route ?: return null
+        val speed = max(fix.speedMs?.toDouble() ?: 0.0, 0.0)
+        val heading = fix.bearing.takeIf { speed > HEADING_MIN_MS }
+        val progress = RouteProgress.locate(route, fix.latitude, fix.longitude, lastIndex, RouteProgress.aheadAllowance(speed, 2.0), heading, lastAlong)
+        if (progress.offRouteM > SNAP_M) return null
+        val (lat, lon, bearing) = progress.pointOn(route)
+        // Standing, the arrow keeps the way it pointed; moving, the road's way is steadier than the GPS's
+        return fix.copy(latitude = lat, longitude = lon, bearing = if (speed > HEADING_MIN_MS) bearing else fix.bearing)
+    }
+
+    /** A maneuver announced: what it is and where, the same in any route that passes there. */
+    internal data class SpokenManeuver(val kind: ManeuverKind, val latitude: Double, val longitude: Double) {
+        fun same(other: SpokenManeuver?) =
+            other != null && other.kind == kind && distanceM(latitude, longitude, other.latitude, other.longitude) < SAME_MANEUVER_M
     }
 
     private fun stopReached(places: List<Destination>) {
@@ -466,6 +500,13 @@ object Navigation {
     private const val ROUTE_URL = "https://valhalla1.openstreetmap.de/route"
     private const val OFF_ROUTE_M = 45.0
     private const val OFF_ROUTE_FIXES = 3
+
+    /**
+     * The route going the other way this close to the car, and the nearest part going its way farther by the margin:
+     * the car turned round on it (the heading is known only when moving well).
+     */
+    private const val WRONG_WAY_M = 15.0
+    private const val WRONG_WAY_MARGIN_M = 10.0
     private const val REROUTE_EVERY_MS = 10_000L
     private const val MAX_REROUTE_GAP_MS = 80_000L
 
@@ -477,7 +518,8 @@ object Navigation {
     private const val FRESH_FIX_MS = 10_000L
     private const val GONE_GRACE_MS = 8_000L
     private const val ARRIVED_M = 30.0
-    private const val ARRIVED_KEEP_MS = 20_000L
+    /** The "arrived" card a moment, then the trip is over: longer, it looked like the navigation would not stop. */
+    private const val ARRIVED_KEEP_MS = 5_000L
 
     /** Standing this close to the next place for [STOOD_NEAR_MS]: reached. */
     private const val NEAR_PLACE_M = 80.0
@@ -489,15 +531,45 @@ object Navigation {
     private const val SOON_MIN_M = 250.0
     private const val NOW_S = 5.0
     private const val NOW_MIN_M = 40.0
+
+    /** Two routes' maneuvers this close, of the same kind, are the same turn. */
+    private const val SAME_MANEUVER_M = 30.0
+
+    /**
+     * The GPS this close to the route: the car is on it, drawn on the line. A car GPS is a few metres off (an Audi on a
+     * test drive: 95% of its fixes within 5 m of the road); much more, and a car that took another road, or crosses a
+     * car park beside it, would still be drawn on the route.
+     */
+    private const val SNAP_M = 10.0
 }
 
-/** Where the car is along a route: the point it has passed, how far along, and how far off the line. */
-internal class RouteProgress(val index: Int, val alongM: Double, val offRouteM: Double, val cumulative: DoubleArray) {
+/**
+ * Where the car is along a route: the point it has passed, how far along, and how far off the line. [againstM]: how
+ * far the nearest part of the route going the other way from the car is (with a bearing given), else infinite.
+ */
+internal class RouteProgress(
+    val index: Int,
+    val alongM: Double,
+    val offRouteM: Double,
+    val cumulative: DoubleArray,
+    val againstM: Double = Double.MAX_VALUE,
+) {
+    /** The point on the route's line where the car is, and the line's direction there (latitude, longitude, bearing). */
+    fun pointOn(route: NavRoute): Triple<Double, Double, Float> {
+        val i = index.coerceIn(0, route.size - 2)
+        val length = cumulative[i + 1] - cumulative[i]
+        val t = if (length <= 0) 0.0 else ((alongM - cumulative[i]) / length).coerceIn(0.0, 1.0)
+        val lat = route.lat(i) + (route.lat(i + 1) - route.lat(i)) * t
+        val lon = route.lon(i) + (route.lon(i + 1) - route.lon(i)) * t
+        return Triple(lat, lon, bearingDeg(route.lat(i), route.lon(i), route.lat(i + 1), route.lon(i + 1)))
+    }
+
     companion object {
         /**
-         * Looks a little behind [fromIndex] and ahead of it, at most [maxAheadM] along the route: the car moves on
-         * along the route, not backwards, and not farther than it can have driven. With the car's [bearing], a part
-         * of the route going the other way (the way back on the other carriageway) is not taken.
+         * Looks a little behind [fromIndex] and ahead of it, at most [maxAheadM] past [fromAlongM] (where the car
+         * was last seen along the route): the car moves on along the route, not backwards, and not farther than it
+         * can have driven. With the car's [bearing], a part of the route going the other way (the way back on the
+         * other carriageway) is not taken.
          */
         fun locate(
             route: NavRoute,
@@ -506,14 +578,18 @@ internal class RouteProgress(val index: Int, val alongM: Double, val offRouteM: 
             fromIndex: Int,
             maxAheadM: Double = Double.MAX_VALUE,
             bearing: Float? = null,
+            fromAlongM: Double? = null,
         ): RouteProgress {
             val cumulative = cumulative(route)
             val cosLat = cos(Math.toRadians(latitude))
             var best = Double.MAX_VALUE
             var bestIndex = fromIndex
             var bestAlong = cumulative.getOrElse(fromIndex) { 0.0 }
+            var against = Double.MAX_VALUE
             val startI = (fromIndex - 2).coerceAtLeast(0)
-            val limit = cumulative.getOrElse(fromIndex) { 0.0 } + maxAheadM
+            // From the car, not from the start of its segment: along a straight road a segment is long, and counted
+            // from its start the car drove out of reach of the next one ("off the route" on a straight road)
+            val limit = (fromAlongM ?: cumulative.getOrElse(fromIndex) { 0.0 }) + maxAheadM
             for (i in startI until route.size - 1) {
                 if (cumulative[i] > limit) break
                 val ax = Math.toRadians(route.lon(i) - longitude) * cosLat * R
@@ -521,14 +597,17 @@ internal class RouteProgress(val index: Int, val alongM: Double, val offRouteM: 
                 val dx = Math.toRadians(route.lon(i + 1) - route.lon(i)) * cosLat * R
                 val dy = Math.toRadians(route.lat(i + 1) - route.lat(i)) * R
                 val len2 = dx * dx + dy * dy
-                if (bearing != null && len2 > MIN_HEADING_LEN_M * MIN_HEADING_LEN_M) {
-                    val segment = bearingDeg(route.lat(i), route.lon(i), route.lat(i + 1), route.lon(i + 1))
-                    if (abs(turnDeg(bearing, segment)) > OPPOSITE_DEG) continue
-                }
                 val t = if (len2 == 0.0) 0.0 else ((-ax) * dx + (-ay) * dy).div(len2).coerceIn(0.0, 1.0)
                 val px = ax + t * dx
                 val py = ay + t * dy
                 val d = sqrt(px * px + py * py)
+                if (bearing != null && len2 > MIN_HEADING_LEN_M * MIN_HEADING_LEN_M) {
+                    val segment = bearingDeg(route.lat(i), route.lon(i), route.lat(i + 1), route.lon(i + 1))
+                    if (abs(turnDeg(bearing, segment)) > OPPOSITE_DEG) {
+                        against = min(against, d)
+                        continue
+                    }
+                }
                 if (d < best) {
                     best = d
                     bestIndex = i
@@ -537,27 +616,13 @@ internal class RouteProgress(val index: Int, val alongM: Double, val offRouteM: 
                 // Far ahead along the route already: the car is not there yet
                 if (cumulative[i] - cumulative[startI] > LOOK_AHEAD_M && best < 30) break
             }
-            return RouteProgress(bestIndex, bestAlong, best, cumulative)
+            return RouteProgress(bestIndex, bestAlong, best, cumulative, against)
         }
 
         /** How far along the route the car can have gone in [seconds] at [speedMs] (generous: fixes are late, speeds wrong). */
         fun aheadAllowance(speedMs: Double, seconds: Double): Double = max(speedMs, MIN_ALLOWANCE_MS) * seconds * 2 + AHEAD_MARGIN_M
 
-        private val cache = HashMap<NavRoute, DoubleArray>()
-
-        private fun cumulative(route: NavRoute): DoubleArray = synchronized(cache) {
-            cache.getOrPut(route) {
-                if (cache.size > 4) cache.clear()
-                val out = DoubleArray(route.size)
-                for (i in 1 until route.size) {
-                    val cosLat = cos(Math.toRadians(route.lat(i)))
-                    val dx = Math.toRadians(route.lon(i) - route.lon(i - 1)) * cosLat * R
-                    val dy = Math.toRadians(route.lat(i) - route.lat(i - 1)) * R
-                    out[i] = out[i - 1] + sqrt(dx * dx + dy * dy)
-                }
-                out
-            }
-        }
+        private fun cumulative(route: NavRoute): DoubleArray = route.cumulative
 
         private const val R = 6_371_000.0
         private const val LOOK_AHEAD_M = 2_000.0
