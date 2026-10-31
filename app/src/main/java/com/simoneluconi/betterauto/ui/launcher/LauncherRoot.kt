@@ -80,7 +80,7 @@ import com.simoneluconi.betterauto.ui.LocalFormatLocale
 import com.simoneluconi.betterauto.ui.theme.CarTheme
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.widgets.MusicScreen
-import com.simoneluconi.betterauto.ui.widgets.PlaceholderWidget
+import com.simoneluconi.betterauto.ui.map.MapScreen
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -395,7 +395,7 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
             when (current) {
                 Section.HOME -> WidgetArea(settings, Modifier.fillMaxSize())
                 Section.MUSIC -> MusicScreen(settings, Modifier.fillMaxSize())
-                Section.MAP -> PlaceholderWidget(WidgetType.MAP, Modifier.fillMaxSize())
+                Section.MAP -> MapScreen(settings, Modifier.fillMaxSize())
                 Section.PHONE -> PhoneScreen(settings, Modifier.fillMaxSize())
                 Section.VEHICLE -> VehicleScreen(Modifier.fillMaxSize())
                 Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize(), primary = true)

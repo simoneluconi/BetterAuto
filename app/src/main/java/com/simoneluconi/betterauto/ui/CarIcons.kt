@@ -111,6 +111,10 @@ object CarIcons {
     val Up = icon("M6 15l6-6 6 6")
     val Down = icon("M6 9l6 6 6-6")
     val Stop = icon("M7 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z")
+    /** Back to the car on the map: a crosshair. */
+    val Recenter = icon(circle(12f, 12f, 7f), circle(12f, 12f, 2.5f), "M12 2v3M12 19v3M2 12h3M19 12h3")
+    val Plus = icon("M12 5v14M5 12h14")
+    val Minus = icon("M5 12h14")
 
     private fun circle(cx: Float, cy: Float, r: Float) =
         "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0"

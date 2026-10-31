@@ -58,6 +58,8 @@ dependencies {
     implementation(libs.shizuku.provider)
     // Smart home: Home Assistant's HTTP login and WebSocket API (Apache 2.0)
     implementation(libs.okhttp)
+    // The map: vector tiles drawn on the phone with our own style (BSD-2-Clause)
+    implementation(libs.maplibre.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

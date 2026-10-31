@@ -120,6 +120,15 @@ import kotlin.concurrent.thread
  *                            and away, so the adaptive interval, arriving, the hysteresis and leaving show in the
  *                            log. Add --ez carGps true to any of these to feed it like the car's GPS (every 2 s)
  *                            instead of the phone's polled location
+ *   ... --es mapDrive 41.9028,12.4964,40[,90]  the car's GPS and speed driving from there (km/h, bearing), turning
+ *                            right every 30 s, for the map; "roads,43.7696,11.2558[,50]" drives along the real
+ *                            roads from the nearest one, at their limits (or the given km/h), turning now and then
+ *                            at junctions; "tunnel" takes every GPS away (the phone's too) while the speed goes
+ *                            on, so the map estimates; "exit" ends the tunnel; "off" stops it all
+ *   ... --es replay latest[,4]  play a recorded drive again as the car's data (4 times faster): every session in a
+ *                            debug build records the car's movement to files/trips (TripRecorder); "latest", a
+ *                            trip's file name, or a GPX file's path on the phone (/sdcard/Download/route.gpx);
+ *                            "off" stops it. --ez trips true lists the recorded drives in the log
  */
 class DebugInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -274,6 +283,25 @@ class DebugInputReceiver : BroadcastReceiver() {
             "moving" -> CarMotionState.pretend.value = CarMotion.MOVING
             "standing" -> CarMotionState.pretend.value = CarMotion.STANDING
             "off" -> CarMotionState.pretend.value = null
+        }
+        intent.getStringExtra("mapDrive")?.let { spec ->
+            val p = spec.split(',').mapNotNull { it.trim().toDoubleOrNull() }
+            when {
+                spec == "off" -> FakeMapDrive.stop()
+                spec == "tunnel" -> FakeMapDrive.tunnel(true)
+                spec == "exit" -> FakeMapDrive.tunnel(false)
+                spec.startsWith("roads") && p.size >= 2 -> FakeMapDrive.onRoads(context, p[0], p[1], p.getOrNull(2))
+                p.size >= 3 -> FakeMapDrive.straight(p[0], p[1], p[2], p.getOrNull(3) ?: 0.0)
+            }
+        }
+        intent.getStringExtra("replay")?.let { spec ->
+            val what = spec.substringBefore(',').trim()
+            if (what == "off") TripReplay.stop()
+            else TripReplay.play(context, what, spec.substringAfter(',', "1").trim().toDoubleOrNull() ?: 1.0)
+        }
+        if (intent.hasExtra("trips")) {
+            val trips = TripRecorder.trips(context)
+            EventLog.log("Debug: ${trips.size} recorded drive(s)${trips.joinToString("") { "\n  ${it.name} (${it.length() / 1024} KB)" }}")
         }
         when (intent.getStringExtra("vehicle")) {
             "demo" -> VehicleData.simulate()

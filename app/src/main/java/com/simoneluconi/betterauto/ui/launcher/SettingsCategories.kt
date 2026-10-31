@@ -12,6 +12,7 @@ val SettingsCategory.icon: ImageVector
         SettingsCategory.MUSIC -> CarIcons.Music
         SettingsCategory.NOTIFICATIONS -> CarIcons.Bell
         SettingsCategory.VOICE -> CarIcons.Mic
+        SettingsCategory.MAP -> CarIcons.Map
         SettingsCategory.VEHICLE -> CarIcons.Car
         SettingsCategory.SMART_HOME -> CarIcons.SmartHome
         SettingsCategory.ADVANCED -> CarIcons.Settings

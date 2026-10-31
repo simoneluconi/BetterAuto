@@ -29,6 +29,12 @@ enum class NameOrder { FIRST_LAST, LAST_FIRST }
 /** Whether notifications hide what they say: Auto follows who the car says is aboard. */
 enum class NotificationPrivacy { AUTO, OFF, ON }
 
+/** The map turns with the car (tilted, looking ahead) or keeps north at the top. */
+enum class MapOrientation { HEADING, NORTH }
+
+/** How close the map starts and comes back to (MapLibre zoom levels); the knob still zooms from there. */
+enum class MapZoom(val level: Double) { CLOSE(19.0), MEDIUM(17.0), FAR(16.0) }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -72,6 +78,20 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     private val _dateStyle = MutableStateFlow(enumOf(KEY_DATE, DateStyle.SHORT))
     val dateStyle: StateFlow<DateStyle> = _dateStyle
+
+    private val _mapOrientation = MutableStateFlow(enumOf(KEY_MAP_ORIENTATION, MapOrientation.HEADING))
+    val mapOrientation: StateFlow<MapOrientation> = _mapOrientation
+
+    private val _mapZoom = MutableStateFlow(enumOf(KEY_MAP_ZOOM, MapZoom.MEDIUM))
+    val mapZoom: StateFlow<MapZoom> = _mapZoom
+
+    /** The map zooms out as the car goes faster. */
+    private val _mapAutoZoom = boolFlow(KEY_MAP_AUTO_ZOOM, true)
+    val mapAutoZoom: StateFlow<Boolean> = _mapAutoZoom
+
+    /** The speed limit of the road, on the map. */
+    private val _showSpeedLimit = boolFlow(KEY_SHOW_SPEED_LIMIT, true)
+    val showSpeedLimit: StateFlow<Boolean> = _showSpeedLimit
 
 
     private val _showEngineLight = boolFlow(KEY_SHOW_ENGINE, true)
@@ -269,6 +289,14 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setDateStyle(value: DateStyle) = saveEnum(KEY_DATE, value, _dateStyle)
 
+    fun setMapOrientation(value: MapOrientation) = saveEnum(KEY_MAP_ORIENTATION, value, _mapOrientation)
+
+    fun setMapZoom(value: MapZoom) = saveEnum(KEY_MAP_ZOOM, value, _mapZoom)
+
+    fun setMapAutoZoom(value: Boolean) = saveBool(KEY_MAP_AUTO_ZOOM, value, _mapAutoZoom)
+
+    fun setShowSpeedLimit(value: Boolean) = saveBool(KEY_SHOW_SPEED_LIMIT, value, _showSpeedLimit)
+
     fun setShowEngineLight(value: Boolean) = saveBool(KEY_SHOW_ENGINE, value, _showEngineLight)
 
     fun setShowBell(value: Boolean) = saveBool(KEY_SHOW_BELL, value, _showBell)
@@ -394,6 +422,10 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_RAIL = "rail_layout"
         private const val KEY_CLOCK = "clock_style"
         private const val KEY_DATE = "date_style"
+        private const val KEY_MAP_ORIENTATION = "map_orientation"
+        private const val KEY_MAP_ZOOM = "map_zoom"
+        private const val KEY_MAP_AUTO_ZOOM = "map_auto_zoom"
+        private const val KEY_SHOW_SPEED_LIMIT = "show_speed_limit"
         private const val KEY_UNITS = "unit_system"
         private const val KEY_TEMPERATURE = "temperature_unit"
         private const val KEY_VOICE_LANGUAGE = "voice_language"

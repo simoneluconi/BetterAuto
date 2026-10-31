@@ -45,7 +45,15 @@
     <string name="music_play">Play</string>
     <string name="music_pause">Pause</string>
     <string name="widget_map">Map</string>
-    <string name="widget_slot_next">Widget slot · coming next</string>
+    <string name="map_searching">Looking for your position…</string>
+    <string name="map_no_permission">No position: allow location for BetterAuto on the phone</string>
+    <string name="map_phone_gps">Car GPS has no signal · using the phone\'s</string>
+    <string name="map_estimated">No GPS · position estimated from the car\'s speed</string>
+    <string name="map_no_signal">No GPS signal · last known position</string>
+    <string name="map_recenter">Recenter</string>
+    <string name="map_zoom_in">Zoom in</string>
+    <string name="map_zoom_out">Zoom out</string>
+    <string name="map_attribution" translatable="false">© OpenFreeMap © OpenMapTiles © OpenStreetMap © Overture Maps</string>
     <string name="widget_notifications">Notifications</string>
     <string name="settings_title">Settings</string>
     <string name="settings_theme">Theme</string>
@@ -560,6 +568,20 @@
     <string name="settings_cat_notifications">Notifications and calls</string>
     <string name="settings_cat_voice">Voice</string>
     <string name="settings_cat_vehicle">Vehicle and units</string>
+    <string name="settings_cat_map">Map</string>
+    <string name="settings_map_orientation">Map orientation</string>
+    <string name="settings_map_orientation_desc">Direction of travel: the map turns with the car and looks ahead. North up: north always stays at the top.</string>
+    <string name="option_map_heading">Direction of travel</string>
+    <string name="option_map_north">North up</string>
+    <string name="settings_map_zoom">Default zoom</string>
+    <string name="settings_map_zoom_desc">How close the map is when it opens and when it comes back to the car. The knob still zooms in and out.</string>
+    <string name="option_map_close">Close</string>
+    <string name="option_map_medium">Medium</string>
+    <string name="option_map_far">Far</string>
+    <string name="settings_map_auto_zoom">Zoom with speed</string>
+    <string name="settings_map_auto_zoom_desc">The map shows more road ahead as the car goes faster, and comes closer again in town. Turning the knob takes over until the map comes back to the car.</string>
+    <string name="settings_speed_limit">Speed limit</string>
+    <string name="settings_speed_limit_desc">The limit of the road you are on, from OpenStreetMap: shown only where the map data states it, never guessed.</string>
     <string name="settings_cat_smart_home">Smart home</string>
     <string name="settings_cat_advanced">Advanced</string>
     <string name="settings_more">More options</string>

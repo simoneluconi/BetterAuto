@@ -11,6 +11,7 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.WidgetChoice
 import com.simoneluconi.betterauto.settings.WidgetType
 import com.simoneluconi.betterauto.ui.CarIcons
+import com.simoneluconi.betterauto.ui.map.MapWidget
 import com.simoneluconi.betterauto.ui.notifications.NotificationsWidget
 import com.simoneluconi.betterauto.smarthome.SmartGroup
 import com.simoneluconi.betterauto.smarthome.SmartHome
@@ -51,7 +52,7 @@ object HomeWidgets {
             // Only with a weather app that has a widget: there is no weather of our own
             choices = { context -> if (WeatherWidgetHost.candidates(context).isEmpty()) emptyList() else listOf(WidgetChoice(WidgetType.WEATHER)) },
         ) { _, _, modifier -> WeatherWidget(modifier) },
-        HomeWidgetKind(WidgetType.MAP, R.string.widget_map, CarIcons.Map) { _, _, modifier -> PlaceholderWidget(WidgetType.MAP, modifier) },
+        HomeWidgetKind(WidgetType.MAP, R.string.widget_map, CarIcons.Map) { _, settings, modifier -> MapWidget(settings, modifier) },
         // One per group (an area of the devices chosen for the car) of every linked service; the slot keeps "provider/group"
         HomeWidgetKind(
             WidgetType.SMART_HOME, R.string.widget_smart_home, CarIcons.SmartHome,

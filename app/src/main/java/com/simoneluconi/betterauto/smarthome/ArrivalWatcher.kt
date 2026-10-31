@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.car.CarGpsGate
 import com.simoneluconi.betterauto.car.VehicleData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -118,17 +119,12 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
     }
 
     private suspend fun followCar() {
-        var firstPositionAt = 0L
+        val gate = CarGpsGate()
         VehicleData.snapshot.mapNotNull { s -> s.position?.let { it to s.satellites } }.distinctUntilChanged().collect { (timed, satellites) ->
-            val now = System.currentTimeMillis()
-            if (now - timed.at > CAR_FRESH_MS) return@collect
-            if (firstPositionAt == 0L) firstPositionAt = now
-            // The satellites come a moment after the first position: until then (or a while, for a car that never
-            // sends them) the position is not trusted
-            if (satellites == null && now - firstPositionAt < SATELLITES_WAIT_MS) return@collect
+            val verdict = gate.judge(timed, satellites)
+            if (verdict == CarGpsGate.Verdict.STALE || verdict == CarGpsGate.Verdict.WAIT) return@collect
             // Without satellites (a garage) a car keeps sending its last fix, kilometres off: the phone's counts then
-            val blind = satellites != null && now - satellites.at < CAR_FRESH_MS && satellites.value.inUse == 0
-            if (blind) {
+            if (verdict == CarGpsGate.Verdict.BLIND) {
                 if (!carBlindLogged) {
                     EventLog.log("Smart home: the car's GPS sees no satellites, its position is left out")
                     // Once, as it goes blind: the phone looks now instead of at its next check
@@ -329,11 +325,7 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
     private fun label(key: String): String = "${key.substringBefore('/')} place ${trackers.keys.sorted().indexOf(key) + 1}"
 
     private companion object {
-        /** A car position older than this is not live: the phone takes over. */
-        const val CAR_FRESH_MS = 20_000L
-
-        /** How long a car's first position waits for its satellite count. */
-        const val SATELLITES_WAIT_MS = 5_000L
+        const val CAR_FRESH_MS = CarGpsGate.FRESH_MS
 
         /** Older or vaguer phone fixes say nothing useful about being at a gate. */
         const val PHONE_FIX_MAX_AGE_MS = 120_000L

@@ -81,6 +81,11 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
   address and Home Assistant's own sign-in; the devices you already share with your voice assistants
   come ticked. Arriving home (by the car's GPS, or the phone's during the drive) the gate and garage
   buttons slide in by themselves.
+- 🗺️ **Map** in our own calm style, day and night, following the car: its own GPS when it has one,
+  otherwise the phone's (switched on only while a map is on screen), heading from the way the car
+  moves, and through tunnels an estimate from the car's speed. The road's name and number and its speed
+  limit (only where the map data states it), a zoom that widens with speed. Zoom with the knob, press to
+  come back to the car; also as a home widget. Free OpenStreetMap data, no account. No directions yet.
 - 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
   calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
 - 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the
@@ -92,8 +97,8 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
 - 📐 **Any screen shape**, from 800×480 to wide dashboards and portrait displays.
 - 🌍 English and Italian, following the phone's language.
 
-Ideas for what could come next: maps with turn-by-turn directions, more smart-home services, a trip
-log, wireless Android Auto.
+Ideas for what could come next: speed camera warnings, turn-by-turn directions, more smart-home
+services, a trip log, wireless Android Auto.
 
 ## Trying it
 
@@ -170,3 +175,9 @@ are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 The Android Auto protocol definitions come from
 [opencardev/aasdk](https://github.com/opencardev/aasdk), licensed under GPLv3, so BetterAuto is
 distributed under the GPLv3 as well: see [LICENSE](LICENSE).
+
+The map is drawn with [MapLibre Native](https://github.com/maplibre/maplibre-native) (BSD-2-Clause)
+from the free vector tiles of [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles), with map data
+© [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). Road names, numbers and
+speed limits come from the transportation tiles of [Overture Maps](https://overturemaps.org) (built
+from OpenStreetMap, ODbL).

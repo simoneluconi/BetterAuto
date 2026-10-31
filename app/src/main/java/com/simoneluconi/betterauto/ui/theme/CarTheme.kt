@@ -31,6 +31,8 @@ data class CarColors(
     val focus: Color,
     /** Accent taken from the album art (or a default), used by the music widget. */
     val album: Color,
+    /** The map's own colors, fading with the rest. */
+    val map: MapColors,
 ) {
     /** Readable content color on top of [album]. */
     val onAlbum: Color get() = if (album.luminance() > 0.35f) Color(0xFF1B1006) else Color.White
@@ -48,6 +50,27 @@ val NightColors = CarColors(
     text2 = Color(0xFFA9B1BE),
     focus = Color(0xFF5EA8FF),
     album = Color(0xFF5EA8FF),
+    map = MapColors(
+        land = Color(0xFF101318),
+        landuse = Color(0xFF13171D),
+        park = Color(0xFF111816),
+        water = Color(0xFF0C1C2D),
+        building = Color(0xFF1A1F27),
+        rail = Color(0xFF262C35),
+        roadMinor = Color(0xFF262C36),
+        // Casings the color of the land: at night roads stand out by their own shade
+        roadMinorCasing = Color(0xFF101318),
+        roadMajor = Color(0xFF343C49),
+        roadMajorCasing = Color(0xFF101318),
+        motorway = Color(0xFF4B5568),
+        motorwayCasing = Color(0xFF101318),
+        boundary = Color(0xFF4A5260),
+        labelRoad = Color(0xFFA9B1BE),
+        labelPlace = Color(0xFFF3F5F8),
+        labelMinor = Color(0xFF7D8796),
+        labelMotorway = Color(0xFFF3F5F8),
+        halo = Color(0xFF101318),
+    ),
 )
 
 val DayColors = CarColors(
@@ -59,7 +82,97 @@ val DayColors = CarColors(
     text2 = Color(0xFF4A5462),
     focus = Color(0xFF0B63CE),
     album = Color(0xFF0B63CE),
+    map = MapColors(
+        land = Color(0xFFEEF1F4),
+        landuse = Color(0xFFE8EBEF),
+        park = Color(0xFFDCEAD9),
+        water = Color(0xFFBFD5EA),
+        building = Color(0xFFDFE3E9),
+        rail = Color(0xFFC9CFD8),
+        roadMinor = Color(0xFFFFFFFF),
+        roadMinorCasing = Color(0xFFD8DDE4),
+        roadMajor = Color(0xFFFFFFFF),
+        roadMajorCasing = Color(0xFFC5CDD7),
+        motorway = Color(0xFFF9D99B),
+        motorwayCasing = Color(0xFFE0B868),
+        boundary = Color(0xFF9AA3AF),
+        labelRoad = Color(0xFF4A5462),
+        labelPlace = Color(0xFF0F1318),
+        labelMinor = Color(0xFF6B7584),
+        labelMotorway = Color(0xFF5A3E06),
+        halo = Color(0xFFFFFFFF),
+    ),
 )
+
+/** A road sign on the map (the speed limit): the same by day and by night, like the real ones. */
+val SignRed = Color(0xFFD7262E)
+val SignWhite = Color(0xFFFFFFFF)
+val SignInk = Color(0xFF15181D)
+
+/** Road-number signs, in the colours each country uses (motorway green, state road blue...). */
+val ShieldGreen = Color(0xFF00804A)
+val ShieldBlue = Color(0xFF1C4BA0)
+val ShieldRed = Color(0xFFC8102E)
+val ShieldYellow = Color(0xFFF7C600)
+val ShieldUkYellow = Color(0xFFFFD200)
+
+/**
+ * The map's palette. Each name is a placeholder in `res/raw/map_style.json` ("@water"), so the style
+ * file says where a color goes and this says which one; day and night fade like the rest of the UI.
+ */
+@Immutable
+data class MapColors(
+    val land: Color,
+    val landuse: Color,
+    val park: Color,
+    val water: Color,
+    val building: Color,
+    val rail: Color,
+    val roadMinor: Color,
+    val roadMinorCasing: Color,
+    val roadMajor: Color,
+    val roadMajorCasing: Color,
+    val motorway: Color,
+    val motorwayCasing: Color,
+    val boundary: Color,
+    val labelRoad: Color,
+    val labelPlace: Color,
+    val labelMinor: Color,
+    val labelMotorway: Color,
+    val halo: Color,
+) {
+    /** The colors by their placeholder names. */
+    fun byName(): Map<String, Color> = mapOf(
+        "land" to land, "landuse" to landuse, "park" to park, "water" to water, "building" to building,
+        "rail" to rail, "roadMinor" to roadMinor, "roadMinorCasing" to roadMinorCasing, "roadMajor" to roadMajor,
+        "roadMajorCasing" to roadMajorCasing, "motorway" to motorway, "motorwayCasing" to motorwayCasing,
+        "boundary" to boundary, "labelRoad" to labelRoad, "labelPlace" to labelPlace, "labelMinor" to labelMinor,
+        "labelMotorway" to labelMotorway, "halo" to halo,
+    )
+
+    companion object {
+        fun lerp(a: MapColors, b: MapColors, t: Float) = MapColors(
+            land = lerp(a.land, b.land, t),
+            landuse = lerp(a.landuse, b.landuse, t),
+            park = lerp(a.park, b.park, t),
+            water = lerp(a.water, b.water, t),
+            building = lerp(a.building, b.building, t),
+            rail = lerp(a.rail, b.rail, t),
+            roadMinor = lerp(a.roadMinor, b.roadMinor, t),
+            roadMinorCasing = lerp(a.roadMinorCasing, b.roadMinorCasing, t),
+            roadMajor = lerp(a.roadMajor, b.roadMajor, t),
+            roadMajorCasing = lerp(a.roadMajorCasing, b.roadMajorCasing, t),
+            motorway = lerp(a.motorway, b.motorway, t),
+            motorwayCasing = lerp(a.motorwayCasing, b.motorwayCasing, t),
+            boundary = lerp(a.boundary, b.boundary, t),
+            labelRoad = lerp(a.labelRoad, b.labelRoad, t),
+            labelPlace = lerp(a.labelPlace, b.labelPlace, t),
+            labelMinor = lerp(a.labelMinor, b.labelMinor, t),
+            labelMotorway = lerp(a.labelMotorway, b.labelMotorway, t),
+            halo = lerp(a.halo, b.halo, t),
+        )
+    }
+}
 
 private fun manrope(weight: Int) = Font(
     R.font.manrope,
@@ -105,6 +218,14 @@ fun CarTheme(night: Boolean, album: Color?, content: @Composable () -> Unit) {
             text2 = lerp(day.text2, dark.text2, textProgress),
             focus = lerp(day.focus, dark.focus, progress),
             album = albumColor,
+            // Labels flip with the text, so they never fade into the land under them
+            map = MapColors.lerp(day.map, dark.map, progress).copy(
+                labelRoad = lerp(day.map.labelRoad, dark.map.labelRoad, textProgress),
+                labelPlace = lerp(day.map.labelPlace, dark.map.labelPlace, textProgress),
+                labelMinor = lerp(day.map.labelMinor, dark.map.labelMinor, textProgress),
+                labelMotorway = lerp(day.map.labelMotorway, dark.map.labelMotorway, textProgress),
+                halo = lerp(day.map.halo, dark.map.halo, textProgress),
+            ),
         ),
         content = content,
     )

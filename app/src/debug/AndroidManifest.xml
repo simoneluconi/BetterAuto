@@ -11,5 +11,10 @@
                 <action android:name="com.simoneluconi.betterauto.DEBUG_INPUT" />
             </intent-filter>
         </receiver>
+        <!-- Debug builds only: records the car's movement data of every drive, to play it again on the bench -->
+        <provider
+            android:name=".TripRecorderStarter"
+            android:authorities="${applicationId}.triprecorder"
+            android:exported="false" />
     </application>
 </manifest>

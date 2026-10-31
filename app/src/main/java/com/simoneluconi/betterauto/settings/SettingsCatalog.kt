@@ -27,6 +27,7 @@ enum class SettingsCategory(@param:StringRes val title: Int, val summaryKeys: Li
     MUSIC(R.string.settings_cat_music, listOf("auto_play")),
     NOTIFICATIONS(R.string.settings_cat_notifications, listOf("quiet_mode", "notification_privacy")),
     VOICE(R.string.settings_cat_voice, listOf("voice_enabled", "voice_microphone")),
+    MAP(R.string.settings_cat_map, listOf("map_orientation")),
     VEHICLE(R.string.settings_cat_vehicle, listOf("units", "temperature_unit")),
     SMART_HOME(R.string.settings_cat_smart_home, emptyList()),
     ADVANCED(R.string.settings_cat_advanced, listOf("debug_overlay")),
@@ -396,6 +397,33 @@ object SettingsCatalog {
         ),
         ChoiceSetting("voice_replies", voice, R.string.settings_voice_replies, R.string.settings_voice_replies_desc, onOff, { it.voiceReplies }, LauncherSettings::setVoiceReplies),
         ChoiceSetting("mic_button", voice, R.string.settings_mic_button, R.string.settings_mic_button_desc, shownHidden, { it.showMicButton }, LauncherSettings::setShowMicButton),
+
+        // Map
+        ChoiceSetting(
+            "map_orientation", SettingsCategory.MAP, R.string.settings_map_orientation, R.string.settings_map_orientation_desc,
+            listOf(
+                SettingOption(MapOrientation.HEADING, R.string.option_map_heading),
+                SettingOption(MapOrientation.NORTH, R.string.option_map_north),
+            ),
+            { it.mapOrientation }, LauncherSettings::setMapOrientation,
+        ),
+        ChoiceSetting(
+            "map_zoom", SettingsCategory.MAP, R.string.settings_map_zoom, R.string.settings_map_zoom_desc,
+            listOf(
+                SettingOption(MapZoom.CLOSE, R.string.option_map_close),
+                SettingOption(MapZoom.MEDIUM, R.string.option_map_medium),
+                SettingOption(MapZoom.FAR, R.string.option_map_far),
+            ),
+            { it.mapZoom }, LauncherSettings::setMapZoom,
+        ),
+        ChoiceSetting(
+            "map_auto_zoom", SettingsCategory.MAP, R.string.settings_map_auto_zoom, R.string.settings_map_auto_zoom_desc, onOff,
+            { it.mapAutoZoom }, LauncherSettings::setMapAutoZoom,
+        ),
+        ChoiceSetting(
+            "speed_limit", SettingsCategory.MAP, R.string.settings_speed_limit, R.string.settings_speed_limit_desc, shownHidden,
+            { it.showSpeedLimit }, LauncherSettings::setShowSpeedLimit,
+        ),
 
         // Vehicle and units
         ChoiceSetting(
