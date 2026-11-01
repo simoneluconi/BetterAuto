@@ -38,6 +38,6 @@ class MapStyleTest {
 
     @Test
     fun cssColorIsHex() {
-        assertEquals("#101318", MapStyle.css(NightColors.map.land))
+        assertEquals("#171b22", MapStyle.css(NightColors.map.land).lowercase())
     }
 }

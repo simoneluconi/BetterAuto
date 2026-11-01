@@ -37,6 +37,8 @@ class NavRoute(
     val lengthM: Double,
     val durationS: Double,
     val legEnds: IntArray = intArrayOf(points.size / 2 - 1),
+    /** Valhalla's seconds from the start to each point (each maneuver's time over its stretch); null without them. */
+    private val secondsToPoint: DoubleArray? = null,
 ) {
     val size: Int get() = points.size / 2
     fun lat(i: Int) = points[2 * i]
@@ -47,6 +49,27 @@ class NavRoute(
         val out = DoubleArray(size)
         for (i in 1 until size) out[i] = out[i - 1] + distanceM(lat(i - 1), lon(i - 1), lat(i), lon(i))
         out
+    }
+
+    /** The same route with other words for its maneuvers. */
+    fun withManeuvers(maneuvers: List<Maneuver>) = NavRoute(points, maneuvers, lengthM, durationS, legEnds, secondsToPoint)
+
+    /**
+     * Valhalla's time from the start to [alongM] metres along: a town stretch weighs more than as many metres of
+     * main road. Without the maneuvers' times, the route's time shared out by distance.
+     */
+    fun secondsTo(alongM: Double): Double {
+        val c = cumulative
+        val total = c.last()
+        if (total <= 0) return 0.0
+        val m = alongM.coerceIn(0.0, total)
+        val times = secondsToPoint ?: return durationS * m / total
+        var i = java.util.Arrays.binarySearch(c, m)
+        if (i < 0) i = -i - 2
+        i = i.coerceIn(0, size - 2)
+        val length = c[i + 1] - c[i]
+        val t = if (length <= 0) 0.0 else (m - c[i]) / length
+        return times[i] + (times[i + 1] - times[i]) * t
     }
 
     /**
@@ -86,6 +109,9 @@ class NavRoute(
             val points = ArrayList<Double>()
             val maneuvers = ArrayList<Maneuver>()
             val legEnds = IntArray(legs.length())
+            // Every maneuver's stretch (first and last point) and Valhalla's time for it, in order
+            val stretches = ArrayList<Triple<Int, Int, Double>>()
+            var timed = true
             for (l in 0 until legs.length()) {
                 val leg = legs.getJSONObject(l)
                 // The legs' maneuvers count their points from the start of the leg
@@ -95,6 +121,11 @@ class NavRoute(
                 val list = leg.getJSONArray("maneuvers")
                 for (i in 0 until list.length()) {
                     val m = list.getJSONObject(i)
+                    if (m.has("time") && m.has("end_shape_index")) {
+                        stretches += Triple(offset + m.optInt("begin_shape_index"), offset + m.optInt("end_shape_index"), m.optDouble("time"))
+                    } else {
+                        timed = false
+                    }
                     // The way out of a roundabout is already in its entry ("take the 2nd exit"): shown twice, the
                     // card and the cluster would show a second roundabout right after the first
                     if (m.optInt("type") == ROUNDABOUT_EXIT) {
@@ -119,7 +150,26 @@ class NavRoute(
                 }
             }
             val summary = trip.getJSONObject("summary")
-            return NavRoute(points.toDoubleArray(), maneuvers, summary.optDouble("length") * 1000, summary.optDouble("time"), legEnds)
+            val route = NavRoute(points.toDoubleArray(), maneuvers, summary.optDouble("length") * 1000, summary.optDouble("time"), legEnds)
+            if (!timed || stretches.isEmpty()) return route
+            return NavRoute(route.points, maneuvers, route.lengthM, route.durationS, legEnds, secondsToPoints(route.cumulative, stretches))
+        }
+
+        /** Each stretch's time spread over its points by distance, added up from the start. */
+        internal fun secondsToPoints(cumulative: DoubleArray, stretches: List<Triple<Int, Int, Double>>): DoubleArray {
+            val out = DoubleArray(cumulative.size)
+            var before = 0.0
+            for ((from, to, seconds) in stretches) {
+                val s = from.coerceIn(0, cumulative.size - 1)
+                val e = to.coerceIn(s, cumulative.size - 1)
+                val span = cumulative[e] - cumulative[s]
+                out[s] = before
+                for (i in s + 1..e) out[i] = before + if (span > 0) seconds * (cumulative[i] - cumulative[s]) / span else seconds
+                before += seconds
+            }
+            // Points past the last stretch (none in Valhalla's answers) at the end
+            for (i in 1 until out.size) if (out[i] < out[i - 1]) out[i] = out[i - 1]
+            return out
         }
 
         /** Valhalla's maneuver types, by the arrow a driver expects. */

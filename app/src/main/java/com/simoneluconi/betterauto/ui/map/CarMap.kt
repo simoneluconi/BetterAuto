@@ -165,9 +165,15 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
      */
     private var transitionSince = 0L
 
+    /** A mode change that never reported its end: MapLibre still thinks it is moving and leaves the camera where it is. */
+    private var transitionLost = false
+
     private fun transitioning(): Boolean {
-        // Never stuck: a transition that never reported its end is over anyway
-        if (transitionSince != 0L && SystemClock.uptimeMillis() - transitionSince > TRANSITION_MAX_MS) transitionSince = 0L
+        // Never stuck: a transition that never reported its end is over anyway, and the camera goes to the car again
+        if (transitionSince != 0L && SystemClock.uptimeMillis() - transitionSince > TRANSITION_MAX_MS) {
+            transitionSince = 0L
+            transitionLost = true
+        }
         return transitionSince != 0L
     }
 
@@ -179,6 +185,7 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
     /** The mode change is over: what was asked meanwhile (a knob zoom, the size, the speed, the orientation) now. */
     private fun settle() {
         transitionSince = 0L
+        transitionLost = false
         map?.let { camera(it, animate = true) }
     }
 
@@ -201,7 +208,10 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
             return
         }
         transitionSince = SystemClock.uptimeMillis()
-        component.setCameraMode(mode, duration, zoom, null, pitch, transitionEnd)
+        transitionLost = false
+        // Never in no time: MapLibre reports the end only of an animated move, and until then the camera ignores the
+        // car (a new map, as a trip opens the Map section, stood still until the car drove 50 m off)
+        component.setCameraMode(mode, maxOf(duration, MODE_MIN_MS), zoom, null, pitch, transitionEnd)
     }
 
     /** Positions in a row the camera was not with the car. */
@@ -212,7 +222,8 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
      * it stays put (a big jump of the position, e.g. a car GPS back from a garage 3 km off, leaves MapLibre in a
      * transition that never ends: the map stood still until the car drove off the screen). Following, the camera's
      * centre is the car, a glide behind at most: farther than the car goes in a few seconds, twice in a row, the
-     * camera goes there at once.
+     * camera goes there at once; and at once after a mode change that never reported its end, without waiting for
+     * the car to drive away.
      */
     internal fun keepTracking(map: MapLibreMap, fix: MapFix) {
         val component = map.locationComponent
@@ -220,17 +231,24 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         val target = map.cameraPosition.target
         val away = target?.let { distanceM(it.latitude, it.longitude, fix.latitude, fix.longitude) } ?: 0.0
         val allowed = maxOf(LOST_MIN_M, (fix.speedMs ?: 0f).toDouble() * LOST_SECONDS)
-        lostFixes = if (away > allowed && !transitioning()) lostFixes + 1 else 0
-        if (lostFixes >= LOST_FIXES) {
-            EventLog.log("Map: the camera was ${away.roundToInt()} m from the car, back to it")
+        // Asked first, every time: it is what notices a lost transition
+        val moving = transitioning()
+        lostFixes = if (away > allowed && !moving) lostFixes + 1 else 0
+        if (lostFixes >= LOST_FIXES || transitionLost) {
+            EventLog.log(
+                if (transitionLost) "Map: the camera's move to the car never ended, back to it"
+                else "Map: the camera was ${away.roundToInt()} m from the car, back to it",
+            )
             lostFixes = 0
+            transitionLost = false
             transitionSince = 0L
+            // A move of our own also ends MapLibre's unfinished one: its camera follows the car again
             component.cameraMode = CameraMode.NONE
             map.moveCamera(CameraUpdateFactory.newLatLng(LatLng(fix.latitude, fix.longitude)))
             camera(map, animate = false)
             return
         }
-        if (component.cameraMode !in Tracking && !transitioning()) camera(map, animate = true)
+        if (component.cameraMode !in Tracking && !moving) camera(map, animate = true)
     }
 
     companion object {
@@ -239,6 +257,8 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         private const val ZOOM_MS = 250L
         private const val CAMERA_MS = 750L
         private const val TRANSITION_MAX_MS = CAMERA_MS + 1_500L
+        /** The shortest mode change: still an animation, over in the next frame. */
+        private const val MODE_MIN_MS = 1L
 
         /** The camera this far from the car while following, or as far as the car goes in [LOST_SECONDS], is lost. */
         private const val LOST_MIN_M = 50.0

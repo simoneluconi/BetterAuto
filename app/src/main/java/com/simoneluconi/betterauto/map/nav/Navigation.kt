@@ -113,6 +113,9 @@ object Navigation {
     private var onRouteSince = 0L
     private var standingNearSince = 0L
 
+    /** How this driver keeps to Valhalla's times: the arrival time comes from it. */
+    private val pace = TripPace()
+
     // The maneuvers already announced, by where they are: a new route (the trip changed, a reroute) brings the same
     // turn again under another index, and the driver heard it already
     private var spokenSoon: SpokenManeuver? = null
@@ -189,6 +192,7 @@ object Navigation {
         onRouteSince = 0L
         spokenSoon = null
         spokenNow = null
+        pace.reset()
         _planning.value = RoutePlanning.CALCULATING
         EventLog.log(if (resumed) "Navigation: trip resumed" else "Navigation: started")
         job = scope.launch {
@@ -291,9 +295,10 @@ object Navigation {
         arrivalJob?.cancel()
         arrivalJob = null
         _planning.value = null
+        pace.newRoute(SystemClock.elapsedRealtime())
         val first = route.maneuvers.firstOrNull()
         _state.value = NavState(
-            route, route.maneuvers.getOrNull(1) ?: first, 0.0, route.lengthM, route.durationS,
+            route, route.maneuvers.getOrNull(1) ?: first, 0.0, route.lengthM, pace.remainingS(route, 0.0),
             stop = places.takeIf { it.size > 1 }?.first(),
         )
         // After what was being said (a stop reached), not over it
@@ -358,7 +363,7 @@ object Navigation {
                 spokenSoon = res.getString(R.string.nav_spoken_stop_soon, place.name),
             )
         }
-        return NavRoute(route.points, maneuvers, route.lengthM, route.durationS, route.legEnds)
+        return route.withManeuvers(maneuvers)
     }
 
     private suspend fun onFix(fix: MapFix, places: List<Destination>) {
@@ -411,6 +416,7 @@ object Navigation {
         lastIndex = progress.index
         lastAlong = progress.alongM
         val along = progress.alongM
+        pace.onRoute(route, along, now)
         // A stop reached: off the trip, which brings a route on to the next place
         val toStop = if (places.size > 1 && route.legEnds.size > 1) progress.cumulative[route.legEnds[0]] - along else null
         if (toStop != null && toStop < ARRIVED_M) return stopReached(places)
@@ -421,7 +427,8 @@ object Navigation {
         val remaining = (end - along).coerceAtLeast(0.0)
         val arrived = arrivalJob != null || (toStop == null && (next == null || remaining < ARRIVED_M || stoodThere))
         _state.value = NavState(
-            route, next, toNext, remaining, route.durationS * remaining / end.coerceAtLeast(1.0), arrived,
+            // Valhalla's time for each stretch left, at the pace this driver keeps
+            route, next, toNext, remaining, pace.remainingS(route, along), arrived,
             stop = places.takeIf { toStop != null }?.first(), toStopM = toStop ?: 0.0,
         )
         if (arrived) arrive()
@@ -475,6 +482,8 @@ object Navigation {
     private fun arrive() {
         if (arrivalJob != null) return
         EventLog.log("Navigation: arrived")
+        // How far off Valhalla's times were, to learn from later trips
+        pace.summary()?.let { EventLog.log("Navigation: pace, $it") }
         _state.value = _state.value?.copy(arrived = true)
         arrivalJob = scope.launch {
             delay(ARRIVED_KEEP_MS)

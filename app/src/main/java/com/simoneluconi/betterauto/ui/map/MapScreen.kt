@@ -310,11 +310,12 @@ private fun MapButton(icon: ImageVector, label: String, size: Dp, shape: Shape?,
             .then(if (shape != null) Modifier.clip(shape).background(colors.surface) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        CarIcon(icon, colors.text, Modifier.size(26.dp))
+        CarIcon(icon, colors.text, Modifier.size(30.dp))
     }
 }
 
-private val BUTTON_SIZE = 52.dp
+/** Bigger than the usual round button: on a map in motion a finger aims less well (52 was small to the touch). */
+private val BUTTON_SIZE = 64.dp
 
 /** When the knob was last used on the map ([SystemClock.elapsedRealtime]): the hint comes back only after a rest. */
 private var mapKnobUsedAt = 0L

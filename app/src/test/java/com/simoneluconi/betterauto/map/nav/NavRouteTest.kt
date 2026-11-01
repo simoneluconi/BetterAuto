@@ -45,6 +45,28 @@ class NavRouteTest {
     }
 
     @Test
+    fun valhallasTimeByStretch() {
+        val shape = "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
+        // The first stretch slow (a town), the second quick for its length
+        val json = """{"trip":{"summary":{"length":12.5,"time":400},"legs":[
+            {"shape":"$shape","maneuvers":[
+                {"type":1,"instruction":"Head north","begin_shape_index":0,"end_shape_index":1,"time":300},
+                {"type":10,"instruction":"Turn right","begin_shape_index":1,"end_shape_index":2,"time":100},
+                {"type":4,"instruction":"You have arrived","begin_shape_index":2,"end_shape_index":2,"time":0}]}
+        ]}}"""
+        val route = NavRoute.fromValhalla(json)
+        val corner = route.cumulative[1]
+        assertEquals(300.0, route.secondsTo(corner), 1e-6)
+        assertEquals(150.0, route.secondsTo(corner / 2), 1e-6)
+        assertEquals(400.0, route.secondsTo(Double.MAX_VALUE), 1e-6)
+        // The words changed, the times stay
+        assertEquals(300.0, route.withManeuvers(emptyList()).secondsTo(corner), 1e-6)
+        // Without the maneuvers' times: the route's time by distance
+        val plain = NavRoute(doubleArrayOf(45.0, 9.0, 45.01, 9.0), emptyList(), 1100.0, 200.0)
+        assertEquals(100.0, plain.secondsTo(plain.cumulative[1] / 2), 1e-6)
+    }
+
+    @Test
     fun progressAlongTheRouteAndOffIt() {
         // 0.01 degrees of latitude north, then east: about 1.1 km each way
         val route = NavRoute(doubleArrayOf(45.0, 9.0, 45.01, 9.0, 45.01, 9.014), emptyList(), 2200.0, 200.0)
