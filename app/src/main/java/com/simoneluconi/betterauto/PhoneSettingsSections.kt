@@ -6,6 +6,8 @@ import com.simoneluconi.betterauto.exlap.ExlapPhoneSettings
 import com.simoneluconi.betterauto.exlap.exlapSummary
 import com.simoneluconi.betterauto.settings.SettingsCategory
 import com.simoneluconi.betterauto.settings.WidgetType
+import com.simoneluconi.betterauto.ui.map.RouteServerPhoneSettings
+import com.simoneluconi.betterauto.ui.map.routeServerSummary
 import com.simoneluconi.betterauto.ui.smarthome.SmartHomePhoneSettings
 import com.simoneluconi.betterauto.ui.smarthome.smartHomeSummary
 
@@ -52,6 +54,8 @@ object PhoneSettingsSections {
             summary = { exlapSummary() }) { ExlapPhoneSettings() },
         Section("smart_home", SettingsCategory.SMART_HOME, R.string.smarthome_title, R.string.settings_smart_home_desc,
             summary = { smartHomeSummary() }) { SmartHomePhoneSettings() },
+        Section("route_server", SettingsCategory.MAP, R.string.route_server_title, R.string.settings_route_server_desc, more = true,
+            summary = { routeServerSummary() }) { RouteServerPhoneSettings() },
     )
 
     private class Section(

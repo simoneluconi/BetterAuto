@@ -137,6 +137,14 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _guidanceVoice = MutableStateFlow(enumOf(KEY_GUIDANCE_VOICE, GuidanceVoice.FULL))
     val guidanceVoice: StateFlow<GuidanceVoice> = _guidanceVoice
 
+    private val _routeServer = MutableStateFlow(prefs.getString(KEY_ROUTE_SERVER, null))
+    /** The driver's own Valhalla server (a base URL); null for the public demonstration one. */
+    val routeServer: StateFlow<String?> = _routeServer
+
+    fun setRouteServer(value: String?) {
+        _routeServer.value = value
+        prefs.edit { if (value == null) remove(KEY_ROUTE_SERVER) else putString(KEY_ROUTE_SERVER, value) }
+    }
 
     private val _showEngineLight = boolFlow(KEY_SHOW_ENGINE, true)
     val showEngineLight: StateFlow<Boolean> = _showEngineLight
@@ -507,6 +515,7 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_MAP_AUTO_ZOOM = "map_auto_zoom"
         private const val KEY_SHOW_SPEED_LIMIT = "show_speed_limit"
         private const val KEY_GUIDANCE_VOICE = "guidance_voice"
+        private const val KEY_ROUTE_SERVER = "route_server"
         private const val KEY_UNITS = "unit_system"
         private const val KEY_TEMPERATURE = "temperature_unit"
         private const val KEY_VOICE_LANGUAGE = "voice_language"

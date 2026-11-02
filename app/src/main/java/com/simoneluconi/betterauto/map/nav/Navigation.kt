@@ -271,8 +271,9 @@ object Navigation {
     private suspend fun route(from: MapFix, places: List<Destination>, speakFirst: Boolean = true): RouteResult {
         val context = appContext ?: return RouteResult.FAILED
         _state.value = _state.value?.copy(rerouting = true)
+        val server = LauncherSettings.get(context).routeServer.value
         val route = try {
-            val text = requestRoute(from, places, AppLocales.voice(context).toLanguageTag())
+            val text = requestRoute(server, from, places, AppLocales.voice(context).toLanguageTag())
             val raw = withContext(Dispatchers.Default) { NavRoute.fromValhalla(text) }
             if (raw.size < 2) throw RouteRefused("an empty route")
             withStopNames(context, raw, places)
@@ -283,7 +284,8 @@ object Navigation {
             _state.value = _state.value?.copy(rerouting = false)
             return RouteResult.NO_ROUTE
         } catch (e: Exception) {
-            EventLog.log("Navigation: route server not reached (${e.message})")
+            // Which one, not its address: the log may be shared
+            EventLog.log("Navigation: ${if (server == null) "demo" else "own"} route server not reached (${e.message})")
             _state.value = _state.value?.copy(rerouting = false)
             return RouteResult.FAILED
         }
@@ -309,7 +311,7 @@ object Navigation {
     /** The server answered that there is no such route (a 4xx): asking again the same won't help. */
     private class RouteRefused(message: String) : IOException(message)
 
-    private suspend fun requestRoute(from: MapFix, places: List<Destination>, language: String): String {
+    private suspend fun requestRoute(server: String?, from: MapFix, places: List<Destination>, language: String): String {
         val start = JSONObject().put("lat", from.latitude).put("lon", from.longitude)
         // Leave the way the car points, not behind it
         from.bearing?.let { start.put("heading", it.toInt()).put("heading_tolerance", 45) }
@@ -321,7 +323,7 @@ object Navigation {
             .put("costing", "auto")
             .put("directions_options", JSONObject().put("language", language).put("units", "kilometers"))
             .toString()
-        val request = Request.Builder().url(ROUTE_URL)
+        val request = Request.Builder().url(RouteServer.routeUrl(server))
             .header("User-Agent", "BetterAuto (https://github.com/simoneluconi/BetterAuto)")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
@@ -505,8 +507,6 @@ object Navigation {
 
     private fun Double.format1() = "%.1f".format(this)
 
-    /** The public demonstration server of Valhalla (FOSSGIS): fair use, for trying only. */
-    private const val ROUTE_URL = "https://valhalla1.openstreetmap.de/route"
     private const val OFF_ROUTE_M = 45.0
     private const val OFF_ROUTE_FIXES = 3
 
