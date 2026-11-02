@@ -695,7 +695,7 @@
     <string name="settings_route_server_desc">Da dove arrivano i percorsi della navigazione: un server Valhalla. Se non ne imposti uno tuo: il server dimostrativo pubblico di Valhalla, gratuito ma pensato per le prove, senza garanzia che sia attivo. I luoghi del viaggio vengono inviati al server.</string>
     <string name="route_server_short">Percorsi</string>
     <string name="route_server_demo">server demo</string>
-    <string name="route_server_demo_in_use">In uso: il server demo di Valhalla</string>
+    <string name="route_server_demo_in_use">In uso: il server demo di Valhalla (%1$s)</string>
     <string name="route_server_in_use">In uso: %1$s</string>
     <string name="route_server_address">Il tuo server</string>
     <string name="route_server_hint">https://valhalla.example.org</string>

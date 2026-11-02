@@ -698,7 +698,7 @@
     <string name="settings_route_server_desc">Where the navigation\'s routes come from: a Valhalla server. Unless you set your own: Valhalla\'s public demo server, free but meant for trying, with no guarantee it is up. The places of your trip are sent to the server.</string>
     <string name="route_server_short">Routes</string>
     <string name="route_server_demo">demo server</string>
-    <string name="route_server_demo_in_use">In use: Valhalla\'s demo server</string>
+    <string name="route_server_demo_in_use">In use: Valhalla\'s demo server (%1$s)</string>
     <string name="route_server_in_use">In use: %1$s</string>
     <string name="route_server_address">Your own server</string>
     <string name="route_server_hint">https://valhalla.example.org</string>

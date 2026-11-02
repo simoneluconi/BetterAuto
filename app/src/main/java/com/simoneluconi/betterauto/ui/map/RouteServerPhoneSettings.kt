@@ -57,7 +57,8 @@ fun RouteServerPhoneSettings() {
     }
 
     CarLabel(
-        server?.let { stringResource(R.string.route_server_in_use, RouteServer.host(it)) } ?: stringResource(R.string.route_server_demo_in_use),
+        server?.let { stringResource(R.string.route_server_in_use, RouteServer.host(it)) }
+            ?: stringResource(R.string.route_server_demo_in_use, RouteServer.host(RouteServer.DEMO)),
         15.sp, colors.text, weight = FontWeight.Bold, maxLines = 2,
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
