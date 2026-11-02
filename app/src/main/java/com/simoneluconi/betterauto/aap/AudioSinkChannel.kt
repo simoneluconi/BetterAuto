@@ -63,7 +63,7 @@ class AudioSinkChannel(
 
     private sealed interface Outgoing
     private data object StartStream : Outgoing
-    private class StopStream(val releaseFocus: Boolean) : Outgoing
+    private class StopStream(val releaseFocus: Boolean, val idle: Boolean) : Outgoing
     private class Pcm(val timestampUs: Long, val data: ByteArray) : Outgoing
 
     private val queue = LinkedBlockingDeque<Outgoing>()
@@ -205,11 +205,14 @@ class AudioSinkChannel(
         } else if (focusLost) {
             // The car took the sound back: stop at once, the focus is not ours to release
             streaming = false
-            queue.add(StopStream(releaseFocus = false))
+            queue.add(StopStream(releaseFocus = false, idle = false))
             return
         } else if (now - lastSoundAt > idleStopMs()) {
             streaming = false
-            queue.add(StopStream(releaseFocus = true))
+            // The music keeps the car's speakers while paused, as with Android Auto: given back, the car would
+            // bring its own source (radio) up under a paused track or a voice message being recorded. Only
+            // the car takes them back (its own source chosen); a prompt gives its share back at its end
+            queue.add(StopStream(releaseFocus = !media, idle = true))
             return
         }
         queue.add(Pcm(timestampUs, data))
@@ -231,7 +234,7 @@ class AudioSinkChannel(
                 // Waits for as long as nothing is queued: close() interrupts it
                 when (val item = queue.take()) {
                     StartStream -> startStream()
-                    is StopStream -> stopStream(item.releaseFocus)
+                    is StopStream -> stopStream(item.releaseFocus, item.idle)
                     is Pcm -> sendBatch(item)
                 }
             }
@@ -273,13 +276,13 @@ class AudioSinkChannel(
     }
 
     /**
-     * A quiet passage while the player runs is still part of the music: only a paused player gives
-     * the car back its speakers quickly, so its own sources never cut into a track. A prompt's pauses
-     * are short: its stream ends soon after it, so the car brings its own sources back up.
+     * A quiet passage while the player runs (or loads the next track) is still part of the music: the stream
+     * goes on. A paused player's stream ends soon (the focus stays). A prompt's pauses are short: its stream
+     * ends soon after it, so the car brings its own sources back up.
      */
     private fun idleStopMs() = when {
         !media -> IDLE_STOP_GUIDANCE_MS
-        NowPlaying.track.value?.playing == true -> IDLE_STOP_PLAYING_MS
+        NowPlaying.track.value.let { it?.playing == true || it?.buffering == true } -> IDLE_STOP_PLAYING_MS
         else -> IDLE_STOP_MS
     }
 
@@ -306,7 +309,7 @@ class AudioSinkChannel(
         EventLog.log("$label: streaming (session $sessionId)")
     }
 
-    private fun stopStream(releaseFocus: Boolean) {
+    private fun stopStream(releaseFocus: Boolean, idle: Boolean) {
         send(MediaMessageId.MEDIA_MESSAGE_STOP_VALUE, Stop.getDefaultInstance())
         // A prompt always gives its share back (after a loss the car has already cleared it)
         if (releaseFocus || !media) {
@@ -314,7 +317,7 @@ class AudioSinkChannel(
             focus.release(owner)
         }
         if (media) CarState.audio.value = "$format · idle"
-        EventLog.log("$label: stream stopped (${if (releaseFocus) "idle" else "focus lost"})")
+        EventLog.log("$label: stream stopped (${if (!idle) "focus lost" else if (releaseFocus) "idle" else "idle, focus kept"})")
     }
 
     private fun recordStats(bytes: Int, waitMs: Long) {

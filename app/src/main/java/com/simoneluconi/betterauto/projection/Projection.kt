@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.KeyScrub
 import com.simoneluconi.betterauto.media.NowPlaying
@@ -133,7 +134,10 @@ class Projection(val context: Context) {
                 return@post
             }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                if (down) NowPlaying.pause()
+                if (down) {
+                    CarAudio.onCarPause()
+                    NowPlaying.pause()
+                }
                 return@post
             }
             // A short press changes track, holding runs through it (decided on release)

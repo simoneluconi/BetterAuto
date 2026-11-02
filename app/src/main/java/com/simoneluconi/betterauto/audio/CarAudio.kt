@@ -113,9 +113,26 @@ object CarAudio {
     @Synchronized
     fun onDisconnected() {
         if (sink == null) return
-        val playing = NowPlaying.track.value?.playing == true
-        prefs().edit { putLong(KEY_DISCONNECTED_AT, System.currentTimeMillis()).putBoolean(KEY_WAS_PLAYING, playing) }
-        EventLog.log("Car audio: disconnected, music was ${if (playing) "playing" else "paused"}")
+        val now = System.currentTimeMillis()
+        val playingNow = NowPlaying.track.value?.playing == true
+        // Cars switching off pause the music themselves a little before they go: that was not the driver
+        val pausedBySwitchOff = !playingNow && playingBeforeCarPause && now - carPausedAt < SWITCH_OFF_PAUSE_MS
+        val playing = playingNow || pausedBySwitchOff
+        prefs().edit { putLong(KEY_DISCONNECTED_AT, now).putBoolean(KEY_WAS_PLAYING, playing) }
+        val how = if (playingNow) "playing" else if (pausedBySwitchOff) "paused by the car switching off" else "paused"
+        EventLog.log("Car audio: disconnected, music was $how")
+        carPausedAt = 0L
+    }
+
+    /** When the car last sent a plain pause, and whether the music was playing then. */
+    private var carPausedAt = 0L
+    private var playingBeforeCarPause = false
+
+    /** The car sent a pause (not play/pause): maybe the driver, maybe the car switching off. */
+    @Synchronized
+    fun onCarPause() {
+        playingBeforeCarPause = NowPlaying.track.value?.playing == true
+        carPausedAt = System.currentTimeMillis()
     }
 
     private fun shouldAutoPlay(): Boolean {
@@ -136,6 +153,8 @@ object CarAudio {
     private const val KEY_WAS_PLAYING = "was_playing"
     /** How long a disconnection keeps the music as it was, instead of the auto-play setting. */
     private const val RESUME_MEMORY_MS = 15 * 60 * 1000L
+    /** A car's pause this close to its going away is the car switching off (seen 40-50 s before on VW group cars). */
+    private const val SWITCH_OFF_PAUSE_MS = 2 * 60 * 1000L
 
     @Synchronized
     fun setSink(value: AudioSink?) {

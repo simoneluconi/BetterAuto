@@ -2,7 +2,11 @@ package com.simoneluconi.betterauto.ui.widgets
 
 import android.os.SystemClock
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -46,7 +50,9 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -108,6 +114,9 @@ private const val NARROW_RATIO = 1.45f
 /** Progress bar refresh: as often as the knob moves a pixel, within these bounds. */
 private const val MIN_PROGRESS_STEP_MS = 50L
 private const val MAX_PROGRESS_STEP_MS = 500L
+
+/** Least luminance step between the progress bar and its card for the bar to read at a glance. */
+private const val MIN_FILL_CONTRAST = 0.18f
 
 /** How long a seek is shown before the player reports it, and how close its report must be to count. */
 private const val SEEK_HOLD_MS = 1500L
@@ -477,7 +486,11 @@ private fun Progress(track: Track) {
         Modifier
     }
     val rail = colors.text.copy(alpha = 0.16f)
-    val fill = colors.album
+    // A dark cover's color on the night card would vanish: lifted toward the text until it stands out
+    val fill = colors.album.let { album ->
+        if (kotlin.math.abs(album.luminance() - colors.albumCard.luminance()) >= MIN_FILL_CONTRAST) album
+        else androidx.compose.ui.graphics.lerp(album, colors.text, 0.55f)
+    }
     Column(seek.onSizeChanged { barWidthPx = it.width }) {
         Box(
             Modifier.fillMaxWidth().height(20.dp).drawBehind {
@@ -497,6 +510,22 @@ private fun Progress(track: Track) {
             CarLabel(formatTime(shownSeconds * 1000), 19.sp, colors.text2, tabularNumbers = true)
             if (track.durationMs > 0) CarLabel(formatTime(track.durationMs), 19.sp, colors.text2, tabularNumbers = true)
         }
+    }
+}
+
+/** A turning arc: the player was asked to play and is still loading. Animated only while shown. */
+@Composable
+private fun LoadingSpinner(color: Color, modifier: Modifier) {
+    val turn by rememberInfiniteTransition(label = "loading").animateFloat(
+        0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "loadingTurn",
+    )
+    androidx.compose.foundation.Canvas(modifier) {
+        val stroke = size.minDimension * 0.12f
+        drawArc(
+            color, startAngle = turn - 90f, sweepAngle = 270f, useCenter = false,
+            topLeft = Offset(stroke / 2, stroke / 2), size = Size(size.width - stroke, size.height - stroke),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+        )
     }
 }
 
@@ -520,7 +549,7 @@ private fun Transport(track: Track, playSize: Dp) {
         val running by KeyScrub.running.collectAsStateWithLifecycle()
         // Circle while playing, rounded square while paused
         val corner by animateIntAsState(
-            targetValue = if (track.playing || running != 0) 50 else 28,
+            targetValue = if (track.playing || track.buffering || running != 0) 50 else 28,
             animationSpec = spring(dampingRatio = 0.5f, stiffness = 300f),
             label = "playCorner",
         )
@@ -540,11 +569,13 @@ private fun Transport(track: Track, playSize: Dp) {
             val icon = when {
                 running > 0 -> CarIcons.FastForward
                 running < 0 -> CarIcons.FastRewind
+                track.buffering -> null
                 track.playing -> CarIcons.Pause
                 else -> CarIcons.Play
             }
             Crossfade(icon, animationSpec = tween(180), label = "playIcon") {
-                CarIcon(it, colors.onAlbum, Modifier.size(playSize * 0.4f))
+                if (it == null) LoadingSpinner(colors.onAlbum, Modifier.size(playSize * 0.42f))
+                else CarIcon(it, colors.onAlbum, Modifier.size(playSize * 0.4f))
             }
         }
         Box(

@@ -32,6 +32,9 @@ interface IAudioRouter {
     /** Lets the car read contacts and messages, as the user would allow in the dialogs that follow a pairing. */
     boolean allowCarAccess(String address) = 7;
 
+    /** Connects the phone to this paired device (calls, audio), as tapping it in the Bluetooth settings does. */
+    boolean connectDevice(String address) = 8;
+
     /** Called by Shizuku when the app unbinds for good (fixed transaction id from the Shizuku API). */
     void destroy() = 16777114;
 }

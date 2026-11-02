@@ -12,6 +12,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -94,6 +95,9 @@ class BluetoothChannel(
             BluetoothMessageId.BLUETOOTH_MESSAGE_PAIRING_RESPONSE_VALUE -> {
                 val response = BluetoothPairingResponse.parseFrom(msg.payload)
                 EventLog.log("Bluetooth: pairing response ${response.status}, car says ${if (response.alreadyPaired) "already paired" else "not paired"}")
+                // Paired on both sides, the car connects the phone for calls by itself; after a drop it sometimes
+                // does not, and the phone then stays off the car's calls: connected from here if still not
+                if (response.status == MessageStatus.STATUS_SUCCESS && response.alreadyPaired && isPaired()) connectIfIdle()
                 if (response.status == MessageStatus.STATUS_SUCCESS && !response.alreadyPaired && !isPaired()) {
                     if (failedRecently()) {
                         EventLog.log("Bluetooth: pairing with this car failed or was declined lately, not asking again yet")
@@ -111,6 +115,44 @@ class BluetoothChannel(
             else -> EventLog.log("Bluetooth: unhandled message ${msg.id} (${msg.payload.size} bytes)")
         }
     }
+
+    /** After a moment for the car to do it, connects the phone for calls if it is still not (through Shizuku). */
+    private fun connectIfIdle() {
+        thread(name = "aap-bluetooth-connect") {
+            try {
+                Thread.sleep(CONNECT_WAIT_MS)
+            } catch (_: InterruptedException) {
+                return@thread
+            }
+            if (closed) return@thread
+            val connected = headsetConnected() ?: return@thread
+            if (connected) return@thread
+            EventLog.log("Bluetooth: the car did not connect the phone for calls, connecting it")
+            if (ShizukuAudio.connectBluetooth(context, carAddress)) EventLog.log("Bluetooth: connection to the car asked")
+        }
+    }
+
+    /** Whether the car is connected for calls (hands-free profile); null when Android does not say. */
+    private fun headsetConnected(): Boolean? {
+        val adapter = adapter ?: return null
+        val device = runCatching { adapter.getRemoteDevice(carAddress) }.getOrNull() ?: return null
+        val ready = java.util.concurrent.CountDownLatch(1)
+        var state: Int? = null
+        val asked = adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                state = runCatching { proxy.getConnectionState(device) }.getOrNull()
+                adapter.closeProfileProxy(profile, proxy)
+                ready.countDown()
+            }
+
+            override fun onServiceDisconnected(profile: Int) = Unit
+        }, BluetoothProfile.HEADSET)
+        if (!asked || !ready.await(3, java.util.concurrent.TimeUnit.SECONDS)) return null
+        return state?.let { it == BluetoothProfile.STATE_CONNECTED || it == BluetoothProfile.STATE_CONNECTING }
+    }
+
+    @Volatile
+    private var closed = false
 
     /** A failed or declined pairing is not asked again at every reconnection, only after a while. */
     private fun failedRecently(): Boolean {
@@ -219,7 +261,10 @@ class BluetoothChannel(
         receiver = null
     }
 
-    override fun close() = stopListening()
+    override fun close() {
+        closed = true
+        stopListening()
+    }
 
     private fun deviceOf(intent: Intent): BluetoothDevice? =
         IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -235,6 +280,8 @@ class BluetoothChannel(
         const val KEY_FAILED_CAR = "failed_car"
         const val KEY_FAILED_AT = "failed_at"
         const val RETRY_AFTER_MS = 60 * 60 * 1000L
+        /** How long the car gets to connect the phone for calls by itself. */
+        const val CONNECT_WAIT_MS = 10_000L
 
         /** What Android gives apps instead of the real address. */
         const val PLACEHOLDER_ADDRESS = "02:00:00:00:00:00"

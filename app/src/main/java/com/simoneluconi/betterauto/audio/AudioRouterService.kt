@@ -174,6 +174,16 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
             .getOrDefault(false)
     }
 
+    /** BluetoothDevice.connect(), a system API (BLUETOOTH_PRIVILEGED): every profile the device offers. */
+    override fun connectDevice(address: String): Boolean = asShell {
+        runCatching {
+            val device = shellBluetooth().getRemoteDevice(address)
+            BluetoothDevice::class.java.getMethod("connect").invoke(device) == 0
+        }.onSuccess { lastStatus = "connect asked: $it" }
+            .onFailure { lastStatus = "connect not asked: ${it.cause ?: it}" }
+            .getOrDefault(false)
+    }
+
     /**
      * The Bluetooth adapter as the shell user. A process started by Shizuku skips the app startup that hooks
      * Bluetooth up ("BluetoothServiceManager is null"), so that is done here once; and the manager is built

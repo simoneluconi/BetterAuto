@@ -82,6 +82,8 @@ data class Track(
     val customActions: List<MediaAction>,
     /** The player accepts seeking to a position. */
     val canSeek: Boolean,
+    /** Asked to play, still loading (a streamed track after a skip): shown as a spinner, not as paused. */
+    val buffering: Boolean = false,
 ) {
     fun positionAt(now: Long): Long {
         val elapsed = if (playing) ((now - positionUpdatedAt) * speed).toLong() else 0L
@@ -396,6 +398,7 @@ object NowPlaying {
         val packageName = c.connectedToken?.packageName ?: return
         val metadata = c.mediaMetadata
         val playing = c.isPlaying
+        val buffering = !playing && c.playWhenReady && c.playbackState == Player.STATE_BUFFERING
         updateArt(metadata)
         val app = MediaApps.info(appContext, packageName)
         if (playing) LauncherSettings.get(appContext).markRecent(packageName)
@@ -420,6 +423,7 @@ object NowPlaying {
             positionUpdatedAt = SystemClock.elapsedRealtime(),
             speed = c.playbackParameters.speed.takeIf { it > 0f } ?: 1f,
             playing = playing,
+            buffering = buffering,
             shuffle = c.shuffleModeEnabled,
             repeat = c.repeatMode != Player.REPEAT_MODE_OFF,
             repeatOne = c.repeatMode == Player.REPEAT_MODE_ONE,

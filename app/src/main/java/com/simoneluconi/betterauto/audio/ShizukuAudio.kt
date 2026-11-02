@@ -143,6 +143,14 @@ object ShizukuAudio {
             }
         } == true
 
+    /** Connects the phone to the paired car for calls, as the settings would; false without Shizuku. */
+    fun connectBluetooth(context: Context, address: String): Boolean =
+        state(context) == State.READY && withService(context) { service ->
+            service.connectDevice(address).also { done ->
+                if (!done) EventLog.log("Bluetooth: Shizuku could not connect the car (${runCatching { service.status() }.getOrDefault("?")})")
+            }
+        } == true
+
     /**
      * Runs [block] on the shell service, binding it for the call only, without touching an audio routing
      * that may be running; null when it does not come up or the call fails.
