@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,11 +112,7 @@ fun NotificationsWidget(settings: LauncherSettings, modifier: Modifier = Modifie
                     open != null -> Detail(open, settings, hidden, onClose = { openKey = null })
                     list.isEmpty() -> PanelMessage(stringResource(R.string.notif_empty))
                     compact -> CompactList(list, hidden) { openKey = it.key }
-                    else -> LazyColumnWithBar(state = rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(list, key = { it.key }) { n ->
-                            NotificationRow(n, hidden, Modifier.contentFocus(enabled = primary && n === list.first())) { openKey = n.key }
-                        }
-                    }
+                    else -> NotificationList(list, hidden, primary) { openKey = it.key }
                 }
             }
         }
@@ -175,6 +172,45 @@ private fun HeaderButton(
     ) {
         CarIcon(icon, if (active) colors.text else colors.text2, Modifier.size(24.dp))
         if (text != null) CarLabel(text, 19.sp, if (active) colors.text else colors.text2, weight = FontWeight.Bold)
+    }
+}
+
+/**
+ * The full list, newest first. Something new on top (a notification, or a chat that moved up with a new
+ * message) is scrolled into view, and the knob's focus follows it from an older one: the list would
+ * otherwise keep its place and leave the new one above it, out of sight.
+ */
+@Composable
+private fun NotificationList(list: List<CarNotification>, hidden: Boolean, primary: Boolean, onOpen: (CarNotification) -> Unit) {
+    val listState = rememberLazyListState()
+    val newest = remember { FocusRequester() }
+    var focusInside by remember { mutableStateOf(false) }
+    val top = list.first()
+    var lastTopTime by remember { mutableStateOf(top.time) }
+    LaunchedEffect(top.key, top.time) {
+        // Only something newer than what was on top: dismissing the top one leaves an older one there
+        val arrived = top.time > lastTopTime
+        lastTopTime = top.time
+        if (!arrived) return@LaunchedEffect
+        val follow = focusInside
+        listState.animateScrollToItem(0)
+        if (follow) {
+            withFrameNanos { }
+            runCatching { newest.requestFocus() }
+        }
+    }
+    LazyColumnWithBar(
+        Modifier.onFocusChanged { focusInside = it.hasFocus },
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(list, key = { it.key }) { n ->
+            val first = n === list.first()
+            NotificationRow(
+                n, hidden,
+                Modifier.contentFocus(enabled = primary && first).then(if (first) Modifier.focusRequester(newest) else Modifier),
+            ) { onOpen(n) }
+        }
     }
 }
 
