@@ -18,6 +18,7 @@ import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.media.NowPlaying
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -85,6 +86,8 @@ class AudioSinkChannel(
     private var hasFocus = false
     private val focusGranted = Semaphore(0)
     private var pausedByCar = false
+    private var lossTransient = false
+    private var lostAt = 0L
 
     // Set when the car takes the sound back while we hold the focus; the capture thread then ends the stream
     @Volatile
@@ -157,8 +160,10 @@ class AudioSinkChannel(
                 focusGranted.release()
                 if (pausedByCar) {
                     pausedByCar = false
-                    EventLog.log("Media audio: focus is back, resuming the player")
-                    main.post { NowPlaying.resume() }
+                    if (lossTransient || SystemClock.elapsedRealtime() - lostAt < LOSS_BOUNCE_MS) {
+                        EventLog.log("Media audio: focus is back, resuming the player")
+                        main.post { NowPlaying.resume() }
+                    }
                 }
             }
             AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS,
@@ -167,8 +172,12 @@ class AudioSinkChannel(
                 if (!hasFocus) return
                 hasFocus = false
                 focusLost = true
-                pausedByCar = state == AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS_TRANSIENT &&
-                    NowPlaying.track.value?.playing == true
+                // Back after a short loss, the music plays again; after a full one too if the car gives the focus
+                // back at once (an Audi MMX2 drops it for half a second as it settles on our stream, right
+                // after the auto-play)
+                pausedByCar = NowPlaying.track.value?.playing == true
+                lossTransient = state == AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS_TRANSIENT
+                lostAt = SystemClock.elapsedRealtime()
                 EventLog.log("Media audio: the car took the sound, pausing the player")
                 NowPlaying.pause()
             }
@@ -360,6 +369,8 @@ class AudioSinkChannel(
         const val IDLE_STOP_GUIDANCE_MS = 1_500L
         const val ACK_TIMEOUT_MS = 1_000L
         const val FOCUS_TIMEOUT_MS = 1_000L
+        /** A full focus loss given back this soon was the car settling, not the driver picking another source. */
+        const val LOSS_BOUNCE_MS = 3_000L
 
         /** Upper bound for one message: enough to catch up after a slow ack. */
         const val MAX_BATCH_MS = 400

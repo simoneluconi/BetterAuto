@@ -116,19 +116,32 @@ class BluetoothChannel(
         }
     }
 
-    /** After a moment for the car to do it, connects the phone for calls if it is still not (through Shizuku). */
+    /**
+     * After a moment for the car to do it, connects the phone for calls if it is still not (through Shizuku).
+     * An Audi MMX2 does not answer for the first minute or two after starting (each try times out after ~6 s,
+     * a manual one 90 s in worked): tried again until it does, for a few minutes.
+     */
     private fun connectIfIdle() {
         thread(name = "aap-bluetooth-connect") {
-            try {
-                Thread.sleep(CONNECT_WAIT_MS)
-            } catch (_: InterruptedException) {
-                return@thread
+            var wait = CONNECT_WAIT_MS
+            for (attempt in 1..CONNECT_TRIES) {
+                try {
+                    Thread.sleep(wait)
+                } catch (_: InterruptedException) {
+                    return@thread
+                }
+                wait = CONNECT_RETRY_MS
+                if (closed) return@thread
+                val connected = headsetConnected() ?: return@thread
+                if (connected) {
+                    if (attempt > 1) EventLog.log("Bluetooth: connected to the car for calls")
+                    return@thread
+                }
+                if (attempt == 1) EventLog.log("Bluetooth: the car did not connect the phone for calls, connecting it")
+                if (!ShizukuAudio.connectBluetooth(context, carAddress)) return@thread
+                EventLog.log("Bluetooth: connection to the car asked (try $attempt)")
             }
-            if (closed) return@thread
-            val connected = headsetConnected() ?: return@thread
-            if (connected) return@thread
-            EventLog.log("Bluetooth: the car did not connect the phone for calls, connecting it")
-            if (ShizukuAudio.connectBluetooth(context, carAddress)) EventLog.log("Bluetooth: connection to the car asked")
+            EventLog.log("Bluetooth: the car never answered, the phone stays off its calls")
         }
     }
 
@@ -282,6 +295,10 @@ class BluetoothChannel(
         const val RETRY_AFTER_MS = 60 * 60 * 1000L
         /** How long the car gets to connect the phone for calls by itself. */
         const val CONNECT_WAIT_MS = 10_000L
+        /** Between tries while the car does not answer: longer than a try's own timeout (~6 s). */
+        const val CONNECT_RETRY_MS = 20_000L
+        /** About four minutes of tries in all. */
+        const val CONNECT_TRIES = 12
 
         /** What Android gives apps instead of the real address. */
         const val PLACEHOLDER_ADDRESS = "02:00:00:00:00:00"

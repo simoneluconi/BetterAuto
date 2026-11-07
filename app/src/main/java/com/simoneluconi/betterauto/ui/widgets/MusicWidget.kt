@@ -52,6 +52,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -115,8 +116,8 @@ private const val NARROW_RATIO = 1.45f
 private const val MIN_PROGRESS_STEP_MS = 50L
 private const val MAX_PROGRESS_STEP_MS = 500L
 
-/** Least luminance step between the progress bar and its card for the bar to read at a glance. */
-private const val MIN_FILL_CONTRAST = 0.18f
+/** Least contrast ratio of the progress fill against its card and its rail, for the bar to read at a glance. */
+private const val MIN_FILL_CONTRAST = 2.2f
 
 /** How long a seek is shown before the player reports it, and how close its report must be to count. */
 private const val SEEK_HOLD_MS = 1500L
@@ -486,11 +487,13 @@ private fun Progress(track: Track) {
         Modifier
     }
     val rail = colors.text.copy(alpha = 0.16f)
-    // A dark cover's color on the night card would vanish: lifted toward the text until it stands out
-    val fill = colors.album.let { album ->
-        if (kotlin.math.abs(album.luminance() - colors.albumCard.luminance()) >= MIN_FILL_CONTRAST) album
-        else androidx.compose.ui.graphics.lerp(album, colors.text, 0.55f)
-    }
+    // A cover's color close to the card or to the rail (a grey cover by day, a dark one at night) would
+    // vanish: lifted toward the text until it stands out from both
+    val railOnCard = rail.compositeOver(colors.albumCard)
+    val fill = (0..10).asSequence()
+        .map { androidx.compose.ui.graphics.lerp(colors.album, colors.text, it / 10f) }
+        .firstOrNull { contrast(it, colors.albumCard) >= MIN_FILL_CONTRAST && contrast(it, railOnCard) >= MIN_FILL_CONTRAST }
+        ?: colors.text
     Column(seek.onSizeChanged { barWidthPx = it.width }) {
         Box(
             Modifier.fillMaxWidth().height(20.dp).drawBehind {
@@ -511,6 +514,13 @@ private fun Progress(track: Track) {
             if (track.durationMs > 0) CarLabel(formatTime(track.durationMs), 19.sp, colors.text2, tabularNumbers = true)
         }
     }
+}
+
+/** Contrast ratio of two opaque colors, 1 (same) to 21 (black on white). */
+private fun contrast(a: Color, b: Color): Float {
+    val la = a.luminance() + 0.05f
+    val lb = b.luminance() + 0.05f
+    return maxOf(la, lb) / minOf(la, lb)
 }
 
 /** A turning arc: the player was asked to play and is still loading. Animated only while shown. */
