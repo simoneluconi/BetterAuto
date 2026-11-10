@@ -135,6 +135,11 @@ object NowPlaying {
     private var attachedToken: MediaSession.Token? = null
     private var generation = 0
 
+    // A play asked while no controller was connected yet (the auto-play right after the car connects):
+    // carried out by the controller that connects next, if soon enough
+    private var resumeAskedAt = 0L
+    private const val RESUME_PENDING_MS = 10_000L
+
     private val actionIcons = HashMap<String, ImageBitmap?>()
     private const val MAX_QUEUE = 200
     private const val ACTION_ICON_PX = 96
@@ -205,6 +210,7 @@ object NowPlaying {
             main.post { pause() }
             return
         }
+        resumeAskedAt = 0L
         val c = controller
         if (c != null) {
             c.pause()
@@ -224,6 +230,9 @@ object NowPlaying {
             if (!c.isPlaying) c.play()
             return
         }
+        resumeAskedAt = SystemClock.elapsedRealtime()
+        // A controller still connecting plays once it is there; reattaching now would only start it over
+        if (attachedToken != null) return
         LauncherSettings.get(appContext).recentApps.value.firstOrNull()?.let { open(it) }
     }
 
@@ -383,6 +392,11 @@ object NowPlaying {
                         "custom=${built.availableSessionCommands.commands.count { it.commandCode == SessionCommand.COMMAND_CODE_CUSTOM }} " +
                         "buttons=${built.mediaButtonPreferences.size}"
                 )
+                if (resumeAskedAt != 0L && SystemClock.elapsedRealtime() - resumeAskedAt < RESUME_PENDING_MS) {
+                    EventLog.log("Now playing: playing, as asked while connecting")
+                    if (!built.isPlaying) built.play()
+                }
+                resumeAskedAt = 0L
                 publish()
             }, appContext.mainExecutor)
         }, appContext.mainExecutor)
