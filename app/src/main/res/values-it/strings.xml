@@ -22,6 +22,14 @@
     <string name="problem_usb_text">Android non ha permesso a BetterAuto di aprire la connessione offerta dall\'auto. Stacca il cavo e riattaccalo.</string>
     <string name="problem_phone_certificate_title">BetterAuto non ha un certificato valido</string>
     <string name="problem_phone_certificate_text">Tra i file dei certificati dell\'app non c\'è una chiave privata con il suo certificato, quindi la connessione non può partire. Il log dell\'app dice cosa manca.</string>
+    <string name="problem_shizuku_stopped_title">Shizuku si è fermato</string>
+    <string name="problem_shizuku_stopped_text">Senza Shizuku la musica non va da sola in auto e l\'auto potrebbe non collegare il telefono per le chiamate. Riavvialo prima di partire.</string>
+    <string name="problem_audio_phone_title">La musica resta sul telefono</string>
+    <string name="problem_audio_phone_shizuku_text">Shizuku non è attivo, quindi l\'audio non può essere spostato in auto. Riavvia Shizuku, oppure lascia che BetterAuto mandi all\'auto una copia dell\'audio.</string>
+    <string name="problem_audio_phone_text">BetterAuto non ha il permesso di mandare l\'audio all\'auto. Concedilo da qui.</string>
+    <string name="self_signed_title">Certificato di sviluppo</string>
+    <string name="self_signed_text">BetterAuto si collega con un certificato autofirmato. Funziona solo con le autoradio che non controllano il certificato del telefono (per esempio Crankshaft/OpenAuto). Le autoradio di fabbrica che lo verificano con quelli di Google rifiuteranno la connessione.</string>
+    <string name="action_understood">Ho capito</string>
     <string name="action_preview">Anteprima UI auto</string>
     <string name="nav_home">Home</string>
     <string name="nav_music">Musica</string>

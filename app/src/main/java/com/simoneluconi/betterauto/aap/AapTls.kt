@@ -161,11 +161,22 @@ class AapTls(pem: Collection<String>) {
         private val PEM_BLOCK = Regex("""-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----""")
 
         /** Every PEM file at the root of assets/, whatever its name: [findIdentity] tells them apart by content. */
-        fun fromAssets(context: Context) = AapTls(
+        fun fromAssets(context: Context) = AapTls(assetPems(context))
+
+        private fun assetPems(context: Context) =
             context.assets.list("").orEmpty()
                 .filter { it.substringAfterLast('.', "").lowercase() in PEM_EXTENSIONS }
                 .map { name -> context.assets.open(name).bufferedReader().use { it.readText() } }
-        )
+
+        /**
+         * Whether the phone's certificate signs itself (our development one): only head units that do not check
+         * it accept it, factory ones want one issued by Google. Null without a usable identity.
+         */
+        fun selfSigned(context: Context): Boolean? =
+            runCatching { isSelfSigned(findIdentity(assetPems(context)).second.first()) }.getOrNull()
+
+        internal fun isSelfSigned(cert: X509Certificate): Boolean =
+            cert.issuerX500Principal == cert.subjectX500Principal && runCatching { cert.verify(cert.publicKey) }.isSuccess
 
         /**
          * The phone's private key and its certificate chain (leaf first) from PEM text. Blocks are recognised

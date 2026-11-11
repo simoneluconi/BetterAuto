@@ -6,6 +6,7 @@ import android.content.ServiceConnection
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.IBinder
+import com.simoneluconi.betterauto.AapService
 import com.simoneluconi.betterauto.EventLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,21 +32,29 @@ object ShizukuAudio {
     val changes: StateFlow<Int> = _changes
 
     private var listening = false
+    @Volatile
+    private var usable = false
 
     /** Listens to Shizuku coming and going; safe to call more than once. */
-    fun init() {
+    fun init(context: Context) {
         if (listening) return
         listening = true
+        val app = context.applicationContext
         Shizuku.addBinderReceivedListenerSticky {
             EventLog.log("Shizuku: connected")
+            usable = runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }.getOrDefault(false)
+            AapService.cancelShizukuStopped(app)
             _changes.value++
         }
         Shizuku.addBinderDeadListener {
             EventLog.log("Shizuku: gone")
+            // Only for a driver who uses it: allowed for BetterAuto when it came
+            if (usable) AapService.showShizukuStopped(app)
             _changes.value++
         }
         Shizuku.addRequestPermissionResultListener { _, result ->
             EventLog.log("Shizuku: permission ${if (result == PackageManager.PERMISSION_GRANTED) "granted" else "denied"}")
+            usable = result == PackageManager.PERMISSION_GRANTED
             _changes.value++
         }
     }

@@ -97,8 +97,9 @@ class AapService : Service() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             foregroundTypes = foregroundTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
-        ShizukuAudio.init()
+        ShizukuAudio.init(this)
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
+        CarAudio.onAudioOnPhone = { onPhone -> main.post { if (onPhone) showAudioOnPhone(this) else cancelAudioProblem(this) } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         ContextCompat.registerReceiver(this, detached, filter, ContextCompat.RECEIVER_EXPORTED)
     }
@@ -415,6 +416,7 @@ class AapService : Service() {
         if (WirelessConnector.status.value == WirelessState.Connected) WirelessConnector.report(WirelessState.Idle)
         unregisterReceiver(detached)
         CarAudio.onProjectionChanged = null
+        CarAudio.onAudioOnPhone = null
         CarAudio.setProjection(null)
         NowPlaying.release()
         session?.let { endSession(it) }
@@ -484,6 +486,9 @@ class AapService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val PROBLEM_CHANNEL_ID = "problems"
         private const val PROBLEM_NOTIFICATION_ID = 2
+        /** Apart from the connection problems: the session runs, only its sound does not reach the car. */
+        private const val AUDIO_PROBLEM_NOTIFICATION_ID = 3
+        private const val SHIZUKU_STOPPED_NOTIFICATION_ID = 4
         /** The blue of the app icon: the notification's car is drawn on it, as in the launcher. */
         private const val NOTIFICATION_COLOR = 0xFF0B63CE.toInt()
 
@@ -526,6 +531,60 @@ class AapService : Service() {
         /** The car connected after all: an old explanation would only confuse. */
         fun cancelProblem(context: Context) {
             context.getSystemService(NotificationManager::class.java).cancel(PROBLEM_NOTIFICATION_ID)
+        }
+
+        /**
+         * Shizuku stopped (often when wireless debugging goes off with a change of network): said at once, so it
+         * can be started again before driving, not found out in the car with the music on the phone.
+         */
+        fun showShizukuStopped(context: Context) =
+            showAudioProblem(context, SHIZUKU_STOPPED_NOTIFICATION_ID, R.string.problem_shizuku_stopped_title, R.string.problem_shizuku_stopped_text, consent = false)
+
+        /** Shizuku is back. */
+        fun cancelShizukuStopped(context: Context) {
+            context.getSystemService(NotificationManager::class.java).cancel(SHIZUKU_STOPPED_NOTIFICATION_ID)
+        }
+
+        /** A car is connected and the music stays on the phone: neither Shizuku nor the capture consent. */
+        fun showAudioOnPhone(context: Context) {
+            val withShizuku = ShizukuAudio.state(context) != ShizukuAudio.State.NOT_INSTALLED
+            val text = if (withShizuku) R.string.problem_audio_phone_shizuku_text else R.string.problem_audio_phone_text
+            showAudioProblem(context, AUDIO_PROBLEM_NOTIFICATION_ID, R.string.problem_audio_phone_title, text, consent = true)
+        }
+
+        /** The audio reaches the car again, or the car is gone. */
+        fun cancelAudioProblem(context: Context) {
+            context.getSystemService(NotificationManager::class.java).cancel(AUDIO_PROBLEM_NOTIFICATION_ID)
+        }
+
+        private fun showAudioProblem(context: Context, id: Int, title: Int, text: Int, consent: Boolean) {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(
+                NotificationChannel(PROBLEM_CHANNEL_ID, context.getString(R.string.problem_channel), NotificationManager.IMPORTANCE_DEFAULT)
+            )
+            val body = context.getString(text)
+            val builder = Notification.Builder(context, PROBLEM_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(NOTIFICATION_COLOR)
+                .setContentTitle(context.getString(title))
+                .setContentText(body)
+                .setStyle(Notification.BigTextStyle().bigText(body))
+                .setOnlyAlertOnce(true)
+                .setAutoCancel(true)
+                .setContentIntent(
+                    PendingIntent.getActivity(context, 3, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+                )
+            context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)?.let { shizuku ->
+                val open = PendingIntent.getActivity(context, 4, shizuku, PendingIntent.FLAG_IMMUTABLE)
+                builder.addAction(Notification.Action.Builder(null, context.getString(R.string.action_open_shizuku), open).build())
+            }
+            if (consent) {
+                val copy = PendingIntent.getActivity(
+                    context, 5, Intent(context, AudioConsentActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+                )
+                builder.addAction(Notification.Action.Builder(null, context.getString(R.string.action_enable_car_audio), copy).build())
+            }
+            manager.notify(id, builder.build())
         }
     }
 }

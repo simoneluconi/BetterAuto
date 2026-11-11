@@ -22,7 +22,7 @@ class UsbAttachActivity : Activity() {
             )
             // We are in the foreground only now: ask for car audio consent while we can show it,
             // unless Shizuku moves the audio to the car without one
-            ShizukuAudio.init()
+            ShizukuAudio.init(this)
             val state = ShizukuAudio.state(this)
             EventLog.log("Shizuku at attach: $state")
             val shizuku = state == ShizukuAudio.State.READY

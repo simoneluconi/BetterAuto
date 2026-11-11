@@ -96,6 +96,10 @@ object CarAudio {
     @Volatile
     var onProjectionChanged: (() -> Unit)? = null
 
+    /** Told each time the way is chosen: true when a car is connected and the music stays on the phone (any thread). */
+    @Volatile
+    var onAudioOnPhone: ((onPhone: Boolean) -> Unit)? = null
+
     @Synchronized
     fun setProjection(value: MediaProjection?) {
         if (value === projection) return
@@ -204,12 +208,14 @@ object CarAudio {
             shizuku = started.also { it.start() }
             startGuidance()
             if (!wasMoving) onProjectionChanged?.invoke()
+            onAudioOnPhone?.invoke(false)
             return
         }
         if (wasMoving) onProjectionChanged?.invoke()
         val p = projection
         if (p == null || s == null) {
             PhoneSpeakerMute.release(appContext)
+            onAudioOnPhone?.invoke(s != null)
             return
         }
         capture = try {
@@ -220,8 +226,10 @@ object CarAudio {
         }
         if (capture == null) {
             PhoneSpeakerMute.release(appContext)
+            onAudioOnPhone?.invoke(true)
             return
         }
+        onAudioOnPhone?.invoke(false)
         PhoneSpeakerMute.engage(appContext)
         // Capture cannot take the prompts: they play on the (muted) phone, brought back up while they speak
         startPrompts(liftSpeaker = true)

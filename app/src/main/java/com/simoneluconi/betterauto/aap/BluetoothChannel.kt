@@ -80,8 +80,12 @@ class BluetoothChannel(
             val method = service.supportedPairingMethodsList.let { offered ->
                 PREFERRED.firstOrNull { it in offered } ?: offered.firstOrNull() ?: BluetoothPairingMethod.BLUETOOTH_PAIRING_PIN
             }
+            // Remembered from the last time Shizuku told it: with the placeholder the car does not find the
+            // phone among its pairings, says "not paired" and leaves it off its calls
             val phoneAddress = ShizukuAudio.bluetoothAddress(context)
-                ?: runCatching { adapter?.address }.getOrNull()
+                ?.also { address -> prefs().edit { putString(KEY_PHONE_ADDRESS, address) } }
+                ?: runCatching { adapter?.address }.getOrNull()?.takeIf { it != PLACEHOLDER_ADDRESS }
+                ?: prefs().getString(KEY_PHONE_ADDRESS, null)
                 ?: PLACEHOLDER_ADDRESS
             send(
                 BluetoothMessageId.BLUETOOTH_MESSAGE_PAIRING_REQUEST_VALUE,
@@ -291,6 +295,8 @@ class BluetoothChannel(
         )
         const val PREFS = "car_bluetooth"
         const val KEY_FAILED_CAR = "failed_car"
+        /** The phone's real Bluetooth address, which only the shell service can read. */
+        const val KEY_PHONE_ADDRESS = "phone_address"
         const val KEY_FAILED_AT = "failed_at"
         const val RETRY_AFTER_MS = 60 * 60 * 1000L
         /** How long the car gets to connect the phone for calls by itself. */

@@ -69,8 +69,14 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.ShizukuAudio
+import com.simoneluconi.betterauto.aap.AapTls
 import com.simoneluconi.betterauto.ui.CarIcon
 import com.simoneluconi.betterauto.ui.CarIcons
+import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
+import androidx.compose.ui.window.Dialog
+import androidx.core.content.edit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.smarthome.SmartHomeCard
 import com.simoneluconi.betterauto.settings.SettingsCategory
@@ -93,7 +99,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // If the app died while connected, the phone may still be muted: put the volume back now
         CarAudio.init(this)
-        ShizukuAudio.init()
+        ShizukuAudio.init(this)
         setContent {
             CarTheme(night = isSystemInDarkTheme(), album = null) {
                 var page by rememberSaveable { mutableStateOf(PhonePage.HOME) }
@@ -102,6 +108,7 @@ class MainActivity : ComponentActivity() {
                     if (request == OPEN_SMART_HOME) page = PhonePage.SMART_HOME
                     openRequest.value = null
                 }
+                SelfSignedNotice()
                 // Kept here, above the pages: coming back from settings finds the home page where it was
                 val homeScroll = rememberScrollState()
                 BackHandler(enabled = page != PhonePage.HOME) { page = PhonePage.HOME }
@@ -223,6 +230,49 @@ private fun PhoneHome(
         )
     }
 }
+
+/**
+ * Once, at the first start with a self-signed phone certificate (our development one): it works only with
+ * head units that do not check it, and a factory one refusing the connection should not come as a surprise.
+ */
+@Composable
+private fun SelfSignedNotice() {
+    val context = LocalContext.current
+    val colors = LocalCarColors.current
+    val prefs = remember { context.getSharedPreferences(NOTICE_PREFS, Context.MODE_PRIVATE) }
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (prefs.getBoolean(KEY_SELF_SIGNED_SHOWN, false)) return@LaunchedEffect
+        show = withContext(Dispatchers.Default) { AapTls.selfSigned(context) == true }
+    }
+    if (!show) return
+    val dismiss = {
+        prefs.edit { putBoolean(KEY_SELF_SIGNED_SHOWN, true) }
+        show = false
+    }
+    Dialog(onDismissRequest = dismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(colors.surface)
+                .padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(Modifier.size(44.dp).background(colors.surface2, CircleShape), contentAlignment = Alignment.Center) {
+                    CarIcon(CarIcons.Lock, WarningAmber, Modifier.size(22.dp))
+                }
+                CarLabel(stringResource(R.string.self_signed_title), 20.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold, maxLines = 2)
+            }
+            CarLabel(stringResource(R.string.self_signed_text), 15.sp, colors.text2, maxLines = 12, lineHeight = 21.sp)
+            PillButton(stringResource(R.string.action_understood), primary = true, modifier = Modifier.fillMaxWidth(), onClick = dismiss)
+        }
+    }
+}
+
+private const val NOTICE_PREFS = "phone_notices"
+private const val KEY_SELF_SIGNED_SHOWN = "self_signed_shown"
 
 @Composable
 private fun ConnectionCard() {
