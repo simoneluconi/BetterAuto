@@ -20,9 +20,7 @@ import com.simoneluconi.betterauto.car.VideoStats
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.video.VideoEncoder
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -81,7 +79,7 @@ class VideoChannel(
     private var statsStart = 0L
 
     private val settings = LauncherSettings.get(projection.context)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = channelScope(Dispatchers.Default)
 
     override fun onOpened() {
         send(

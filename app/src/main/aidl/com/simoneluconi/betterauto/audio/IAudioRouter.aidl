@@ -35,6 +35,12 @@ interface IAudioRouter {
     /** Connects the phone to this paired device (calls, audio), as tapping it in the Bluetooth settings does. */
     boolean connectDevice(String address) = 8;
 
+    /**
+     * A binder of the app's own process: when that process dies (a crash, killed), every route stops and the
+     * service ends, so the phone gets its sound back even if Shizuku keeps the service running.
+     */
+    void watchApp(IBinder app) = 9;
+
     /** Called by Shizuku when the app unbinds for good (fixed transaction id from the Shizuku API). */
     void destroy() = 16777114;
 }

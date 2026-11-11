@@ -4,9 +4,7 @@ import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.exlap.ExlapClient
 import com.simoneluconi.betterauto.exlap.ExlapSettings
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -29,7 +27,7 @@ class VendorExtensionChannel(
         ?.takeIf { vendorName.contains("exlap", ignoreCase = true) }
         ?.let { settings -> ExlapClient(settings.credentials(), { settings.status.value = it }, ::sendRaw) }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = channelScope(Dispatchers.Default)
 
     override fun onOpened() {
         when {

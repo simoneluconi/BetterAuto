@@ -12,6 +12,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Binder
+import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import java.io.IOException
@@ -25,7 +26,8 @@ import kotlin.system.exitProcess
  * audio policy whose mix takes the phone's media (music, games, unknown) away from the speaker, the way
  * the system Android Auto does, and streams it to the app through a pipe. A second route does the same
  * for navigation prompts, which the car plays on their own stream. The policies die with this process,
- * so the phone never stays silent if the app goes away.
+ * and this process ends with the app ([watchApp]): after the app crashed once, Shizuku kept the service
+ * running and the phone stayed silent until it was killed.
  *
  * AudioPolicy / AudioMix are system APIs, reached by reflection.
  */
@@ -214,6 +216,16 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         val output = process.inputStream.bufferedReader().readText().trim()
         "exit ${process.waitFor()}${if (output.isNotEmpty()) ", $output" else ""}"
     }.getOrElse { "failed: $it" }
+
+    /** The app processes already watched: the same process' binder comes back as the same proxy. */
+    private val watched = HashSet<IBinder>()
+
+    @Synchronized
+    override fun watchApp(app: IBinder) {
+        if (!watched.add(app)) return
+        // Already dead by the time it got here: nothing left to route for
+        runCatching { app.linkToDeath({ destroy() }, 0) }.onFailure { destroy() }
+    }
 
     override fun destroy() {
         synchronized(this) { routes.keys.toList().forEach { stop(it) } }

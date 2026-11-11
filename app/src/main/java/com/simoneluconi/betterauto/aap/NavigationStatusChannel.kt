@@ -38,11 +38,9 @@ import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.ui.map.iconOf
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -102,7 +100,7 @@ class NavigationStatusChannel(
     override val name = "navigation status"
 
     // Off the main thread: sending blocks on the USB link, so an IO thread, one at a time to keep the order
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val scope = channelScope(Dispatchers.IO.limitedParallelism(1))
     private var job: Job? = null
     private var status: NavigationStatus.NavigationStatusEnum? = null
     private var turn: TurnKey? = null

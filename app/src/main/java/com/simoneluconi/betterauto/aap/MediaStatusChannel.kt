@@ -9,10 +9,8 @@ import com.google.protobuf.ByteString
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.media.Track
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -29,7 +27,7 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
     override val name = "media status"
 
     // Off the main thread: sending blocks on the USB link, so an IO thread, one at a time to keep the order
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val scope = channelScope(Dispatchers.IO.limitedParallelism(1))
     private var sentMetadata: String? = null
     private var sentStatus: MediaPlaybackStatus? = null
     private var artKey: String? = null

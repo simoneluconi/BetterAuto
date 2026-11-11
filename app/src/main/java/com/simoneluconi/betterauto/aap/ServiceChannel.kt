@@ -6,7 +6,11 @@ import aap_protobuf.service.control.message.ControlMessageTypeOuterClass.Control
 import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import com.google.protobuf.MessageLite
 import com.simoneluconi.betterauto.EventLog
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import java.io.Closeable
+import kotlin.coroutines.CoroutineContext
 
 /**
  * One head unit service (video, input, ...). The phone opens it with CHANNEL_OPEN_REQUEST,
@@ -44,6 +48,13 @@ abstract class ServiceChannel(private val session: AapSession, val channelId: In
 
     protected fun send(id: Int, payload: ByteArray, controlType: Boolean = false) =
         session.send(channelId, id, payload, controlType = controlType)
+
+    /**
+     * A scope for the channel's own jobs. A send fails when the link drops under it (the socket closed as the
+     * session ends): that ends the job, logged, instead of crashing the whole app.
+     */
+    protected fun channelScope(dispatcher: CoroutineContext): CoroutineScope =
+        CoroutineScope(SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e -> EventLog.log("Channel $channelId ($name): stopped, $e") })
 
     override fun close() = Unit
 }

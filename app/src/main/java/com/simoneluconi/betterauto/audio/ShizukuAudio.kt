@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.Binder
 import android.os.IBinder
 import com.simoneluconi.betterauto.AapService
 import com.simoneluconi.betterauto.EventLog
@@ -97,7 +98,11 @@ object ShizukuAudio {
         val bound = shared ?: bind(context, owner = true, timeoutMs) {
             EventLog.log("Shizuku: audio service gone")
             synchronized(this) { shared = null }
-        }?.also { shared = it }
+        }?.also {
+            shared = it
+            // If this process dies with routes on, the service gives the phone its sound back by itself
+            runCatching { it.router.watchApp(appToken) }.onFailure { e -> EventLog.log("Shizuku: audio service not watching the app: $e") }
+        }
         if (bound == null) {
             EventLog.log("Shizuku: audio service did not start")
             return null
@@ -108,6 +113,9 @@ object ShizukuAudio {
 
     /** The binding that moves the audio, while any route uses it. */
     private var shared: Bound? = null
+
+    /** Dies with this process: the shell service watches it ([IAudioRouter.watchApp]). */
+    private val appToken = Binder()
 
     @Synchronized
     private fun release(bound: Bound) {

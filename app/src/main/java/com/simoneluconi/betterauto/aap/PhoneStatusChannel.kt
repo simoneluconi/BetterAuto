@@ -16,10 +16,8 @@ import com.simoneluconi.betterauto.phone.CallPhase
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.phone.PhoneSignal
 import com.simoneluconi.betterauto.phone.maskNumber
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,7 +55,7 @@ class PhoneStatusChannel(session: AapSession, channelId: Int, private val contex
     override val name = "phone status"
 
     // Off the main thread: sending blocks on the USB link, so an IO thread, one at a time to keep the order
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val scope = channelScope(Dispatchers.IO.limitedParallelism(1))
     private val main = Handler(Looper.getMainLooper())
     private var sent: PhoneStatusSnapshot? = null
     /** The photo whose thumbnail went with each call. */
