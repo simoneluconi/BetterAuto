@@ -24,6 +24,10 @@
     <string name="problem_phone_certificate_text">Among the app\'s certificate files there is no private key with its matching certificate, so the connection can\'t start. The app log says what is missing.</string>
     <string name="problem_shizuku_stopped_title">Shizuku stopped</string>
     <string name="problem_shizuku_stopped_text">Without it the music doesn\'t go to the car by itself and the car may not connect the phone for calls. Start Shizuku again before you drive.</string>
+    <string name="problem_shizuku_boot_title">Shizuku isn\'t running</string>
+    <string name="problem_shizuku_boot_text">The phone restarted and Shizuku didn\'t start again. Start it before you drive: without it the music doesn\'t go to the car by itself and the car may not connect the phone for calls.</string>
+    <string name="problem_shizuku_not_allowed_title">BetterAuto can\'t use Shizuku</string>
+    <string name="problem_shizuku_not_allowed_text">Shizuku is running but doesn\'t allow BetterAuto. Open BetterAuto and allow it, or the music won\'t go to the car by itself.</string>
     <string name="problem_audio_phone_title">Music stays on the phone</string>
     <string name="problem_audio_phone_shizuku_text">Shizuku isn\'t running, so the sound can\'t be moved to the car. Start Shizuku, or let BetterAuto send a copy of the sound to the car.</string>
     <string name="problem_audio_phone_text">BetterAuto isn\'t allowed to send the sound to the car. Allow it here.</string>
@@ -270,6 +274,10 @@
     <string name="log_show">Show</string>
     <string name="log_hide">Hide</string>
     <string name="log_empty">Nothing yet</string>
+    <string name="diagnostic_note">To report a problem, send the log: it says what the app and the car did, with no positions, contacts or messages. You choose who gets it.</string>
+    <string name="diagnostic_send">Send diagnostic log</string>
+    <string name="diagnostic_preparing">Preparing…</string>
+    <string name="diagnostic_subject">BetterAuto diagnostic log</string>
     <string name="phone_settings_title">Car screen</string>
     <string name="phone_settings_hint">Changes show up in the car right away, also while connected.</string>
     <string name="settings_contact_names">Contact names</string>

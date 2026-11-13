@@ -8,9 +8,23 @@ import android.os.Looper
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.aap.AudioSinkChannel
+import com.simoneluconi.betterauto.car.CarMotion
+import com.simoneluconi.betterauto.car.CarMotionState
 import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 data class PcmFormat(val sampleRate: Int, val channels: Int, val bits: Int) {
     override fun toString() = "PCM $sampleRate Hz $bits-bit ${if (channels == 1) "mono" else "${channels}ch"}"
@@ -137,6 +151,58 @@ object CarAudio {
     fun onCarPause() {
         playingBeforeCarPause = NowPlaying.track.value?.playing == true
         carPausedAt = System.currentTimeMillis()
+        checkSwitchOff()
+    }
+
+    /** When the car last dropped the phone's calls connection during this session. */
+    private var callsDroppedAt = 0L
+    /** When the car paused the music switching off while the session went on (a quick stop); 0 when it did not. */
+    private var switchOffPauseAt = 0L
+    private var driveOffWatch: Job? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** The car dropped the phone's calls connection: with a pause at the same moment, the car is switching off. */
+    @Synchronized
+    fun onCarCallsDropped() {
+        callsDroppedAt = System.currentTimeMillis()
+        checkSwitchOff()
+    }
+
+    /** The car connected the phone for calls again: back from a quick stop, if it was one. */
+    @Synchronized
+    fun onCarCallsBack() = resumeAfterSwitchOff("the car connected the phone again")
+
+    /**
+     * A pause together with the calls dropped is the car switching off: a driver's pause never drops the
+     * Bluetooth. A dongle may keep the session through a quick stop, so no reconnection brings the music back:
+     * it plays again when the car drives off (or connects the phone again), unless the driver started and
+     * stopped it meanwhile.
+     */
+    private fun checkSwitchOff() {
+        if (sink == null || !playingBeforeCarPause || switchOffPauseAt != 0L) return
+        if (carPausedAt == 0L || callsDroppedAt == 0L || abs(carPausedAt - callsDroppedAt) > SWITCH_OFF_TOGETHER_MS) return
+        switchOffPauseAt = System.currentTimeMillis()
+        EventLog.log("Car audio: the car paused the music switching off, it plays again when the car drives off")
+        driveOffWatch?.cancel()
+        driveOffWatch = scope.launch {
+            val playingByHand = NowPlaying.track.map { it?.playing == true }.distinctUntilChanged().dropWhile { it }.filter { it }.map { null }
+            val drivesOff = CarMotionState.state.filter { it == CarMotion.MOVING }.map { "the car drives off" }
+            val why = merge(playingByHand, drivesOff).first()
+            synchronized(this@CarAudio) {
+                if (why != null) resumeAfterSwitchOff(why) else switchOffPauseAt = 0L
+            }
+        }
+    }
+
+    private fun resumeAfterSwitchOff(why: String) {
+        if (switchOffPauseAt == 0L) return
+        val away = System.currentTimeMillis() - switchOffPauseAt
+        switchOffPauseAt = 0L
+        driveOffWatch?.cancel()
+        driveOffWatch = null
+        if (sink == null || away > RESUME_MEMORY_MS || NowPlaying.track.value?.playing == true) return
+        EventLog.log("Car audio: back from a quick stop ($why), the music plays again")
+        main.post { NowPlaying.resume() }
     }
 
     private fun shouldAutoPlay(): Boolean {
@@ -159,6 +225,8 @@ object CarAudio {
     private const val RESUME_MEMORY_MS = 15 * 60 * 1000L
     /** A car's pause this close to its going away is the car switching off (seen 40-50 s before on VW group cars). */
     private const val SWITCH_OFF_PAUSE_MS = 2 * 60 * 1000L
+    /** A car switching off pauses and drops the calls within half a second (Audi MMX2): a little margin. */
+    private const val SWITCH_OFF_TOGETHER_MS = 3_000L
 
     @Synchronized
     fun setSink(value: AudioSink?) {
@@ -166,6 +234,11 @@ object CarAudio {
         if (value == null) {
             autoPlayed = false
             shizukuFailed = false
+            // The session is over: the next connection's own auto-play decides
+            switchOffPauseAt = 0L
+            callsDroppedAt = 0L
+            driveOffWatch?.cancel()
+            driveOffWatch = null
         }
         sink = value
         restart()

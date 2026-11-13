@@ -24,6 +24,10 @@
     <string name="problem_phone_certificate_text">Tra i file dei certificati dell\'app non c\'è una chiave privata con il suo certificato, quindi la connessione non può partire. Il log dell\'app dice cosa manca.</string>
     <string name="problem_shizuku_stopped_title">Shizuku si è fermato</string>
     <string name="problem_shizuku_stopped_text">Senza Shizuku la musica non va da sola in auto e l\'auto potrebbe non collegare il telefono per le chiamate. Riavvialo prima di partire.</string>
+    <string name="problem_shizuku_boot_title">Shizuku non è avviato</string>
+    <string name="problem_shizuku_boot_text">Il telefono si è riavviato e Shizuku non è ripartito. Avvialo prima di partire: senza Shizuku la musica non va da sola in auto e l\'auto potrebbe non collegare il telefono per le chiamate.</string>
+    <string name="problem_shizuku_not_allowed_title">BetterAuto non può usare Shizuku</string>
+    <string name="problem_shizuku_not_allowed_text">Shizuku è avviato ma non dà il permesso a BetterAuto. Apri BetterAuto e consentilo, altrimenti la musica non va da sola in auto.</string>
     <string name="problem_audio_phone_title">La musica resta sul telefono</string>
     <string name="problem_audio_phone_shizuku_text">Shizuku non è attivo, quindi l\'audio non può essere spostato in auto. Riavvia Shizuku, oppure lascia che BetterAuto mandi all\'auto una copia dell\'audio.</string>
     <string name="problem_audio_phone_text">BetterAuto non ha il permesso di mandare l\'audio all\'auto. Concedilo da qui.</string>
@@ -267,6 +271,10 @@
     <string name="log_show">Mostra</string>
     <string name="log_hide">Nascondi</string>
     <string name="log_empty">Ancora niente</string>
+    <string name="diagnostic_note">Per segnalare un problema, invia il log: dice cosa hanno fatto l\'app e l\'auto, senza posizioni, contatti o messaggi. Scegli tu a chi mandarlo.</string>
+    <string name="diagnostic_send">Invia log di diagnostica</string>
+    <string name="diagnostic_preparing">Preparazione…</string>
+    <string name="diagnostic_subject">Log di diagnostica BetterAuto</string>
     <string name="phone_settings_title">Schermo dell\'auto</string>
     <string name="phone_settings_hint">Le modifiche arrivano subito in auto, anche mentre sei collegato.</string>
     <string name="settings_contact_names">Nomi dei contatti</string>

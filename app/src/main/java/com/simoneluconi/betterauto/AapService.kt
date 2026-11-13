@@ -540,6 +540,21 @@ class AapService : Service() {
         fun showShizukuStopped(context: Context) =
             showAudioProblem(context, SHIZUKU_STOPPED_NOTIFICATION_ID, R.string.problem_shizuku_stopped_title, R.string.problem_shizuku_stopped_text, consent = false)
 
+        /**
+         * After the phone restarted, Shizuku is not running (it does not start by itself without root) or does not
+         * allow BetterAuto: said while there is time to fix it, not found out in the car. The tap goes where it
+         * is fixed: Shizuku to start it, BetterAuto to allow it.
+         */
+        fun showShizukuAfterBoot(context: Context, running: Boolean) =
+            if (running) {
+                showAudioProblem(context, SHIZUKU_STOPPED_NOTIFICATION_ID, R.string.problem_shizuku_not_allowed_title, R.string.problem_shizuku_not_allowed_text, consent = false)
+            } else {
+                showAudioProblem(
+                    context, SHIZUKU_STOPPED_NOTIFICATION_ID, R.string.problem_shizuku_boot_title, R.string.problem_shizuku_boot_text,
+                    consent = false, tapOpensShizuku = true,
+                )
+            }
+
         /** Shizuku is back. */
         fun cancelShizukuStopped(context: Context) {
             context.getSystemService(NotificationManager::class.java).cancel(SHIZUKU_STOPPED_NOTIFICATION_ID)
@@ -557,12 +572,15 @@ class AapService : Service() {
             context.getSystemService(NotificationManager::class.java).cancel(AUDIO_PROBLEM_NOTIFICATION_ID)
         }
 
-        private fun showAudioProblem(context: Context, id: Int, title: Int, text: Int, consent: Boolean) {
+        private fun showAudioProblem(context: Context, id: Int, title: Int, text: Int, consent: Boolean, tapOpensShizuku: Boolean = false) {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(
                 NotificationChannel(PROBLEM_CHANNEL_ID, context.getString(R.string.problem_channel), NotificationManager.IMPORTANCE_DEFAULT)
             )
             val body = context.getString(text)
+            val app = PendingIntent.getActivity(context, 3, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            val shizuku = context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)
+                ?.let { PendingIntent.getActivity(context, 4, it, PendingIntent.FLAG_IMMUTABLE) }
             val builder = Notification.Builder(context, PROBLEM_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setColor(NOTIFICATION_COLOR)
@@ -571,11 +589,8 @@ class AapService : Service() {
                 .setStyle(Notification.BigTextStyle().bigText(body))
                 .setOnlyAlertOnce(true)
                 .setAutoCancel(true)
-                .setContentIntent(
-                    PendingIntent.getActivity(context, 3, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-                )
-            context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)?.let { shizuku ->
-                val open = PendingIntent.getActivity(context, 4, shizuku, PendingIntent.FLAG_IMMUTABLE)
+                .setContentIntent(if (tapOpensShizuku && shizuku != null) shizuku else app)
+            shizuku?.let { open ->
                 builder.addAction(Notification.Action.Builder(null, context.getString(R.string.action_open_shizuku), open).build())
             }
             if (consent) {

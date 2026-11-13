@@ -62,6 +62,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Calendar home widget: asked only when the driver picks it -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- After the phone restarts: says if Shizuku is not running, before the driver finds out in the car -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Media apps (for the app bar) are the ones exposing a MediaBrowserService -->
     <queries>
@@ -223,5 +225,30 @@
             android:name=".AapService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|mediaProjection|microphone|location" />
+
+        <!-- A while after the phone restarts: is Shizuku running and allowed? (audio/ShizukuBootCheck) -->
+        <receiver
+            android:name=".audio.ShizukuBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".audio.ShizukuCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- The diagnostic log, readable by the app the user shares it with (DiagnosticLog) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
     </application>
 </manifest>

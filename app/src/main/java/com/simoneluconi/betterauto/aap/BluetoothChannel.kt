@@ -11,6 +11,7 @@ import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
@@ -23,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.ShizukuAudio
 import kotlin.concurrent.thread
 
@@ -38,7 +40,7 @@ import kotlin.concurrent.thread
  *   phone -> AUTHENTICATION_RESULT once paired
  *
  * Already paired (the usual case, and always with a wireless dongle, which is paired to reach the phone):
- * nothing happens.
+ * the phone only sees that the car stays connected for calls, connecting it again when it does not.
  */
 @SuppressLint("MissingPermission") // BLUETOOTH_CONNECT (asked for on the Wireless page) is checked when the channel opens
 class BluetoothChannel(
@@ -101,7 +103,10 @@ class BluetoothChannel(
                 EventLog.log("Bluetooth: pairing response ${response.status}, car says ${if (response.alreadyPaired) "already paired" else "not paired"}")
                 // Paired on both sides, the car connects the phone for calls by itself; after a drop it sometimes
                 // does not, and the phone then stays off the car's calls: connected from here if still not
-                if (response.status == MessageStatus.STATUS_SUCCESS && response.alreadyPaired && isPaired()) connectIfIdle()
+                if (response.status == MessageStatus.STATUS_SUCCESS && response.alreadyPaired && isPaired()) {
+                    watchCalls()
+                    connectIfIdle()
+                }
                 if (response.status == MessageStatus.STATUS_SUCCESS && !response.alreadyPaired && !isPaired()) {
                     if (failedRecently()) {
                         EventLog.log("Bluetooth: pairing with this car failed or was declined lately, not asking again yet")
@@ -126,31 +131,82 @@ class BluetoothChannel(
      * a manual one 90 s in worked): tried again until it does, for a few minutes.
      */
     private fun connectIfIdle() {
+        // One run at a time: a drop while the first one still tries only keeps it going
+        if (!connecting.compareAndSet(false, true)) return
         thread(name = "aap-bluetooth-connect") {
-            var wait = CONNECT_WAIT_MS
-            for (attempt in 1..CONNECT_TRIES) {
-                try {
-                    Thread.sleep(wait)
-                } catch (_: InterruptedException) {
-                    return@thread
-                }
-                wait = CONNECT_RETRY_MS
-                if (closed) return@thread
-                val connected = headsetConnected() ?: return@thread
-                if (connected) {
-                    if (attempt > 1) EventLog.log("Bluetooth: connected to the car for calls")
-                    return@thread
-                }
-                if (attempt == 1) EventLog.log("Bluetooth: the car did not connect the phone for calls, connecting it")
-                if (!ShizukuAudio.connectBluetooth(context, carAddress)) return@thread
-                EventLog.log("Bluetooth: connection to the car asked (try $attempt)")
+            try {
+                connectLoop()
+            } finally {
+                connecting.set(false)
             }
-            EventLog.log("Bluetooth: the car never answered, the phone stays off its calls")
         }
     }
 
-    /** Whether the car is connected for calls (hands-free profile); null when Android does not say. */
-    private fun headsetConnected(): Boolean? {
+    private val connecting = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun connectLoop() {
+        var wait = CONNECT_WAIT_MS
+        for (attempt in 1..CONNECT_TRIES) {
+            try {
+                Thread.sleep(wait)
+            } catch (_: InterruptedException) {
+                return
+            }
+            wait = CONNECT_RETRY_MS
+            if (closed) return
+            val state = headsetState()
+            if (state == null) {
+                EventLog.log("Bluetooth: Android does not say whether the car is connected for calls, leaving it")
+                return
+            }
+            // Only a done connection counts: one the car started may still fail, and is looked at again next time
+            if (state == BluetoothProfile.STATE_CONNECTED) return
+            if (state == BluetoothProfile.STATE_CONNECTING) continue
+            if (attempt == 1) EventLog.log("Bluetooth: the car did not connect the phone for calls, connecting it")
+            if (!ShizukuAudio.connectBluetooth(context, carAddress)) {
+                EventLog.log("Bluetooth: the phone cannot connect the car by itself without Shizuku")
+                return
+            }
+            EventLog.log("Bluetooth: connection to the car asked (try $attempt)")
+        }
+        EventLog.log("Bluetooth: the car never answered, the phone stays off its calls")
+    }
+
+    /**
+     * Follows the car's calls connection for the whole session: a car switched off and on again quickly keeps the
+     * wireless session but drops the phone's calls, and does not always bring them back by itself.
+     */
+    private fun watchCalls() {
+        if (callsWatcher != null) return
+        val watcher = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val about = deviceOf(intent) ?: return
+                if (!about.address.equals(carAddress, ignoreCase = true) || closed) return
+                val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
+                val previous = intent.getIntExtra(BluetoothProfile.EXTRA_PREVIOUS_STATE, -1)
+                when {
+                    state == BluetoothProfile.STATE_CONNECTED -> {
+                        EventLog.log("Bluetooth: connected to the car for calls")
+                        CarAudio.onCarCallsBack()
+                    }
+                    state == BluetoothProfile.STATE_DISCONNECTED && previous != BluetoothProfile.STATE_CONNECTING -> {
+                        EventLog.log("Bluetooth: the car dropped the phone's calls connection")
+                        CarAudio.onCarCallsDropped()
+                        connectIfIdle()
+                    }
+                }
+            }
+        }
+        // A system broadcast, protected: exporting the receiver lets nobody else in
+        ContextCompat.registerReceiver(context, watcher, IntentFilter(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED), ContextCompat.RECEIVER_EXPORTED)
+        callsWatcher = watcher
+    }
+
+    @Volatile
+    private var callsWatcher: BroadcastReceiver? = null
+
+    /** The car's calls connection (hands-free profile), a BluetoothProfile.STATE_*; null when Android does not say. */
+    private fun headsetState(): Int? {
         val adapter = adapter ?: return null
         val device = runCatching { adapter.getRemoteDevice(carAddress) }.getOrNull() ?: return null
         val ready = java.util.concurrent.CountDownLatch(1)
@@ -165,7 +221,7 @@ class BluetoothChannel(
             override fun onServiceDisconnected(profile: Int) = Unit
         }, BluetoothProfile.HEADSET)
         if (!asked || !ready.await(3, java.util.concurrent.TimeUnit.SECONDS)) return null
-        return state?.let { it == BluetoothProfile.STATE_CONNECTED || it == BluetoothProfile.STATE_CONNECTING }
+        return state
     }
 
     @Volatile
@@ -281,6 +337,8 @@ class BluetoothChannel(
     override fun close() {
         closed = true
         stopListening()
+        callsWatcher?.let { runCatching { context.unregisterReceiver(it) } }
+        callsWatcher = null
     }
 
     private fun deviceOf(intent: Intent): BluetoothDevice? =

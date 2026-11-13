@@ -9,6 +9,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -95,6 +96,15 @@ object EventLog {
         dir.resolve("events.${KEPT_FILES - 1}.txt").delete()
         for (i in KEPT_FILES - 2 downTo 1) dir.resolve("events.$i.txt").renameTo(dir.resolve("events.${i + 1}.txt"))
         target.renameTo(dir.resolve("events.1.txt"))
+    }
+
+    /** The log files, oldest first, with every line logged so far in them (the diagnostic log); empty before [init]. */
+    fun files(): List<File> {
+        val target = file ?: return emptyList()
+        // On the writer thread, after the lines already waiting: a rotation happens there too
+        runCatching { writer.submit { runCatching { out?.flush() } }.get(2, TimeUnit.SECONDS) }
+        val dir = target.parentFile ?: return emptyList()
+        return ((KEPT_FILES - 1) downTo 1).map { dir.resolve("events.$it.txt") }.plus(target).filter { it.exists() }
     }
 
     fun snapshot(): List<String> = synchronized(lines) { lines.toList() }

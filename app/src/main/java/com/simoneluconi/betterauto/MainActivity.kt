@@ -75,7 +75,9 @@ import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.edit
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.simoneluconi.betterauto.ui.CarLabel
 import com.simoneluconi.betterauto.ui.smarthome.SmartHomeCard
@@ -542,6 +544,7 @@ private fun LogCard() {
             CarLabel(stringResource(R.string.log_title), 18.sp, colors.text, Modifier.weight(1f), weight = FontWeight.Bold)
             CarLabel(stringResource(if (open) R.string.log_hide else R.string.log_show), 15.sp, colors.focus, weight = FontWeight.Bold)
         }
+        DiagnosticLogButton()
         if (open) {
             val scroll = rememberScrollState()
             Box(
@@ -555,6 +558,32 @@ private fun LogCard() {
                     lines.joinToString("\n").ifEmpty { stringResource(R.string.log_empty) },
                     style = TextStyle(color = colors.text2, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp),
                 )
+            }
+        }
+    }
+}
+
+/** The whole log as a file for the share sheet, so a driver can send it to whoever looks into a problem. */
+@Composable
+private fun DiagnosticLogButton() {
+    val colors = LocalCarColors.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var preparing by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 18.dp)) {
+        CarLabel(stringResource(R.string.diagnostic_note), 15.sp, colors.text2, maxLines = 4)
+        Spacer(Modifier.size(10.dp))
+        PillButton(stringResource(if (preparing) R.string.diagnostic_preparing else R.string.diagnostic_send), primary = false) {
+            if (preparing) return@PillButton
+            preparing = true
+            scope.launch {
+                val share = withContext(Dispatchers.IO) {
+                    runCatching { DiagnosticLog.shareIntent(context) }
+                        .onFailure { EventLog.log("Diagnostic log: could not be made, $it") }
+                        .getOrNull()
+                }
+                preparing = false
+                share?.let { runCatching { context.startActivity(it) } }
             }
         }
     }
