@@ -46,6 +46,31 @@ if it was off, so the script warns when the official Android Auto is on too.
 The protobuf files under `app/src/main/proto/aap_protobuf` are from opencardev/aasdk
 (commit in `app/src/main/proto/AASDK_VERSION.txt`).
 
+The APK carries the native libraries for ARM phones only (`arm64-v8a`, `armeabi-v7a`): the x86 ones, for
+emulators, made up a third of its size.
+
+## Releases
+
+The version lives in one place, `val appVersion` at the top of `app/build.gradle.kts`; the version code
+follows it (1.2.3 → 10203). The notes are in `CHANGELOG.md`, in English and Italian: new entries go under
+"Unreleased", renamed to the version and date when it is released. Then, with everything committed and pushed:
+
+```bat
+scripts\release.cmd -DryRun      :: tests, the release APK and its checks; nothing published
+scripts\release.cmd              :: the same, then the tag and the GitHub release
+```
+
+The script builds `assembleRelease -Pbetterauto.certs=dev`, checks that the APK is signed with the release
+key (its fingerprint is in the script) and carries only our development certificate files, byte for byte,
+and publishes it with `docs/release-intro.md` and the English notes. `0.x` versions go out as pre-releases.
+Everything it makes is in `build\release\<version>` (`-NoBuild` publishes what a dry run left there).
+
+The release key is not in the repository: `%USERPROFILE%\.gradle\gradle.properties` holds
+`BETTERAUTO_STORE_FILE`, `BETTERAUTO_STORE_PASSWORD`, `BETTERAUTO_KEY_ALIAS` and `BETTERAUTO_KEY_PASSWORD`.
+Keep a backup of the keystore and its password: phones refuse an update signed with another key, so losing it
+means every user uninstalling. Without those properties the release build is unsigned; debug builds keep the
+usual debug key.
+
 ## Test bench
 
 A Raspberry Pi 4 running Crankshaft (aasdk based) acts as the head unit, on a desk, with the phone
@@ -242,6 +267,11 @@ The phone identity is read from the PEM files (`.pem`, `.crt`, `.cer`, `.key`) a
 and the certificates are told apart by content, the key is paired with the certificate it signs for, and
 any other certificates complete the chain. One file may hold everything. If no usable pair is found the
 phone shows a "no usable certificate" notification and the log says what is missing.
+
+To try another identity, put its files in `app/src/main/assets/` next to ours: `.gitignore` keeps them out of
+the repository, and since an APK may carry only one pair the build leaves ours out while yours are there.
+`-Pbetterauto.certs=dev` builds with ours anyway (the public releases do), `-Pbetterauto.certs=own` fails if
+yours are missing.
 
 The files in the repository are a throwaway self-signed development certificate. aasdk-based head units
 do not verify the phone's certificate; factory head units expect one issued by Google, so BetterAuto only

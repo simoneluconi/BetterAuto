@@ -25,7 +25,11 @@ anything copied from closed-source apps.
 - **Certificates**: `app/src/main/assets/` holds the phone's TLS identity, found by content. Only our own
   self-signed development pair (`phone_cert.pem`, `phone_key.pem`) is public. Anything else put there
   (e.g. a certificate to try a factory head unit) is ignored by `.gitignore` and must never be committed;
-  neither must the deletion of our pair. Check `git status` on that folder before every commit.
+  neither must the deletion of our pair. Check `git status` on that folder before every commit. Both may sit
+  there: a build takes yours, `-Pbetterauto.certs=dev` ours (public releases).
+- **Releases**: `scripts\release.cmd [-DryRun]` (version in `app/build.gradle.kts`, notes in `CHANGELOG.md`
+  EN + IT, under "Unreleased" until released; `docs/DEVELOPMENT.md`, "Releases"). Every user-visible change
+  gets a line in "Unreleased".
 - **Exlap credentials** (VW group vehicle data) are built into `ExlapSettings`: they are publicly known,
   so the user keeps them in the code on purpose. Leave them there, but never echo them in logs or docs.
 

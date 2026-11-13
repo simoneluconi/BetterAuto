@@ -18,15 +18,7 @@ param(
 . (Join-Path $PSScriptRoot 'phone.ps1')
 $apk = Join-Path $root 'app\build\outputs\apk\debug\app-debug.apk'
 
-# Java for Gradle: JAVA_HOME, java on the PATH, or the one shipped with Android Studio
-if (-not $env:JAVA_HOME -and -not (Get-Command java -ErrorAction SilentlyContinue)) {
-    $studioJbr = Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'
-    if (-not (Test-Path (Join-Path $studioJbr 'bin\java.exe'))) {
-        Fail 'No Java found: install Android Studio or set JAVA_HOME'
-    }
-    $env:JAVA_HOME = $studioJbr
-}
-
+Initialize-Java
 $adb = Find-Adb
 $Serial = Select-Phone $adb $Serial
 $model = Get-PhoneModel $adb $Serial
@@ -34,11 +26,7 @@ $model = Get-PhoneModel $adb $Serial
 $tasks = @('assembleDebug')
 if ($Tests) { $tasks = @('testDebugUnitTest') + $tasks }
 Step "Building: $($tasks -join ', ')"
-Push-Location $root
-& .\gradlew.bat --console=plain @tasks
-$buildExit = $LASTEXITCODE
-Pop-Location
-if ($buildExit -ne 0) { Fail 'Build failed, see the errors above' }
+Invoke-Gradle $tasks
 
 Step "Installing on $model ($Serial)"
 $install = (& $adb -s $Serial install -r $apk 2>&1 | ForEach-Object { "$_" }) -join "`n"

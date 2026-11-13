@@ -10,6 +10,10 @@
 .externalNativeBuild/
 .cxx/
 
+# Signing keys never go in the repository (the release key: docs/DEVELOPMENT.md, "Releases")
+*.jks
+*.keystore
+
 # Phone certificates: only our self-signed development pair is public, anything else put here stays local
 /app/src/main/assets/*.pem
 /app/src/main/assets/*.crt
