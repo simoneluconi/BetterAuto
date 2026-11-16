@@ -7,6 +7,7 @@ import com.simoneluconi.betterauto.car.TemperatureUnit
 import com.simoneluconi.betterauto.car.UnitSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.abs
 
 enum class ThemeMode { AUTO, DAY, NIGHT }
 
@@ -24,8 +25,6 @@ enum class DriverSide {
         RIGHT -> true
     }
 }
-
-enum class HomeLayout(val slots: Int) { SINGLE(1), SPLIT(2), TRIO(3) }
 
 /** SMART_HOME shows the provider in [com.simoneluconi.betterauto.smarthome.SmartHome.screenProvider]. */
 enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS, SMART_HOME }
@@ -71,30 +70,29 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _uiSize = MutableStateFlow(enumOf(KEY_UI_SIZE, UiSize.AUTO))
     val uiSize: StateFlow<UiSize> = _uiSize
 
-    private val _layout = MutableStateFlow(enumOf(KEY_LAYOUT, HomeLayout.TRIO))
-    val layout: StateFlow<HomeLayout> = _layout
+    init {
+        // The fixed layouts (one, two or three widgets) before the free arrangement: started over, not carried on
+        prefs.edit { for (key in OLD_HOME_KEYS) remove(key) }
+    }
+
+    private val _homes = ScreenShape.entries.associateWith { MutableStateFlow(loadHome(it)) }
 
     /**
-     * How much of the home the big widget takes beside the others (two or three widgets), as a share of the
-     * width (height in portrait): set by dragging the line between them, in the car (touchscreens) or on the phone.
+     * The home's widgets for each kind of car screen, as the driver arranged them: a car with the other kind of
+     * screen has its own, so changing car doesn't upset either. One never arranged follows the other, turned.
      */
-    private val _homeSplit = MutableStateFlow(prefs.getFloat(KEY_HOME_SPLIT, DEFAULT_HOME_SPLIT).coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT))
-    val homeSplit: StateFlow<Float> = _homeSplit
+    fun home(shape: ScreenShape): StateFlow<HomeArrangement> = _homes.getValue(shape)
 
-    /** With three widgets, the first small one's share of the two; null until dragged (the layout's own then). */
-    private val _homeSplitSide = MutableStateFlow(prefs.getFloat(KEY_HOME_SPLIT_SIDE, -1f).takeIf { it > 0f }?.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT))
-    val homeSplitSide: StateFlow<Float?> = _homeSplitSide
+    private val _homeShape = MutableStateFlow(enumOf(KEY_HOME_SHAPE, ScreenShape.LANDSCAPE))
+    /** The kind of screen of the last car: what the phone edits first. */
+    val homeShape: StateFlow<ScreenShape> = _homeShape
+
+    private val _homeAreas = ScreenShape.entries.associateWith { MutableStateFlow(loadHomeArea(it)) }
+    /** The home's area (design units) in the last car with each kind of screen: the phone draws it that shape. */
+    fun homeArea(shape: ScreenShape): StateFlow<Pair<Float, Float>> = _homeAreas.getValue(shape)
 
     private val _section = MutableStateFlow(enumOf(KEY_SECTION, Section.HOME))
     val section: StateFlow<Section> = _section
-
-    private val _widgets = MutableStateFlow(loadWidgets())
-    /** The home slots, always [HomeSlots.COUNT]: the layout shows the first one, two or three. */
-    val widgets: StateFlow<List<WidgetChoice>> = _widgets
-
-    private val _stacks = MutableStateFlow(HomeSlots.decodeStacks(prefs.getString(KEY_STACKS, null)))
-    /** The widgets each slot also holds, a swipe away from its main one ([widgets]); see [HomeSlots.pages]. */
-    val stacks: StateFlow<List<List<WidgetChoice>>> = _stacks
 
     private val _musicPanel = MutableStateFlow(prefs.getBoolean(KEY_MUSIC_PANEL, false))
     /** Music section: player plus library panel (true) or full-screen player (false, the default); the screen remembers how it was left. */
@@ -263,22 +261,37 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     fun setBarPosition(value: BarPosition) = saveEnum(KEY_BAR, value, _barPosition)
 
-    fun setLayout(value: HomeLayout) = saveEnum(KEY_LAYOUT, value, _layout)
-
     fun setDriverSide(value: DriverSide) = saveEnum(KEY_DRIVER_SIDE, value, _driverSide)
 
     fun setUiSize(value: UiSize) = saveEnum(KEY_UI_SIZE, value, _uiSize)
 
-    fun setHomeSplitSide(value: Float?) {
-        val side = value?.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT)
-        _homeSplitSide.value = side
-        prefs.edit { if (side == null) remove(KEY_HOME_SPLIT_SIDE) else putFloat(KEY_HOME_SPLIT_SIDE, side) }
+    /** The home for [shape] becomes [value]; the other kind of screen follows while never arranged itself. */
+    fun setHome(shape: ScreenShape, value: HomeArrangement) {
+        _homes.getValue(shape).value = value
+        prefs.edit { putString(homeKey(shape), value.encode()) }
+        for (other in ScreenShape.entries) {
+            if (other != shape && prefs.getString(homeKey(other), null) == null) _homes.getValue(other).value = value.turned()
+        }
     }
 
-    fun setHomeSplit(value: Float) {
-        val split = value.coerceIn(MIN_HOME_SPLIT, MAX_HOME_SPLIT)
-        _homeSplit.value = split
-        prefs.edit { putFloat(KEY_HOME_SPLIT, split) }
+    fun updateHome(shape: ScreenShape, change: (HomeArrangement) -> HomeArrangement) = setHome(shape, change(home(shape).value))
+
+    /** Back to the home out of the box, for [shape] only. */
+    fun resetHome(shape: ScreenShape) {
+        prefs.edit { remove(homeKey(shape)) }
+        _homes.getValue(shape).value = loadHome(shape)
+    }
+
+    /** The car's home area measured, in design units: which kind of screen this car has, and its proportions. */
+    fun noteHomeArea(width: Float, height: Float) {
+        if (width <= 0f || height <= 0f) return
+        val shape = ScreenShape.of(width, height)
+        if (_homeShape.value != shape) saveEnum(KEY_HOME_SHAPE, shape, _homeShape)
+        val area = _homeAreas.getValue(shape)
+        val (w, h) = area.value
+        if (abs(w - width) < 2f && abs(h - height) < 2f) return
+        area.value = width to height
+        prefs.edit { putString(homeAreaKey(shape), "$width,$height") }
     }
 
     /** The section shown before the current one (not saved): where the notifications screen goes back to. */
@@ -312,27 +325,6 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     /** Back from the notifications to wherever the driver was. */
     fun closeNotifications() = setSection(previousSection.takeIf { it != Section.NOTIFICATIONS } ?: Section.HOME)
-
-    fun cycleLayout() = setLayout(HomeLayout.entries[(layout.value.ordinal + 1) % HomeLayout.entries.size])
-
-    /** Puts [choice] in slot [index] (0 = the big one), swapping it with the slot it was in, if any. */
-    fun setWidget(index: Int, choice: WidgetChoice) = saveWidgets(HomeSlots.pick(widgets.value, index, choice))
-
-    fun setWidgets(value: List<WidgetChoice>) = saveWidgets(HomeSlots.decode(HomeSlots.encode(value)))
-
-    /** Slot [index] shows [pages] in this order: the first as its main widget, the others a swipe away. */
-    fun setStack(index: Int, pages: List<WidgetChoice>) {
-        if (pages.isEmpty() || index !in 0 until HomeSlots.COUNT) return
-        saveWidgets(HomeSlots.pick(widgets.value, index, pages.first()))
-        val stacks = HomeSlots.withStack(_stacks.value, index, pages.drop(1))
-        _stacks.value = stacks
-        prefs.edit { putString(KEY_STACKS, HomeSlots.encodeStacks(stacks)) }
-    }
-
-    private fun saveWidgets(value: List<WidgetChoice>) {
-        _widgets.value = value
-        prefs.edit { putString(KEY_WIDGETS, HomeSlots.encode(value)) }
-    }
 
     fun setMusicPanel(value: Boolean) {
         _musicPanel.value = value
@@ -466,7 +458,21 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         prefs.edit { putString(key, value.name) }
     }
 
-    private fun loadWidgets(): List<WidgetChoice> = HomeSlots.decode(prefs.getString(KEY_WIDGETS, null))
+    private fun homeKey(shape: ScreenShape) = "home_${shape.name.lowercase()}"
+
+    private fun homeAreaKey(shape: ScreenShape) = "home_area_${shape.name.lowercase()}"
+
+    private fun loadHome(shape: ScreenShape): HomeArrangement =
+        HomeArrangement.decode(prefs.getString(homeKey(shape), null))
+            ?: ScreenShape.entries.filter { it != shape }.firstNotNullOfOrNull { HomeArrangement.decode(prefs.getString(homeKey(it), null)) }?.turned()
+            ?: HomeArrangement.default(shape)
+
+    private fun loadHomeArea(shape: ScreenShape): Pair<Float, Float> {
+        val saved = prefs.getString(homeAreaKey(shape), null)?.split(",")?.mapNotNull { it.toFloatOrNull() }
+        if (saved != null && saved.size == 2 && saved.all { it > 0f }) return saved[0] to saved[1]
+        // A usual car screen's home beside the app bar, under the status bar
+        return if (shape == ScreenShape.PORTRAIT) 680f to 1080f else 1100f to 600f
+    }
 
     private fun loadList(key: String, separator: String = ","): List<String> =
         prefs.getString(key, null)?.split(separator)?.filter { it.isNotBlank() } ?: emptyList()
@@ -479,20 +485,12 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     companion object {
         private const val KEY_THEME = "theme_mode"
         private const val KEY_BAR = "bar_position"
-        private const val KEY_LAYOUT = "home_layout"
-        private const val KEY_HOME_SPLIT = "home_split"
-        private const val KEY_HOME_SPLIT_SIDE = "home_split_side"
         private const val KEY_DRIVER_SIDE = "driver_side"
         private const val KEY_UI_SIZE = "ui_size"
-        private const val KEY_STACKS = "home_stacks"
-        const val DEFAULT_HOME_SPLIT = 0.6f
-        const val MIN_HOME_SPLIT = 0.3f
-        // Beyond this the other widgets get too narrow to show anything useful
-        const val MAX_HOME_SPLIT = 0.7f
+        private const val KEY_HOME_SHAPE = "home_shape"
+        private val OLD_HOME_KEYS = listOf("home_layout", "home_split", "home_split_side", "home_stacks", "home_widgets", "widgets")
         private const val KEY_SECTION = "section"
         private const val KEY_START_HOME = "start_on_home"
-        /** Not the earlier "widgets" (every widget in a rotating order): the slots started over from the new default. */
-        private const val KEY_WIDGETS = "home_widgets"
         private const val KEY_DEBUG = "debug_overlay"
         private const val KEY_AUTO_PLAY = "auto_play"
         private const val KEY_UNKNOWN_AUDIO = "unknown_audio"

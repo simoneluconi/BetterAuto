@@ -10,7 +10,8 @@ import java.security.KeyPairGenerator
 import java.util.Base64
 
 class AapTlsIdentityTest {
-    private val pemFiles = File("src/main/assets").listFiles()!!.filter { it.extension == "pem" }.map { it.readText() }
+    // Our public development pair: always in the repository, whatever else assets/ holds
+    private val pemFiles = listOf("phone_cert.pem", "phone_key.pem").map { File("src/main/assets", it).readText() }
     private val key = pemFiles.single { "PRIVATE KEY" in it }
     private val cert = pemFiles.single { "CERTIFICATE" in it }
 

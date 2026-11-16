@@ -16,15 +16,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Row
-import com.simoneluconi.betterauto.settings.HomeLayout
-import com.simoneluconi.betterauto.settings.HomeSlots
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.simoneluconi.betterauto.settings.HomeArrangement
+import com.simoneluconi.betterauto.settings.HomeDrop
+import com.simoneluconi.betterauto.settings.HomeRoom
+import com.simoneluconi.betterauto.settings.ScreenShape
 import com.simoneluconi.betterauto.ui.CarIcons
 import com.simoneluconi.betterauto.ui.ReorderableColumn
-import com.simoneluconi.betterauto.ui.widgets.HomePlaces
 import com.simoneluconi.betterauto.car.CarState
-import com.simoneluconi.betterauto.ui.widgets.SplitHandles
-import com.simoneluconi.betterauto.ui.widgets.sideShare
-import kotlin.math.abs
+import com.simoneluconi.betterauto.ui.widgets.HomeDividers
+import com.simoneluconi.betterauto.ui.widgets.HomeGap
+import com.simoneluconi.betterauto.ui.widgets.HomeGeometry
+import com.simoneluconi.betterauto.ui.widgets.nextWidget
+import com.simoneluconi.betterauto.ui.widgets.resized
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -104,84 +115,160 @@ private fun rememberWidgetPrepare(onDone: () -> Unit): (WidgetType) -> Unit {
 }
 
 /**
- * The home slots on the phone, as a small picture of the car's home: a tap on a place opens its widget list,
- * the line between the big widget and the others is dragged to resize them (the way for knob-only cars), with
- * a way back to the usual sizes. Below, what widgets picked in the car (where nothing can be asked) still
- * need: one tap here.
+ * The home on the phone, as a picture of the car's: the kind of screen (each keeps its own), fewer or more
+ * widgets, rows or columns. A tap on a place opens what it holds; holding one and dragging it moves it (onto
+ * another to swap them, onto a bar beside one or between lines), dragging a line between them resizes them: the
+ * way for knob-only cars. Ways back to even sizes and to the home out of the box. Below, what widgets picked in
+ * the car (where nothing can be asked) still need: one tap here.
  */
 @Composable
-internal fun PhoneWidgetSlots(item: WidgetSlotsSetting, settings: LauncherSettings, onOpenSlot: (Int) -> Unit) {
+internal fun PhoneWidgetSlots(item: WidgetSlotsSetting, settings: LauncherSettings, onOpenSlot: (ScreenShape, Int) -> Unit) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
-    val layout by settings.layout.collectAsStateWithLifecycle()
-    val slots by settings.widgets.collectAsStateWithLifecycle()
-    val stacks by settings.stacks.collectAsStateWithLifecycle()
-    val saved by settings.homeSplit.collectAsStateWithLifecycle()
-    val savedSide by settings.homeSplitSide.collectAsStateWithLifecycle()
+    val lastShape by settings.homeShape.collectAsStateWithLifecycle()
+    var shape by rememberSaveable(lastShape) { mutableStateOf(lastShape) }
+    val home by settings.home(shape).collectAsStateWithLifecycle()
+    val area by settings.homeArea(shape).collectAsStateWithLifecycle()
     val driverSide by settings.driverSide.collectAsStateWithLifecycle()
     val carDriverOnRight by CarState.driverOnRight.collectAsStateWithLifecycle()
-    // As the car shows it: the big widget on the driver's side
+    // As the car shows it: the first place on the driver's side
     val mirrored = driverSide.onRight(carDriverOnRight)
-    var dragging by remember { mutableStateOf<Float?>(null) }
-    var draggingSide by remember { mutableStateOf<Float?>(null) }
-    val split = dragging ?: saved
-    val side = draggingSide ?: sideShare(savedSide, portrait = false)
+    var dragged by remember { mutableStateOf<HomeArrangement?>(null) }
     val weatherChanges by WeatherWidgetHost.changes.collectAsStateWithLifecycle()
     val resumes = rememberResumes()
     var answers by remember { mutableIntStateOf(0) }
     val prepare = rememberWidgetPrepare { answers++ }
-    val shown = slots.take(layout.slots)
+    val offered = remember(resumes) { HomeWidgets.choices(context) }
+    fun change(what: String, transform: (HomeArrangement) -> HomeArrangement) = item.change(settings, shape, what, SettingsSurface.PHONE, transform)
     PhoneCard {
-        // A landscape car screen, as most are
-        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            HomePlaces(layout, split, side, portrait = false, gap = PreviewGap, mirrored = mirrored) { index, slotModifier ->
-                val choice = shown.getOrNull(index)
-                val label = choice?.let { HomeWidgets.label(context, it) } ?: stringResource(HomeWidgets.slotTitle(index))
-                val more = HomeSlots.pages(slots, stacks, index, layout.slots).size - 1
-                Column(
-                    slotModifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(colors.surface2)
-                        .clickable { onOpenSlot(index) }
-                        .padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
-                ) {
-                    choice?.let { HomeWidgets.kind(it.type) }?.let { CarIcon(it.icon, colors.text, Modifier.size(24.dp)) }
-                    CarLabel(label, 13.sp, colors.text, weight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center, shrinkToFit = true)
-                    // The others it holds, a swipe away in the car
-                    if (more > 0) CarLabel(stringResource(R.string.home_stack_more, more), 12.sp, colors.text2, weight = FontWeight.Bold)
-                }
-            }
-            SplitHandles(
-                layout, split, side, portrait = false, gap = PreviewGap, mirrored = mirrored,
-                onSplit = { dragging = it }, onSide = { draggingSide = it },
-            ) {
-                dragging?.let(settings::setHomeSplit)
-                draggingSide?.let(settings::setHomeSplitSide)
-                dragging = null
-                draggingSide = null
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((value, label) in listOf(ScreenShape.LANDSCAPE to R.string.home_shape_landscape, ScreenShape.PORTRAIT to R.string.home_shape_portrait)) {
+                PhoneChip(stringResource(label), selected = shape == value) { shape = value }
             }
         }
-        CarLabel(stringResource(R.string.home_split_hint), 14.sp, colors.text2, maxLines = 3)
-        val resized = abs(saved - LauncherSettings.DEFAULT_HOME_SPLIT) > 0.005f || savedSide != null
-        if (layout != HomeLayout.SINGLE && resized) {
-            // Its own colour: the card is already the colour of a plain pill
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val canAdd = home.count < HomeRoom.capacity(area.first, area.second, HomeGap.value) && nextWidget(home, offered) != null
+            PhoneRoundButton(CarIcons.Minus, stringResource(R.string.home_fewer_widgets), enabled = home.count > 1) {
+                change("fewer widgets") { it.remove(it.count - 1) }
+            }
+            CarLabel(
+                pluralStringResource(R.plurals.home_widget_count, home.count, home.count), 16.sp, colors.text,
+                weight = FontWeight.Bold, tabularNumbers = true, maxLines = 1,
+            )
+            PhoneRoundButton(CarIcons.Plus, stringResource(R.string.home_more_widgets), enabled = canAdd) {
+                nextWidget(home, offered)?.let { choice ->
+                    change("more widgets") { it.add(choice) }
+                    prepare(choice.type)
+                }
+            }
+            Box(Modifier.weight(1f))
+            PhoneChip(stringResource(R.string.home_rows), selected = home.rows) { change("rows") { it.withRows(true) } }
+            PhoneChip(stringResource(R.string.home_columns), selected = !home.rows) { change("columns") { it.withRows(false) } }
+        }
+        // The car's own proportions; a portrait one not taller than the phone's width
+        val ratio = (area.first / area.second).coerceIn(0.4f, 3.5f)
+        BoxWithConstraints(Modifier.fillMaxWidth(if (ratio < 1f) 0.62f else 1f).align(Alignment.CenterHorizontally).aspectRatio(ratio)) {
+            val width = maxWidth.value
+            val height = maxHeight.value
+            val shown = dragged ?: home
+            var moving by remember { mutableStateOf<Int?>(null) }
+            val geometry = previewGeometry(shown, width, height, mirrored, moving != null)
+            var finger by remember { mutableStateOf<Offset?>(null) }
+            val drops = remember(shown, moving, width, height) { moving?.let { geometry.drops(it) }.orEmpty() }
+            val hover = finger?.let { geometry.dropAt(drops, it.x, it.y) }
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(colors.surface2)
-                    .clickable {
-                        settings.setHomeSplit(LauncherSettings.DEFAULT_HOME_SPLIT)
-                        settings.setHomeSplitSide(null)
-                    }
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .fillMaxSize()
+                    .pointerInput(shape, width, height, mirrored) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { at ->
+                                val point = Offset(at.x / density, at.y / density)
+                                moving = previewGeometry(settings.home(shape).value, width, height, mirrored, moving = false).placeAt(point.x, point.y)
+                                finger = point
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                finger = finger?.let { it + Offset(amount.x / density, amount.y / density) }
+                            },
+                            onDragEnd = {
+                                val index = moving
+                                val point = finger
+                                if (index != null && point != null) {
+                                    val now = previewGeometry(settings.home(shape).value, width, height, mirrored, moving = true)
+                                    now.dropAt(now.drops(index), point.x, point.y)?.let { target ->
+                                        change("place ${index + 1} moved") { it.move(index, target) }
+                                    }
+                                }
+                                moving = null
+                                finger = null
+                            },
+                            onDragCancel = {
+                                moving = null
+                                finger = null
+                            },
+                        )
+                    },
             ) {
-                CarLabel(stringResource(R.string.home_split_reset), 15.sp, colors.text, weight = FontWeight.Bold)
+                shown.places.forEachIndexed { index, place ->
+                    val box = geometry.places[index]
+                    val label = HomeWidgets.label(context, place.main)
+                    val more = place.pages.size - 1
+                    Column(
+                        Modifier
+                            .offset(box.x.dp, box.y.dp)
+                            .size(box.width.dp, box.height.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(colors.surface2)
+                            .then(if (moving == index) Modifier.border(3.dp, colors.focus, RoundedCornerShape(14.dp)) else Modifier)
+                            .clickable { onOpenSlot(shape, index) }
+                            .padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                    ) {
+                        HomeWidgets.kind(place.main.type)?.let { CarIcon(it.icon, colors.text, Modifier.size(22.dp)) }
+                        CarLabel(label, 13.sp, colors.text, weight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center, shrinkToFit = true)
+                        // The others it holds, a swipe away in the car
+                        if (more > 0) CarLabel(stringResource(R.string.home_stack_more, more), 12.sp, colors.text2, weight = FontWeight.Bold)
+                    }
+                }
+                // Where the place held can go, the one under the finger lit
+                for ((drop, box) in drops) {
+                    val lit = drop == hover
+                    val shapeOf = if (drop is HomeDrop.Swap) RoundedCornerShape(14.dp) else RoundedCornerShape(50)
+                    Box(
+                        Modifier
+                            .offset(box.x.dp, box.y.dp)
+                            .size(box.width.dp, box.height.dp)
+                            .background(
+                                if (drop is HomeDrop.Swap) colors.focus.copy(alpha = if (lit) 0.35f else 0.08f) else if (lit) colors.focus else colors.surface,
+                                shapeOf,
+                            )
+                            .then(if (drop is HomeDrop.Swap) Modifier else Modifier.border(2.dp, colors.focus, shapeOf)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (drop !is HomeDrop.Swap) CarIcon(CarIcons.Plus, if (lit) colors.bg else colors.focus, Modifier.size(16.dp))
+                    }
+                }
+                if (moving == null) {
+                    HomeDividers(geometry, onMove = { divider, share -> dragged = (dragged ?: home).resized(divider, share) }) {
+                        dragged?.let { result -> change("sizes") { result } }
+                        dragged = null
+                    }
+                }
+            }
+        }
+        CarLabel(stringResource(R.string.home_phone_hint), 14.sp, colors.text2, maxLines = 4)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (home.count > 1 && home.resized) PhonePill(stringResource(R.string.home_split_reset)) { change("even sizes") { it.evenSizes() } }
+            if (home != HomeArrangement.default(shape)) {
+                PhonePill(stringResource(R.string.home_reset_layout)) {
+                    EventLog.log("Setting ${item.key} (${shape.name.lowercase()}): back to the default (from phone)")
+                    settings.resetHome(shape)
+                }
             }
         }
     }
-    val needs = remember(shown, resumes, answers, weatherChanges) { needs(context, shown) }
+    val needs = remember(home, resumes, answers, weatherChanges) { needs(context, home.widgets) }
     for ((type, text) in needs) {
         PhoneCard {
             CarLabel(stringResource(text), 14.sp, colors.text2, maxLines = 3)
@@ -193,34 +280,80 @@ internal fun PhoneWidgetSlots(item: WidgetSlotsSetting, settings: LauncherSettin
     CarLabel(stringResource(R.string.settings_home_widgets_phone_note), 14.sp, colors.text2, Modifier.padding(horizontal = 4.dp), maxLines = 3)
 }
 
+/** The phone's picture of the home; [moving] makes room for the drop bars between and around the places. */
+private fun previewGeometry(home: HomeArrangement, width: Float, height: Float, mirrored: Boolean, moving: Boolean) =
+    if (moving) HomeGeometry(home, width, height, gap = 26f, mirrored = mirrored, inset = 22f, bar = 18f)
+    else HomeGeometry(home, width, height, PreviewGap.value, mirrored)
+
+@Composable
+private fun PhoneChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) colors.focus.copy(alpha = 0.22f) else colors.surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        CarLabel(text, 15.sp, colors.text, weight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun PhoneRoundButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(colors.surface2)
+            .semantics { contentDescription = label }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        CarIcon(icon, if (enabled) colors.text else colors.text2.copy(alpha = 0.4f), Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun PhonePill(text: String, onClick: () -> Unit) {
+    val colors = LocalCarColors.current
+    // Its own colour: the card is already the colour of a plain pill
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(colors.surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+    ) {
+        CarLabel(text, 15.sp, colors.text, weight = FontWeight.Bold)
+    }
+}
+
 /**
  * The widgets one place holds, in order (the first is shown, the others a swipe away): dragged into another
  * order, or taken out (one always stays). Under them the widgets to add; one shown in another place is not
- * offered. Adding one asks what it needs.
+ * offered. Adding one asks what it needs. At the end, the place itself can go.
  */
 @Composable
-internal fun PhoneWidgetPicker(item: WidgetSlotsSetting, settings: LauncherSettings, slot: Int, onDone: () -> Unit) {
+internal fun PhoneWidgetPicker(item: WidgetSlotsSetting, settings: LauncherSettings, shape: ScreenShape, slot: Int, onDone: () -> Unit) {
     val context = LocalContext.current
-    val layout by settings.layout.collectAsStateWithLifecycle()
-    val mains by settings.widgets.collectAsStateWithLifecycle()
-    val stacks by settings.stacks.collectAsStateWithLifecycle()
+    val home by settings.home(shape).collectAsStateWithLifecycle()
     val resumes = rememberResumes()
     val offered = remember(resumes) { HomeWidgets.choices(context) }
     val prepare = rememberWidgetPrepare { }
     val colors = LocalCarColors.current
-    val pages = HomeSlots.pages(mains, stacks, slot, layout.slots)
-    val elsewhere = mains.take(layout.slots).filterIndexed { i, _ -> i != slot }
+    val pages = home.place(slot)?.pages ?: return
+    val elsewhere = home.mains.filterIndexed { i, _ -> i != slot }
     val addable = offered.filter { it !in pages && it !in elsewhere }
-    fun save(list: List<WidgetChoice>) {
-        EventLog.log("Setting ${item.key}: slot ${slot + 1} -> ${list.joinToString { it.type.name }} (from phone)")
-        settings.setStack(slot, list)
-    }
+    fun save(list: List<WidgetChoice>) =
+        item.change(settings, shape, "place ${slot + 1} holds ${list.joinToString { it.type.name }}", SettingsSurface.PHONE) { it.withPages(slot, list) }
     PhoneCard {
         CarLabel(stringResource(R.string.home_stack_title), 17.sp, colors.text, weight = FontWeight.Bold)
         CarLabel(stringResource(R.string.home_stack_hint), 14.sp, colors.text2, maxLines = 5)
         // From the saved order, not the one drawn: two swaps may come within one frame of a quick drag
         ReorderableColumn(pages, onMove = { from, to ->
-            val now = HomeSlots.pages(settings.widgets.value, settings.stacks.value, slot, layout.slots)
+            val now = settings.home(shape).value.place(slot)?.pages.orEmpty()
             if (from in now.indices && to in now.indices) save(now.toMutableList().apply { add(to, removeAt(from)) })
         }) { choice, index, handle ->
             Row(
@@ -269,6 +402,12 @@ internal fun PhoneWidgetPicker(item: WidgetSlotsSetting, settings: LauncherSetti
                     CarIcon(CarIcons.Plus, colors.focus, Modifier.size(22.dp))
                 }
             }
+        }
+    }
+    if (home.count > 1) {
+        PhonePill(stringResource(R.string.home_remove_place)) {
+            item.change(settings, shape, "place ${slot + 1} removed", SettingsSurface.PHONE) { it.remove(slot) }
+            onDone()
         }
     }
 }

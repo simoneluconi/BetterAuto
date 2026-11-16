@@ -26,6 +26,14 @@ object Trip {
     /** A place picked in the car during a trip (said, a recent one), waiting for the driver: a stop, or the new destination. */
     val offer: StateFlow<Destination?> = _offer
 
+    private val _newTrips = MutableStateFlow(0)
+
+    /**
+     * Counts the new destinations set, in the car or on the phone: the car's destinations panel, left open while the
+     * search went on on the phone, closes on one. Not the edits of a trip (stops added, moved, removed).
+     */
+    val newTrips: StateFlow<Int> = _newTrips
+
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
@@ -59,6 +67,7 @@ object Trip {
         Destinations.add(place)
         change { listOf(place) }
         prefs?.edit()?.putBoolean(KEY_INTERRUPTED, false)?.apply()
+        _newTrips.value++
         EventLog.log("Navigation: new destination")
     }
 

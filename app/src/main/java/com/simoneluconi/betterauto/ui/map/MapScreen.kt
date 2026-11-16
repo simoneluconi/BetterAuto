@@ -90,6 +90,15 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
     val mapFocus = remember { FocusRequester() }
+    // A destination set meanwhile (on the phone, after "search on the phone"): the panel has done its job
+    // (the panel is never open when the screen is first drawn)
+    val newTrips by Trip.newTrips.collectAsStateWithLifecycle()
+    LaunchedEffect(newTrips) {
+        if (panelOpen) {
+            panelOpen = false
+            runCatching { mapFocus.requestFocus() }
+        }
+    }
     // The knob's hint
     var hint by remember { mutableStateOf(false) }
     LaunchedEffect(hint) {

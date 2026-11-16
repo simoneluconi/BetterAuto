@@ -218,8 +218,8 @@ class RailLayoutSetting(
 }
 
 /**
- * Which widget each home slot of the current layout shows, offering what `ui/widgets/HomeWidgets` says
- * this phone can show; in the car, the home screen's own edit mode.
+ * The home's widgets: how many, where each goes and how big ([HomeArrangement], one per kind of car screen),
+ * offering what `ui/widgets/HomeWidgets` says this phone can show; in the car, the home screen's own edit mode.
  */
 class WidgetSlotsSetting(
     key: String,
@@ -228,11 +228,21 @@ class WidgetSlotsSetting(
     @StringRes description: Int,
     @StringRes summary: Int,
 ) : ListSetting(key, category, title, description, summary, more = false, widget = null) {
-    fun pick(settings: LauncherSettings, index: Int, choice: WidgetChoice, from: SettingsSurface) {
-        if (settings.widgets.value.getOrNull(index) == choice) return
-        EventLog.log("Setting $key: slot ${index + 1} -> ${choice.type.name} (from ${from.name.lowercase()})")
-        settings.setWidget(index, choice)
+    /** Any change to the home for [shape], logged as [what] (no widget parameters: they may name a room). */
+    fun change(settings: LauncherSettings, shape: ScreenShape, what: String, from: SettingsSurface, change: (HomeArrangement) -> HomeArrangement) {
+        val before = settings.home(shape).value
+        val after = change(before)
+        if (after == before) return
+        EventLog.log("Setting $key (${shape.name.lowercase()}): $what -> ${describe(after)} (from ${from.name.lowercase()})")
+        settings.setHome(shape, after)
     }
+
+    fun pick(settings: LauncherSettings, shape: ScreenShape, index: Int, choice: WidgetChoice, from: SettingsSurface) =
+        change(settings, shape, "place ${index + 1} shows ${choice.type.name}", from) { it.pick(index, choice) }
+
+    /** "rows MUSIC | CLOCK+MAP, NOTIFICATIONS": the lines, their places, a place's swipe-away widgets after '+'. */
+    private fun describe(home: HomeArrangement): String = (if (home.rows) "rows " else "columns ") +
+        home.lines.joinToString(" | ") { line -> line.places.joinToString(", ") { place -> place.pages.joinToString("+") { it.type.name } } }
 }
 
 /** Which of the phone's calendars the calendar widget shows (all by default). */
@@ -279,15 +289,6 @@ object SettingsCatalog {
             "start_section", home, R.string.settings_start_section, R.string.settings_start_section_desc,
             listOf(SettingOption(false, R.string.option_start_last), SettingOption(true, R.string.option_start_home)),
             { it.startOnHome }, LauncherSettings::setStartOnHome,
-        ),
-        ChoiceSetting(
-            "home_layout", home, R.string.settings_home_layout, R.string.settings_home_layout_desc,
-            listOf(
-                SettingOption(HomeLayout.SINGLE, R.string.layout_one),
-                SettingOption(HomeLayout.SPLIT, R.string.layout_two),
-                SettingOption(HomeLayout.TRIO, R.string.layout_three),
-            ),
-            { it.layout }, LauncherSettings::setLayout,
         ),
         WidgetSlotsSetting("home_widgets", home, R.string.settings_home_widgets, R.string.settings_home_widgets_desc, R.string.settings_home_widgets_summary),
         CalendarsSetting(

@@ -30,8 +30,10 @@ import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.settings.DriverSide
 import com.simoneluconi.betterauto.settings.FormatRegion
-import com.simoneluconi.betterauto.settings.HomeLayout
-import com.simoneluconi.betterauto.settings.HomeSlots
+import com.simoneluconi.betterauto.settings.HomeArrangement
+import com.simoneluconi.betterauto.settings.HomeLine
+import com.simoneluconi.betterauto.settings.HomePlace
+import com.simoneluconi.betterauto.settings.ScreenShape
 import com.simoneluconi.betterauto.settings.WidgetChoice
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.settings.MicSource
@@ -48,6 +50,7 @@ import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import android.os.ParcelFileDescriptor
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.ShizukuAudio
+import com.simoneluconi.betterauto.audio.ShizukuShellProcess
 import kotlin.concurrent.thread
 
 /**
@@ -58,7 +61,8 @@ import kotlin.concurrent.thread
  *   ... --ei longKey 23      hold a key on the car screen for 800 ms (--ei holdMs to change it): the knob's long
  *                            press (23 = center: on a home widget it edits the home, on a bar button it arranges the bar)
  *   ... --es longTouch 400,300  a finger held for 900 ms (video pixels)
- *   ... --es editHome on     the home screen's edit mode ("off" leaves it, "pick 1" opens slot 1's widget list)
+ *   ... --es editHome on     the home screen's edit mode ("off" leaves it, "pick 1" opens place 1's widget list,
+ *                            "move 1" moves place 1: the knob then turns through where it can go)
  *   ... --es arrangeBar on   the app bar's editor ("off" closes it)
  *   ... --es settings display  the car's settings on a category (home_screen, display, music, notifications,
  *                            voice, vehicle, smart_home, advanced): on narrow screens its page is opened
@@ -70,6 +74,8 @@ import kotlin.concurrent.thread
  *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
  *   ... --es shizuku bluetooth  answer a pairing that is not happening through Shizuku: logs whether the shell
  *                            side reaches Bluetooth ("false" is right, an exception is not)
+ *   ... --es shizuku own     use BetterAuto's own shell process instead of Shizuku's user service, as on phones
+ *                            where that cannot start ("userService" goes back), from the next connection on
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto;
@@ -78,10 +84,11 @@ import kotlin.concurrent.thread
  *   ... --es screen 9:16     pretend the car screen has this shape (or a size like 1280x480) inside the
  *                            real frame, to try portrait and wide layouts on any head unit; "off" to stop
  *   ... --es section music   open a section: home, music, map, phone or settings
- *   ... --es layout trio     home layout: single, split or trio
- *   ... --es widgets "clock,calendar,weather"  what the home slots hold, the big one first (music, notifications,
- *                            favorites, clock, calendar, weather, map; "TYPE:param" for a type with a parameter;
- *                            "default" resets them), and opens the home screen
+ *   ... --es home "rows:map|clock,music"  the home's widgets: rows or columns, the lines split by '|', their
+ *                            places by ',', a place's swipe-away widgets after '+' (music, notifications, favorites,
+ *                            clock, calendar, weather, map; "TYPE:param" for a type with a parameter; even sizes);
+ *                            "default" resets it. For the last car's kind of screen, or --es homeShape portrait
+ *                            (landscape); opens the home screen
  *   ... --ez widgetDemo true pretend calendar events and favorites in the home widgets (false = the phone's own)
  *   ... --ez musicPanel true music section with the library panel (false = full-screen player)
  *   ... --es call ringing    pretend call: ringing, dialing, active, holding, ended or off; it also goes to the
@@ -181,6 +188,8 @@ class DebugInputReceiver : BroadcastReceiver() {
             "bluetooth" -> thread(name = "debug-shizuku") {
                 EventLog.log("Debug: Shizuku Bluetooth answered ${ShizukuAudio.confirmPairing(context, "00:11:22:33:44:55")}")
             }
+            "own" -> ShizukuShellProcess.remember(context).also { EventLog.log("Debug: Shizuku through our own shell process") }
+            "userService" -> ShizukuShellProcess.forget(context).also { EventLog.log("Debug: Shizuku through its user service") }
         }
         intent.getStringExtra("units")?.let { name ->
             UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -203,9 +212,11 @@ class DebugInputReceiver : BroadcastReceiver() {
             "on" -> HomeEdit.start(LauncherSettings.get(context))
             "off" -> HomeEdit.stop()
             null -> Unit
-            else -> intent.getStringExtra("editHome")?.removePrefix("pick")?.trim()?.toIntOrNull()?.let {
+            else -> intent.getStringExtra("editHome")?.let { command ->
+                // "move 3" or "move3": through adb shell the space needs quoting twice
+                val place = command.filter { it.isDigit() }.toIntOrNull() ?: return@let
                 HomeEdit.start(LauncherSettings.get(context))
-                HomeEdit.pick(it - 1)
+                if (command.startsWith("move")) HomeEdit.move(place - 1) else HomeEdit.pick(place - 1)
             }
         }
         when (intent.getStringExtra("arrangeBar")) {
@@ -266,15 +277,22 @@ class DebugInputReceiver : BroadcastReceiver() {
                 settings.setRailLayout(RailLayout.Default.map { d -> changes.firstOrNull { it.item == d.item } ?: d })
             }
         }
-        intent.getStringExtra("layout")?.let { name ->
-            HomeLayout.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                ?.let { LauncherSettings.get(context).setLayout(it) }
-        }
-        intent.getStringExtra("widgets")?.let { spec ->
+        intent.getStringExtra("home")?.let { spec ->
             val settings = LauncherSettings.get(context)
-            // Type names in any case; a parameter, if any, as it is
-            val choices = spec.split(",").map { it.trim() }.mapNotNull { WidgetChoice.decode(it.substringBefore(':').uppercase() + it.drop(it.substringBefore(':').length)) }
-            settings.setWidgets(if (spec == "default") HomeSlots.Default else choices)
+            val shape = intent.getStringExtra("homeShape")?.let { name -> ScreenShape.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+                ?: settings.homeShape.value
+            if (spec == "default") {
+                settings.resetHome(shape)
+            } else {
+                // Type names in any case; a parameter, if any, as it is
+                fun choice(text: String) = text.trim().let { WidgetChoice.decode(it.substringBefore(':').uppercase() + it.drop(it.substringBefore(':').length)) }
+                val lines = spec.substringAfter(':').split('|').map { line ->
+                    HomeLine(line.split(',').mapNotNull { place -> place.split('+').mapNotNull(::choice).takeIf { it.isNotEmpty() }?.let { HomePlace(it) } })
+                }.filter { it.places.isNotEmpty() }
+                // Through the saved form: what a saved home may not hold (twice the same widget...) goes the same way
+                HomeArrangement.decode(HomeArrangement(!spec.startsWith("col", ignoreCase = true), lines).encode())?.let { settings.setHome(shape, it) }
+            }
+            EventLog.log("Debug: home (${shape.name.lowercase()}) ${settings.home(shape).value.encode()}")
             settings.setSection(Section.HOME)
         }
         if (intent.hasExtra("widgetDemo")) {

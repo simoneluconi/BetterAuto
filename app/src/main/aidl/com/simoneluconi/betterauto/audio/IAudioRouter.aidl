@@ -41,6 +41,9 @@ interface IAudioRouter {
      */
     void watchApp(IBinder app) = 9;
 
-    /** Called by Shizuku when the app unbinds for good (fixed transaction id from the Shizuku API). */
+    /**
+     * Stops every route and ends the process. Called by Shizuku when the app unbinds for good (fixed transaction
+     * id from the Shizuku API), and by the app to end its own shell process (ShizukuShellProcess).
+     */
     void destroy() = 16777114;
 }

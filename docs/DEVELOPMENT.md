@@ -138,9 +138,10 @@ picks one, `-Serial <id>` picks the phone.
   adb shell am broadcast -p com.simoneluconi.betterauto -a com.simoneluconi.betterauto.DEBUG_INPUT --es screen 1920x720  # wide dashboard
   ```
 
-  Home widgets: `--es widgets "clock,calendar,weather"` fills the slots, the big one first (music,
-  notifications, favorites, clock, calendar, weather, map; `default` resets them) and opens the home
-  screen; `--ez widgetDemo true` shows pretend calendar events and favorites (`false` the phone's own);
+  Home widgets: `--es home "rows:map|clock,music"` arranges them (rows or columns; lines split by `|`,
+  their places by `,`, a place's swipe-away widgets after `+`; music, notifications, favorites, clock,
+  calendar, weather, map; `default` resets it) for the last car's kind of screen, or `--es homeShape portrait`,
+  and opens the home screen; `--es editHome move2` moves place 2 in the edit mode; `--ez widgetDemo true` shows pretend calendar events and favorites (`false` the phone's own);
   `--es vehicle demo` gives the clock an outside temperature; `--es formats uk` (italy, us, uk, auto)
   sets how dates and numbers are written, e.g. English dates for screenshots.
   Navigation prompts: `--es navPrompt "In 300 metres, turn right"` speaks it like a navigation app
@@ -154,7 +155,7 @@ picks one, `-Serial <id>` picks the phone.
   uses another of the car's video configurations (`-1` back to the car's choice).
   `--es exlapDump doorState` logs the raw Exlap values the car sent last for objects whose name contains
   the text (e.g. to see whether a car really fills an object, or what it sends for hazards).
-  Other extras: `--es section music`, `--es layout trio`, `--ez musicPanel true`, `--es theme night`,
+  Other extras: `--es section music`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
   active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the
   car's phone status channel (instrument cluster), logged as `Phone status: …`; `--es cluster call`
@@ -177,9 +178,17 @@ picks one, `-Serial <id>` picks the phone.
 
 ## Home widgets
 
-Each home slot holds a `WidgetChoice` (`settings/HomeSlots`): a `WidgetType` plus an optional parameter,
-saved as `TYPE` or `TYPE:param`. `ui/widgets/HomeWidgets` lists one `HomeWidgetKind` per type: its name
-and icon in the slot picker, the choices it offers on this phone (none hides it, one per parameter for a
+The home is a `HomeArrangement` (`settings/HomeArrangement`): rows or columns, each line with up to three
+places, each place its widgets (the first shown, the others a swipe away) and its share of the space; at most
+six places. One is kept per kind of car screen (`ScreenShape`, landscape or portrait; one never arranged
+follows the other turned), so a car with the other kind doesn't upset it. A screen too small for all of them
+(`HomeRoom`: a place is at least 260×180) shows the extra ones a swipe away in a neighbour, never cut.
+`ui/widgets/HomeGeometry` lays it out for the home, its editor and the phone's picture, with the lines a finger
+drags and the drops of a place being moved (swap, beside, a line of its own).
+
+Each place holds `WidgetChoice`s: a `WidgetType` plus an optional parameter, saved as `TYPE` or
+`TYPE:param`. `ui/widgets/HomeWidgets` lists one `HomeWidgetKind` per type: its name
+and icon in the picker, the choices it offers on this phone (none hides it, one per parameter for a
 kind that takes one, e.g. a smart-home group) and the composable. A new widget is one enum value and one
 entry there; the car's and the phone's pickers follow.
 
@@ -255,6 +264,18 @@ With [Shizuku](https://shizuku.rikka.app/) running and BetterAuto allowed, `CarA
 audio away from the speaker, and streams it as float PCM through a pipe. Two details matter: the policy
 calls run with the service's own identity (`Binder.clearCallingIdentity`), and the recorder is attributed
 to `com.android.shell`, or the audio server refuses it. Everything falls back to playback capture.
+
+Some phones cannot run any Shizuku user service: Shizuku's starter makes the app's `Application`, and on
+ColorOS 13 a vendor hook in `LoadedApk.makeApplication` reads the process name, null there, and throws
+(Shizuku's log: `ShizukuServiceStarter: unable to start service`). When the user service does not come up,
+`ShizukuShellProcess` starts our own: Shizuku's `newProcess` runs `app_process` as the shell user with our APK
+as class path, `ShellMain` builds the service on the shell package's context (no `Application`) and hands its
+binder to `ShellServiceProvider` (shell or root callers only), whose reply is a binder of the app the process
+watches: it ends with the app, cleanly. It runs in the background of the shell Shizuku started, out of reach of
+Shizuku's own kill when the app dies: that came before the routes were unregistered, and the audio device
+vanishing at once made the phone pause the music (`ACTION_AUDIO_BECOMING_NOISY`). Once that worked, the phone goes straight to it until its build fingerprint or
+Shizuku's version changes (`Shizuku: audio service running in our own shell process` in the log). To try it on
+a phone whose user service works: `--es shizuku own` (`userService` goes back).
 
 Without root, Shizuku dies whenever the phone switches its USB port to accessory mode (adbd restarts),
 so with the cable it only helps on rooted phones. Debug: `--es shizuku probe` routes audio for 3 s and

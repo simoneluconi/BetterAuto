@@ -143,8 +143,11 @@ class AapProtocolTest {
         FrameCodec(pipe, phoneTls()).read()
     }
 
-    /** Like [AapTls.fromAssets]: every PEM file in the assets, whatever its name. */
-    private fun phoneTls() = AapTls(File("src/main/assets").listFiles()!!.filter { it.extension == "pem" }.map { it.readText() })
+    /**
+     * Like [AapTls.fromAssets], on our public development pair: assets/ may also hold one of your own, which
+     * the build leaves out of the APK or takes instead (an APK carries only one).
+     */
+    private fun phoneTls() = AapTls(listOf("phone_cert.pem", "phone_key.pem").map { File("src/main/assets", it).readText() })
 
     /** TLS 1.2 client without verification, like aasdk's SSLWrapper. */
     private fun headUnitEngine(): SSLEngine {

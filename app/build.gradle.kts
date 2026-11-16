@@ -5,7 +5,7 @@ plugins {
 }
 
 // The one place for the version (scripts\release.ps1 reads it); the code follows it: 1.2.3 -> 10203
-val appVersion = "0.2.0"
+val appVersion = "0.3.0"
 
 // The phone's TLS identity: assets/ holds our public development pair and may hold one of your own (ignored by
 // git), and an APK must carry only one (AapTls refuses two). Yours is taken when it is there;

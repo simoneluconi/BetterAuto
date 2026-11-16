@@ -100,6 +100,7 @@ class AapService : Service() {
         ShizukuAudio.init(this)
         CarAudio.onProjectionChanged = { main.post { refreshNotification() } }
         CarAudio.onAudioOnPhone = { onPhone -> main.post { if (onPhone) showAudioOnPhone(this) else cancelAudioProblem(this) } }
+        CarAudio.onCopyHearsNothing = { hears, player -> main.post { if (hears) cancelAudioProblem(this) else showCopyHearsNothing(this, player) } }
         val filter = IntentFilter(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
         ContextCompat.registerReceiver(this, detached, filter, ContextCompat.RECEIVER_EXPORTED)
     }
@@ -417,6 +418,7 @@ class AapService : Service() {
         unregisterReceiver(detached)
         CarAudio.onProjectionChanged = null
         CarAudio.onAudioOnPhone = null
+        CarAudio.onCopyHearsNothing = null
         CarAudio.setProjection(null)
         NowPlaying.release()
         session?.let { endSession(it) }
@@ -572,12 +574,27 @@ class AapService : Service() {
             context.getSystemService(NotificationManager::class.java).cancel(AUDIO_PROBLEM_NOTIFICATION_ID)
         }
 
-        private fun showAudioProblem(context: Context, id: Int, title: Int, text: Int, consent: Boolean, tapOpensShizuku: Boolean = false) {
+        /**
+         * Copying, a player plays but the copy hears nothing: the app does not let its sound be copied (Spotify
+         * allows capture of its streams to the system only). Its sound is back on the phone's speaker.
+         */
+        fun showCopyHearsNothing(context: Context, player: String?) {
+            val pm = context.packageManager
+            val name = player?.let { runCatching { pm.getApplicationLabel(pm.getApplicationInfo(it, 0)).toString() }.getOrNull() }
+            val body = if (name != null) context.getString(R.string.problem_copy_silent_text, name)
+                else context.getString(R.string.problem_copy_silent_text_unknown)
+            showAudioProblem(context, AUDIO_PROBLEM_NOTIFICATION_ID, R.string.problem_copy_silent_title, 0, consent = false, body = body)
+        }
+
+        private fun showAudioProblem(
+            context: Context, id: Int, title: Int, text: Int, consent: Boolean, tapOpensShizuku: Boolean = false, body: String? = null,
+        ) {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(
                 NotificationChannel(PROBLEM_CHANNEL_ID, context.getString(R.string.problem_channel), NotificationManager.IMPORTANCE_DEFAULT)
             )
-            val body = context.getString(text)
+            @Suppress("NAME_SHADOWING")
+            val body = body ?: context.getString(text)
             val app = PendingIntent.getActivity(context, 3, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             val shizuku = context.packageManager.getLaunchIntentForPackage(ShizukuAudio.PACKAGE)
                 ?.let { PendingIntent.getActivity(context, 4, it, PendingIntent.FLAG_IMMUTABLE) }

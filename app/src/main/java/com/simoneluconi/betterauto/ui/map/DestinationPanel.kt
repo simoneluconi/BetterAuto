@@ -65,7 +65,7 @@ import kotlinx.coroutines.delay
  * destination. "Edit trip" shows the trip's places instead, moved and removed only with the car standing (on the
  * way that is for the voice or a passenger with the phone; the list still shows). Opened by pressing the knob on
  * the map or the destinations button; takes the knob on its first row and keeps it; Back goes one level back,
- * a tap outside closes it.
+ * a tap outside closes it, and so does a new destination set meanwhile on the phone.
  */
 @Composable
 fun DestinationPanel(onClose: () -> Unit, modifier: Modifier = Modifier) {

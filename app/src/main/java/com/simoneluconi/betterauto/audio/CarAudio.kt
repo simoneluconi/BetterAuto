@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.aap.AudioSinkChannel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.filter
@@ -65,6 +67,8 @@ object CarAudio {
     private var prompts: NavPrompts? = null
     /** Shizuku failed during this car connection: use playback capture until the next one. */
     private var shizukuFailed = false
+    /** Times Shizuku was tried again during this car connection, with no copy to fall back on. */
+    private var shizukuRetries = 0
     private var autoPlayed = false
     private val main = Handler(Looper.getMainLooper())
 
@@ -113,6 +117,13 @@ object CarAudio {
     /** Told each time the way is chosen: true when a car is connected and the music stays on the phone (any thread). */
     @Volatile
     var onAudioOnPhone: ((onPhone: Boolean) -> Unit)? = null
+
+    /**
+     * Copying: false when a player plays but the copy hears nothing, so its sound went back to the phone's
+     * speaker ([player]: its package); true when the copy hears it again (any thread).
+     */
+    @Volatile
+    var onCopyHearsNothing: ((hears: Boolean, player: String?) -> Unit)? = null
 
     @Synchronized
     fun setProjection(value: MediaProjection?) {
@@ -227,6 +238,11 @@ object CarAudio {
     private const val SWITCH_OFF_PAUSE_MS = 2 * 60 * 1000L
     /** A car switching off pauses and drops the calls within half a second (Audi MMX2): a little margin. */
     private const val SWITCH_OFF_TOGETHER_MS = 3_000L
+    /** A player playing this long with nothing in the copy is one the phone does not let be copied (a quiet intro is shorter). */
+    private const val COPY_SILENT_MS = 8_000L
+    private const val COPY_CHECK_MS = 1_000L
+    private const val SHIZUKU_RETRIES = 2
+    private const val SHIZUKU_RETRY_MS = 1_500L
 
     @Synchronized
     fun setSink(value: AudioSink?) {
@@ -234,6 +250,7 @@ object CarAudio {
         if (value == null) {
             autoPlayed = false
             shizukuFailed = false
+            shizukuRetries = 0
             // The session is over: the next connection's own auto-play decides
             switchOffPauseAt = 0L
             callsDroppedAt = 0L
@@ -260,6 +277,7 @@ object CarAudio {
 
     private fun restart() {
         val wasMoving = shizuku != null
+        stopCopyWatch()
         capture?.stop()
         capture = null
         shizuku?.stop()
@@ -291,8 +309,9 @@ object CarAudio {
             onAudioOnPhone?.invoke(s != null)
             return
         }
+        lastCopySound = 0L
         capture = try {
-            AudioCapture(p, s, carUsages()).also { it.start() }
+            AudioCapture(p, HeardSink(s) { lastCopySound = SystemClock.elapsedRealtime() }, carUsages()).also { it.start() }
         } catch (e: Exception) {
             EventLog.log("Audio capture failed: $e")
             null
@@ -306,7 +325,67 @@ object CarAudio {
         PhoneSpeakerMute.engage(appContext)
         // Capture cannot take the prompts: they play on the (muted) phone, brought back up while they speak
         startPrompts(liftSpeaker = true)
+        watchCopy()
         autoPlayOnce()
+    }
+
+    /** When the copy last carried sound (elapsed realtime), 0 if not since it started. */
+    @Volatile
+    private var lastCopySound = 0L
+    private var copyWatch: Job? = null
+    /** The copy heard nothing while a player played: the phone's speaker was given back. */
+    private var speakerBack = false
+
+    /**
+     * A player may refuse to be copied: Spotify 9.2 opens its AAudio streams with capture allowed to the system
+     * only (AUDIO_FLAG_NO_MEDIA_PROJECTION, seen in the audio policy dump; its manifest allows capture), so
+     * playback capture never hears it, while the shell-side route that Shizuku runs takes it. Muted, the phone
+     * then gave the sound to neither: silence everywhere. So while copying, a player playing for [COPY_SILENT_MS]
+     * with nothing heard gets the phone's speaker back, with a notification; when the copy hears sound again
+     * (another player) the phone is muted again.
+     */
+    private fun watchCopy() {
+        speakerBack = false
+        copyWatch = scope.launch {
+            var playingSince = 0L
+            while (true) {
+                delay(COPY_CHECK_MS)
+                val now = SystemClock.elapsedRealtime()
+                val track = NowPlaying.track.value
+                playingSince = if (track?.playing == true) playingSince.takeIf { it != 0L } ?: now else 0L
+                val quietFor = now - maxOf(lastCopySound, playingSince)
+                synchronized(this@CarAudio) {
+                    if (capture == null) return@launch
+                    if (!speakerBack && playingSince != 0L && quietFor >= COPY_SILENT_MS) {
+                        speakerBack = true
+                        EventLog.log("Car audio: ${track?.packageName} plays but the copy hears nothing (it does not let itself be copied), its sound back on the phone")
+                        // The prompts' watch stays: with nothing saved, lifting the speaker does nothing
+                        PhoneSpeakerMute.release(appContext)
+                        onCopyHearsNothing?.invoke(false, track?.packageName)
+                    } else if (speakerBack && now - lastCopySound < COPY_CHECK_MS * 2) {
+                        speakerBack = false
+                        EventLog.log("Car audio: the copy hears the music again, the phone is muted again")
+                        PhoneSpeakerMute.engage(appContext)
+                        onCopyHearsNothing?.invoke(true, null)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopCopyWatch() {
+        copyWatch?.cancel()
+        copyWatch = null
+        if (speakerBack) onCopyHearsNothing?.invoke(true, null)
+        speakerBack = false
+    }
+
+    /** Passes the copy on, noting when it carries sound. */
+    private class HeardSink(private val inner: AudioSink, private val heard: () -> Unit) : AudioSink by inner {
+        override fun onPcm(data: ByteArray, timestampUs: Long, silent: Boolean) {
+            if (!silent) heard()
+            inner.onPcm(data, timestampUs, silent)
+        }
     }
 
     /** With Shizuku: the prompts to the car's guidance stream, or, without one, left on the phone with the music lowered. */
@@ -362,12 +441,31 @@ object CarAudio {
         restart()
     }
 
-    /** Shizuku stopped working mid-connection: fall back to playback capture for the rest of it. */
+    /**
+     * Shizuku stopped working mid-connection: fall back to playback capture for the rest of it. With no copy
+     * allowed that would leave the music on the phone, so first it is tried again: a binding can fail once and
+     * come up a second later.
+     */
     @Synchronized
     private fun onShizukuFailed(failed: ShizukuCapture) {
         if (shizuku !== failed) return
+        val s = sink
+        if (projection == null && shizukuRetries < SHIZUKU_RETRIES) {
+            shizukuRetries++
+            EventLog.log("Car audio: Shizuku did not take the audio, trying again ($shizukuRetries of $SHIZUKU_RETRIES)")
+            failed.stop()
+            shizuku = null
+            scope.launch {
+                delay(SHIZUKU_RETRY_MS)
+                synchronized(this@CarAudio) { if (sink === s && s != null && shizuku == null && capture == null && !shizukuFailed) restart() }
+            }
+            return
+        }
         shizukuFailed = true
-        EventLog.log("Car audio: Shizuku not usable, copying the audio instead")
+        EventLog.log(
+            if (projection != null) "Car audio: Shizuku not usable, copying the audio instead"
+            else "Car audio: Shizuku not usable and no copy allowed, the music stays on the phone",
+        )
         restart()
     }
 

@@ -31,6 +31,9 @@
     <string name="problem_audio_phone_title">La musica resta sul telefono</string>
     <string name="problem_audio_phone_shizuku_text">Shizuku non è attivo, quindi l\'audio non può essere spostato in auto. Riavvia Shizuku, oppure lascia che BetterAuto mandi all\'auto una copia dell\'audio.</string>
     <string name="problem_audio_phone_text">BetterAuto non ha il permesso di mandare l\'audio all\'auto. Concedilo da qui.</string>
+    <string name="problem_copy_silent_title">La musica non arriva all\'auto</string>
+    <string name="problem_copy_silent_text">%1$s non lascia copiare il suo audio, quindi lo senti dal telefono. Con Shizuku BetterAuto lo sposta in auto; gli altri player si possono copiare.</string>
+    <string name="problem_copy_silent_text_unknown">Il player non lascia copiare il suo audio, quindi lo senti dal telefono. Con Shizuku BetterAuto lo sposta in auto; gli altri player si possono copiare.</string>
     <string name="self_signed_title">Certificato di sviluppo</string>
     <string name="self_signed_text">BetterAuto si collega con un certificato autofirmato. Funziona solo con le autoradio che non controllano il certificato del telefono (per esempio Crankshaft/OpenAuto). Le autoradio di fabbrica che lo verificano con quelli di Google rifiuteranno la connessione.</string>
     <string name="action_understood">Ho capito</string>
@@ -165,7 +168,6 @@
     <string name="settings_title">Impostazioni</string>
     <string name="settings_theme">Tema</string>
     <string name="settings_app_bar">Barra delle app</string>
-    <string name="settings_home_layout">Disposizione della home</string>
     <string name="settings_units">Unità di misura</string>
     <string name="settings_temperature_unit">Temperatura</string>
     <string name="option_metric">Metrico (km)</string>
@@ -182,9 +184,6 @@
     <string name="option_bottom">In basso</string>
     <string name="option_on">Attivo</string>
     <string name="option_off">Disattivo</string>
-    <string name="layout_one">Un widget</string>
-    <string name="layout_two">Due widget</string>
-    <string name="layout_three">Tre widget</string>
     <string name="audio_consent_title">Musica dalle casse dell\'auto</string>
     <string name="audio_consent_message">Android permette a un\'app di mandare all\'auto il suono delle altre app solo tramite il permesso di cattura dello schermo. Nella prossima schermata Android chiede di avviare la cattura: BetterAuto prende solo l\'audio della musica, niente di quello che è sullo schermo viene registrato o condiviso.\n\nSuggerimento: per non vederla più, esegui una volta da un computer:\nadb shell appops set com.simoneluconi.betterauto PROJECT_MEDIA allow</string>
     <string name="audio_consent_continue">Continua</string>
@@ -552,9 +551,7 @@
     <string name="vehicle_rear_seats">Sedili posteriori occupati</string>
     <!-- Home widgets: clock, calendar, favorites, weather -->
     <string name="settings_home_widgets">Widget della home</string>
-    <string name="widget_slot_1">Widget principale</string>
-    <string name="widget_slot_2">Secondo widget</string>
-    <string name="widget_slot_3">Terzo widget</string>
+    <string name="home_place">Spazio %1$d</string>
     <string name="widget_clock">Orologio</string>
     <string name="widget_calendar">Calendario</string>
     <string name="widget_favorites">Preferiti</string>
@@ -740,10 +737,30 @@
     <string name="settings_muted_summary">Silenziate: %1$d</string>
     <string name="settings_list_none">Nessuna</string>
     <string name="settings_start_section_desc">Dove ero rimasto: la sezione dell\'ultima volta. Home: sempre la schermata Home.</string>
-    <string name="settings_home_layout_desc">Quanti widget mostra la schermata Home: uno grande, due affiancati, oppure uno grande e due piccoli.</string>
-    <string name="settings_home_widgets_desc">Cosa mostra ogni spazio della schermata Home, e quanto è grande.</string>
-    <string name="home_split_hint">Tocca uno spazio per scegliere i suoi widget; trascina la linea tra i widget per allargarli o stringerli.</string>
-    <string name="home_split_reset">Ripristina dimensioni</string>
+    <string name="settings_home_widgets_desc">Quanti widget mostra la schermata Home, dove va ognuno e quanto è grande. Gli schermi dell\'auto orizzontali e verticali hanno ciascuno la propria.</string>
+    <string name="home_phone_hint">Tocca uno spazio per scegliere i suoi widget. Tienine premuto uno e trascinalo su un altro per scambiarli, o su un + per metterlo di fianco a uno o su una riga tutta sua. Trascina le linee tra i widget per allargarli o stringerli.</string>
+    <string name="home_split_reset">Stesse dimensioni</string>
+    <string name="home_reset_layout">Torna alla home iniziale</string>
+    <plurals name="home_widget_count">
+        <item quantity="one">%d widget</item>
+        <item quantity="many">%d widget</item>
+        <item quantity="other">%d widget</item>
+    </plurals>
+    <string name="home_fewer_widgets">Meno widget</string>
+    <string name="home_more_widgets">Più widget</string>
+    <string name="home_rows">Righe</string>
+    <string name="home_columns">Colonne</string>
+    <string name="home_shape_landscape">Schermo orizzontale</string>
+    <string name="home_shape_portrait">Schermo verticale</string>
+    <string name="home_move">Sposta</string>
+    <string name="home_remove">Rimuovi</string>
+    <string name="home_remove_place">Rimuovi questo spazio</string>
+    <string name="home_move_cancel">Annulla</string>
+    <string name="home_moving_hint">Dove va %1$s? Su un altro widget per scambiarli, o su un +.</string>
+    <string name="home_drop_swap">Scambia con %1$s</string>
+    <string name="home_drop_beside">Mettilo di fianco</string>
+    <string name="home_drop_new_row">Nuova riga</string>
+    <string name="home_drop_new_column">Nuova colonna</string>
     <string name="home_stack_title">In questo spazio</string>
     <string name="home_stack_hint">Si vede il primo; gli altri sono a uno swipe, o a una pressione sui pallini con la manopola. Trascinali per cambiare l\'ordine. Durante una navigazione la mappa viene davanti da sola.</string>
     <string name="home_stack_add">Aggiungi, da scorrere</string>
@@ -791,7 +808,7 @@
     <string name="settings_exlap_desc">Dati del veicolo in più dalle autoradio VW, Audi, SEAT, Škoda e Porsche, mostrati in auto sotto Veicolo.</string>
     <string name="settings_smart_home_desc">Cancelli, luci e scene sullo schermo dell\'auto, e pulsanti che compaiono quando arrivi.</string>
     <string name="settings_smart_home_none">Non collegata</string>
-    <string name="widget_in_slot">In %1$s</string>
+    <string name="widget_in_place">Nello spazio %1$d</string>
     <string name="settings_default">Predefinito</string>
     <string name="action_done">Fatto</string>
     <string name="home_edit_change">Cambia</string>

@@ -27,7 +27,6 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
 import kotlin.math.roundToInt
 
 /**
@@ -129,13 +128,9 @@ class VideoChannel(
      * (Crankshaft) wait to be asked: the request goes out only if the screen has not come after a moment.
      */
     private fun askFocusIfNotGiven() {
-        thread(name = "video-focus", isDaemon = true) {
-            try {
-                Thread.sleep(FOCUS_WAIT_MS)
-            } catch (_: InterruptedException) {
-                return@thread
-            }
-            if (closed || focused) return@thread
+        channelThread("video-focus", daemon = true) {
+            Thread.sleep(FOCUS_WAIT_MS)
+            if (closed || focused) return@channelThread
             EventLog.log("Video: no screen from the car after $FOCUS_WAIT_MS ms, asking for it")
             send(
                 MediaMessageId.MEDIA_MESSAGE_VIDEO_FOCUS_REQUEST_VALUE,
@@ -234,7 +229,7 @@ class VideoChannel(
      */
     private fun startWatchdog() {
         if (watchdog != null) return
-        watchdog = thread(name = "video-watchdog", isDaemon = true) {
+        watchdog = channelThread("video-watchdog", daemon = true) {
             try {
                 while (!closed) {
                     Thread.sleep(WATCHDOG_PERIOD_MS)

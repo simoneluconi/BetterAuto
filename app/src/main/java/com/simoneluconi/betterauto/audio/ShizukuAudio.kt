@@ -114,8 +114,8 @@ object ShizukuAudio {
     /** The binding that moves the audio, while any route uses it. */
     private var shared: Bound? = null
 
-    /** Dies with this process: the shell service watches it ([IAudioRouter.watchApp]). */
-    private val appToken = Binder()
+    /** Dies with this process: the shell service watches it ([IAudioRouter.watchApp], [ShellServiceProvider]). */
+    internal val appToken = Binder()
 
     @Synchronized
     private fun release(bound: Bound) {
@@ -171,8 +171,14 @@ object ShizukuAudio {
     /**
      * Runs [block] on the shell service, binding it for the call only, without touching an audio routing
      * that may be running; null when it does not come up or the call fails.
+     *
+     * One at a time with [connect], and on the audio's own binding when there is one: Shizuku's client keeps one
+     * connection per service, so unbinding a second binding drops the first one's callbacks. A Bluetooth call
+     * unbinding while the music's binding was still on its way left the music on the phone (car, 2026-11-15).
      */
+    @Synchronized
     private fun <T> withService(context: Context, block: (IAudioRouter) -> T): T? {
+        shared?.let { return runCatching { block(it.router) }.getOrNull() }
         val bound = bind(context, owner = false, 5000) ?: return null
         try {
             return runCatching { block(bound.router) }.getOrNull()
@@ -184,8 +190,44 @@ object ShizukuAudio {
     /**
      * Binds the shell service and waits for it, null if it does not come up. [owner]: the binding that moves
      * the audio, whose unbind ends the service; any other leaves it running, it may be moving the car's audio.
+     *
+     * As a Shizuku user service first; where Shizuku cannot start one (some ColorOS phones), in our own shell
+     * process ([ShizukuShellProcess]), which is then tried first on this phone until its system or Shizuku changes.
      */
     private fun bind(context: Context, owner: Boolean, timeoutMs: Long, onGone: () -> Unit = {}): Bound? {
+        val ownFirst = ShizukuShellProcess.preferred(context)
+        if (!ownFirst) {
+            bindUserService(context, owner, timeoutMs, onGone)?.let { return it }
+            EventLog.log("Shizuku: user service did not start, trying our own shell process")
+        }
+        bindOwnProcess(context, owner, timeoutMs, onGone)?.let { bound ->
+            if (!ownFirst) ShizukuShellProcess.remember(context)
+            return bound
+        }
+        if (ownFirst) {
+            EventLog.log("Shizuku: own shell process did not start, trying the user service")
+            bindUserService(context, owner, timeoutMs, onGone)?.let { bound ->
+                ShizukuShellProcess.forget(context)
+                return bound
+            }
+        }
+        return null
+    }
+
+    /** The service in [ShizukuShellProcess]; [onGone] when that process dies before this binding is let go. */
+    private fun bindOwnProcess(context: Context, owner: Boolean, timeoutMs: Long, onGone: () -> Unit): Bound? {
+        val router = ShizukuShellProcess.obtain(context, timeoutMs) ?: return null
+        val binder = router.asBinder()
+        val death = IBinder.DeathRecipient { onGone() }
+        if (runCatching { binder.linkToDeath(death, 0) }.isFailure) return null
+        return Bound(router) {
+            runCatching { binder.unlinkToDeath(death, 0) }
+            if (owner) ShizukuShellProcess.stop(router)
+        }
+    }
+
+    /** The service as a Shizuku user service, as on most phones. */
+    private fun bindUserService(context: Context, owner: Boolean, timeoutMs: Long, onGone: () -> Unit): Bound? {
         val ready = CountDownLatch(1)
         var router: IAudioRouter? = null
         val connection = object : ServiceConnection {
@@ -198,22 +240,20 @@ object ShizukuAudio {
         }
         val args = serviceArgs(context)
         Shizuku.bindUserService(args, connection)
-        val bound = (if (ready.await(timeoutMs, TimeUnit.MILLISECONDS)) router else null)?.let { Bound(it, args, connection, owner) }
+        val bound = (if (ready.await(timeoutMs, TimeUnit.MILLISECONDS)) router else null)?.let {
+            Bound(it) { Shizuku.unbindUserService(args, connection, owner) }
+        }
         if (bound == null) runCatching { Shizuku.unbindUserService(args, connection, owner) }
         return bound
     }
 
-    private class Bound(
-        val router: IAudioRouter,
-        private val args: Shizuku.UserServiceArgs,
-        private val connection: ServiceConnection,
-        private val remove: Boolean,
-    ) {
+    /** A service bound by [bind]; [release] lets it go (and ends it, for the owner). */
+    private class Bound(val router: IAudioRouter, private val release: () -> Unit) {
         /** Routes using this binding ([connect]). */
         var users = 0
 
         fun unbind() {
-            runCatching { Shizuku.unbindUserService(args, connection, remove) }
+            runCatching { release() }
         }
     }
 

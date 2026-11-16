@@ -22,7 +22,8 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
- * Runs in a Shizuku user service, as the shell user, which holds MODIFY_AUDIO_ROUTING: registers an
+ * Runs in a Shizuku user service (or, where Shizuku cannot start one, in our own shell process,
+ * [ShizukuShellProcess]), as the shell user, which holds MODIFY_AUDIO_ROUTING: registers an
  * audio policy whose mix takes the phone's media (music, games, unknown) away from the speaker, the way
  * the system Android Auto does, and streams it to the app through a pipe. A second route does the same
  * for navigation prompts, which the car plays on their own stream. The policies die with this process,

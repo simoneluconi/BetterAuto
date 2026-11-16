@@ -24,6 +24,7 @@ import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.settings.WidgetSlotsSetting
 import com.simoneluconi.betterauto.settings.WidgetType
 import com.simoneluconi.betterauto.ui.widgets.HomeWidgets
+import com.simoneluconi.betterauto.ui.widgets.currentHome
 
 /** A setting's current value in words: the chosen option, or a list's summary ("Shown: 3 of 4"). */
 @Composable
@@ -51,9 +52,7 @@ fun settingValue(item: SettingItem, settings: LauncherSettings): String? = when 
     }
     is WidgetSlotsSetting -> {
         val context = LocalContext.current
-        val layout by settings.layout.collectAsStateWithLifecycle()
-        val slots by settings.widgets.collectAsStateWithLifecycle()
-        stringResource(item.summary, slots.take(layout.slots).joinToString(", ") { HomeWidgets.label(context, it) })
+        stringResource(item.summary, currentHome(settings).mains.joinToString(", ") { HomeWidgets.label(context, it) })
     }
     is PhoneNote -> null
 }
@@ -80,8 +79,4 @@ fun categorySummary(category: SettingsCategory, settings: LauncherSettings, extr
 
 /** Whether a widget's options matter now: its widget is on the home screen. */
 @Composable
-fun widgetPlaced(settings: LauncherSettings, type: WidgetType): Boolean {
-    val layout by settings.layout.collectAsStateWithLifecycle()
-    val slots by settings.widgets.collectAsStateWithLifecycle()
-    return slots.take(layout.slots).any { it.type == type }
-}
+fun widgetPlaced(settings: LauncherSettings, type: WidgetType): Boolean = currentHome(settings).widgets.any { it.type == type }

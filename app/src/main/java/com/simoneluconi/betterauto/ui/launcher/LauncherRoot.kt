@@ -85,6 +85,7 @@ import com.simoneluconi.betterauto.ui.map.NavOverlayShown
 import com.simoneluconi.betterauto.map.nav.Navigation
 import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.ui.widgets.WidgetArea
+import com.simoneluconi.betterauto.ui.widgets.LocalProjected
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -125,6 +126,7 @@ fun LauncherRoot(modifier: Modifier = Modifier, focus: LauncherFocus? = null, in
             LocalDensity provides Density(scale, fontScale = 1f),
             LocalFormatLocale provides formatLocale,
             LocalBringIntoViewSpec provides CarBringIntoView,
+            LocalProjected provides (focus != null),
         ) {
             LauncherContent(focus, padding)
         }
@@ -221,6 +223,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 // So do the map's destinations panel and its stop-or-destination choice
                 NavOverlayShown.value && NavOverlayShown.first != null -> {
                     runCatching { NavOverlayShown.first?.requestFocus() }
+                    true
+                }
+                // And the home's edit mode: on its first place, or where a moving place can go
+                HomeEdit.active.value && HomeEdit.entry != null -> {
+                    runCatching { HomeEdit.entry?.requestFocus() }
                     true
                 }
                 else -> {

@@ -59,6 +59,7 @@ import com.simoneluconi.betterauto.settings.RailSlot
 import com.simoneluconi.betterauto.settings.SettingItem
 import com.simoneluconi.betterauto.settings.SettingsCatalog
 import com.simoneluconi.betterauto.settings.SettingsCategory
+import com.simoneluconi.betterauto.settings.ScreenShape
 import com.simoneluconi.betterauto.settings.SettingsSurface
 import com.simoneluconi.betterauto.settings.WidgetSlotsSetting
 import com.simoneluconi.betterauto.ui.launcher.categorySummary
@@ -73,7 +74,7 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 private sealed interface SettingsPage {
     data class Category(val category: SettingsCategory) : SettingsPage
     data class Items(val key: String) : SettingsPage
-    data class Slot(val index: Int) : SettingsPage
+    data class Slot(val shape: ScreenShape, val index: Int) : SettingsPage
 }
 
 /**
@@ -103,7 +104,7 @@ fun PhoneSettingsPage(onBack: () -> Unit, start: SettingsCategory? = null) {
         null -> stringResource(R.string.phone_settings_title)
         is SettingsPage.Category -> stringResource(page.category.title)
         is SettingsPage.Items -> SettingsCatalog.all.firstOrNull { it.key == page.key }?.let { stringResource(it.title) }.orEmpty()
-        is SettingsPage.Slot -> stringResource(com.simoneluconi.betterauto.ui.widgets.HomeWidgets.slotTitle(page.index))
+        is SettingsPage.Slot -> com.simoneluconi.betterauto.ui.widgets.HomeWidgets.placeTitle(context, page.index)
     }
     key(path) {
         PhonePage(title, onBack = ::up, scroll = scrolls.getOrPut(path) { ScrollState(0) }) {
@@ -111,12 +112,12 @@ fun PhoneSettingsPage(onBack: () -> Unit, start: SettingsCategory? = null) {
                 null -> SettingsHome(settings) { path = "c:${it.name}" }
                 is SettingsPage.Category -> CategoryPage(page.category, settings) { path = "l:${it.key}" }
                 is SettingsPage.Items -> when (val item = SettingsCatalog.all.firstOrNull { it.key == page.key }) {
-                    is ListSetting -> ListPage(item, settings) { path = "s:$it" }
+                    is ListSetting -> ListPage(item, settings) { shape, index -> path = "s:${shape.name}:$index" }
                     else -> Unit
                 }
                 is SettingsPage.Slot -> {
                     val item = SettingsCatalog.all.filterIsInstance<WidgetSlotsSetting>().first()
-                    PhoneWidgetPicker(item, settings, page.index) { up() }
+                    PhoneWidgetPicker(item, settings, page.shape, page.index) { up() }
                 }
             }
         }
@@ -126,7 +127,11 @@ fun PhoneSettingsPage(onBack: () -> Unit, start: SettingsCategory? = null) {
 private fun decode(path: String): SettingsPage? = when {
     path.startsWith("c:") -> SettingsCategory.entries.firstOrNull { it.name == path.drop(2) }?.let { SettingsPage.Category(it) }
     path.startsWith("l:") -> SettingsPage.Items(path.drop(2))
-    path.startsWith("s:") -> path.drop(2).toIntOrNull()?.let { SettingsPage.Slot(it) }
+    path.startsWith("s:") -> path.drop(2).split(':').let { parts ->
+        val shape = ScreenShape.entries.firstOrNull { it.name == parts.getOrNull(0) }
+        val index = parts.getOrNull(1)?.toIntOrNull()
+        if (shape != null && index != null) SettingsPage.Slot(shape, index) else null
+    }
     else -> null
 }
 
@@ -427,7 +432,7 @@ internal fun PhoneTickRow(
 
 /** A list setting's page: its description, then one row per item. */
 @Composable
-private fun ListPage(item: ListSetting, settings: LauncherSettings, onOpenSlot: (Int) -> Unit) {
+private fun ListPage(item: ListSetting, settings: LauncherSettings, onOpenSlot: (ScreenShape, Int) -> Unit) {
     val colors = LocalCarColors.current
     CarLabel(stringResource(item.description), 15.sp, colors.text2, Modifier.padding(horizontal = 4.dp), maxLines = 5)
     when (item) {

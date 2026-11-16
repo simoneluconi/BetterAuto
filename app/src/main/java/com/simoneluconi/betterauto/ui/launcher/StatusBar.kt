@@ -62,6 +62,7 @@ import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.settings.WidgetType
 import com.simoneluconi.betterauto.ui.LocalFormatLocale
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
+import com.simoneluconi.betterauto.ui.widgets.currentHome
 
 @Composable
 fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
@@ -81,9 +82,8 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
     val showMic by settings.showMicButton.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // A clock widget on the home screen already says the time and date: not twice on the same screen
-    val layout by settings.layout.collectAsStateWithLifecycle()
-    val slots by settings.widgets.collectAsStateWithLifecycle()
-    val hideTime = section == Section.HOME && slots.take(layout.slots).any { it.type == WidgetType.CLOCK }
+    val home = currentHome(settings)
+    val hideTime = section == Section.HOME && home.mains.any { it.type == WidgetType.CLOCK }
 
     Row(
         Modifier
@@ -107,8 +107,8 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
             val layoutDescription = stringResource(R.string.change_layout)
             Box(
                 Modifier
-                    // A tap changes the layout, holding it edits the home screen
-                    .carClickable(CircleShape, layoutDescription, onLongClick = { HomeEdit.start(settings) }) { settings.cycleLayout() }
+                    // The widgets are arranged freely: a tap or a hold opens the home's edit mode
+                    .carClickable(CircleShape, layoutDescription, onLongClick = { HomeEdit.start(settings) }) { HomeEdit.start(settings) }
                     .background(colors.surface, CircleShape)
                     .size(52.dp),
                 contentAlignment = Alignment.Center,

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import java.io.Closeable
+import kotlin.concurrent.thread
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -55,6 +56,17 @@ abstract class ServiceChannel(private val session: AapSession, val channelId: In
      */
     protected fun channelScope(dispatcher: CoroutineContext): CoroutineScope =
         CoroutineScope(SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e -> EventLog.log("Channel $channelId ($name): stopped, $e") })
+
+    /** The same for a job on its own thread (a binder call, a wait): a failed send ends it, logged, not the app. */
+    protected fun channelThread(threadName: String, daemon: Boolean = false, block: () -> Unit): Thread =
+        thread(name = threadName, isDaemon = daemon) {
+            try {
+                block()
+            } catch (_: InterruptedException) {
+            } catch (e: Exception) {
+                EventLog.log("Channel $channelId ($name): $threadName stopped, $e")
+            }
+        }
 
     override fun close() = Unit
 }

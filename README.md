@@ -94,8 +94,9 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
   everyday use is chosen.
 - 🎙️ **Voice commands** through the car's microphone, recognized offline by the phone itself:
   calls (with a cancel window before dialing), music, sections, quiet mode, reading messages.
-- 🧩 **Widget home** with one, two or three widgets, an app bar and a top bar arranged from the
-  settings. Widgets: music, notifications, favorite contacts (one tap calls), a big clock with the
+- 🧩 **Widget home** with up to six widgets placed as you like, in rows or columns (one big and two small,
+  two rows of which one split in half...), in the car or on the phone; landscape and portrait car screens
+  each keep their own. An app bar and a top bar arranged from the settings. Widgets: music, notifications, favorite contacts (one tap calls), a big clock with the
   outside temperature, today's and tomorrow's events from the calendars you pick, and the weather, shown by hosting the
   phone's own weather app widget (no weather service of ours). Sensible defaults, nothing to set up
   unless a widget needs a permission, asked on the phone only when it is picked.

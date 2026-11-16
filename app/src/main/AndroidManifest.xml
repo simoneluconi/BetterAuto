@@ -211,6 +211,15 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
+        <!-- Where BetterAuto's own shell process hands its service over, on phones where Shizuku cannot start it
+             (audio/ShizukuShellProcess): the shell user only -->
+        <provider
+            android:name=".audio.ShellServiceProvider"
+            android:authorities="${applicationId}.shellservice"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
         <!-- Auto-connect: the system binds it when the wireless head unit connects over Bluetooth (Android 12+) -->
         <service
             android:name=".transport.wireless.WirelessCompanionService"

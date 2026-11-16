@@ -26,7 +26,6 @@ import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.audio.CarAudio
 import com.simoneluconi.betterauto.audio.ShizukuAudio
-import kotlin.concurrent.thread
 
 /**
  * The car's Bluetooth, for calls: like Android Auto, the phone pairs itself with the head unit so that
@@ -76,7 +75,7 @@ class BluetoothChannel(
             return
         }
         // The phone's address comes from the shell service when there is one: a binder call, off this thread
-        thread(name = "aap-bluetooth") {
+        channelThread("aap-bluetooth") {
             val pairedHere = isPaired()
             EventLog.log("Bluetooth: car at ${masked(carAddress)}, ${if (pairedHere) "already paired" else "not paired yet"}")
             val method = service.supportedPairingMethodsList.let { offered ->
@@ -133,7 +132,7 @@ class BluetoothChannel(
     private fun connectIfIdle() {
         // One run at a time: a drop while the first one still tries only keeps it going
         if (!connecting.compareAndSet(false, true)) return
-        thread(name = "aap-bluetooth-connect") {
+        channelThread("aap-bluetooth-connect") {
             try {
                 connectLoop()
             } finally {
@@ -295,7 +294,7 @@ class BluetoothChannel(
             EventLog.log(if (done) "Bluetooth: PIN given to the car" else "Bluetooth: type the car's PIN on the phone")
             return
         }
-        thread(name = "aap-bluetooth-confirm") {
+        channelThread("aap-bluetooth-confirm") {
             val done = ShizukuAudio.confirmPairing(context, carAddress)
             EventLog.log(if (done) "Bluetooth: pairing confirmed through Shizuku" else "Bluetooth: confirm the pairing on the phone")
             // The car asks for contacts and messages right after: answered before it does, so no dialogs either

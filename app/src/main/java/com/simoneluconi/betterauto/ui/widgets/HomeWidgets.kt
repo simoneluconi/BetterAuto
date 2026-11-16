@@ -80,13 +80,8 @@ object HomeWidgets {
     fun label(context: Context, choice: WidgetChoice): String =
         kind(choice.type)?.label?.invoke(context, choice) ?: choice.type.name
 
-    /** The picker's name for a slot: the big one, then the others. */
-    @StringRes
-    fun slotTitle(index: Int): Int = when (index) {
-        0 -> R.string.widget_slot_1
-        1 -> R.string.widget_slot_2
-        else -> R.string.widget_slot_3
-    }
+    /** A place's name in the editor and the picker: "Place 2", in reading order. */
+    fun placeTitle(context: Context, index: Int): String = context.getString(R.string.home_place, index + 1)
 }
 
 /** The widget a home slot holds. */

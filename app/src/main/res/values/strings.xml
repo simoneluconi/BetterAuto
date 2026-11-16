@@ -31,6 +31,9 @@
     <string name="problem_audio_phone_title">Music stays on the phone</string>
     <string name="problem_audio_phone_shizuku_text">Shizuku isn\'t running, so the sound can\'t be moved to the car. Start Shizuku, or let BetterAuto send a copy of the sound to the car.</string>
     <string name="problem_audio_phone_text">BetterAuto isn\'t allowed to send the sound to the car. Allow it here.</string>
+    <string name="problem_copy_silent_title">The music isn\'t reaching the car</string>
+    <string name="problem_copy_silent_text">%1$s doesn\'t let its sound be copied, so it plays on the phone. With Shizuku BetterAuto moves it to the car instead; other players can be copied.</string>
+    <string name="problem_copy_silent_text_unknown">The player doesn\'t let its sound be copied, so it plays on the phone. With Shizuku BetterAuto moves it to the car instead; other players can be copied.</string>
     <string name="self_signed_title">Development certificate</string>
     <string name="self_signed_text">BetterAuto connects with a self-signed certificate. It works only with head units that don\'t check the phone\'s certificate (Crankshaft/OpenAuto, for instance). Factory head units that verify it against Google\'s will refuse the connection.</string>
     <string name="action_understood">Got it</string>
@@ -168,7 +171,6 @@
     <string name="settings_title">Settings</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_app_bar">App bar</string>
-    <string name="settings_home_layout">Home layout</string>
     <string name="settings_units">Units</string>
     <string name="settings_temperature_unit">Temperature</string>
     <string name="option_metric">Metric (km)</string>
@@ -185,9 +187,6 @@
     <string name="option_bottom">Bottom</string>
     <string name="option_on">On</string>
     <string name="option_off">Off</string>
-    <string name="layout_one">One widget</string>
-    <string name="layout_two">Two widgets</string>
-    <string name="layout_three">Three widgets</string>
     <string name="audio_consent_title">Music through the car speakers</string>
     <string name="audio_consent_message">Android only lets apps send other apps\' sound to the car through its screen capture permission. On the next screen Android asks to start capturing: BetterAuto only takes the music audio, nothing on the screen is recorded or shared.\n\nTip: to skip this every time, run once from a computer:\nadb shell appops set com.simoneluconi.betterauto PROJECT_MEDIA allow</string>
     <string name="audio_consent_continue">Continue</string>
@@ -555,9 +554,7 @@
     <string name="vehicle_rear_seats">Rear seats taken</string>
     <!-- Home widgets: clock, calendar, favorites, weather -->
     <string name="settings_home_widgets">Home widgets</string>
-    <string name="widget_slot_1">Main widget</string>
-    <string name="widget_slot_2">Second widget</string>
-    <string name="widget_slot_3">Third widget</string>
+    <string name="home_place">Place %1$d</string>
     <string name="widget_clock">Clock</string>
     <string name="widget_calendar">Calendar</string>
     <string name="widget_favorites">Favorites</string>
@@ -743,10 +740,29 @@
     <string name="settings_muted_summary">Muted: %1$d</string>
     <string name="settings_list_none">None</string>
     <string name="settings_start_section_desc">Where I left off: the section you were in last time. Home: always the home screen.</string>
-    <string name="settings_home_layout_desc">How many widgets the home screen shows: one big one, two side by side, or one big and two small.</string>
-    <string name="settings_home_widgets_desc">What each place of the home screen shows, and how big it is.</string>
-    <string name="home_split_hint">Tap a place to choose its widgets; drag the line between them to make them bigger or smaller.</string>
-    <string name="home_split_reset">Reset sizes</string>
+    <string name="settings_home_widgets_desc">How many widgets the home screen shows, where each one goes and how big it is. Landscape and portrait car screens each keep their own.</string>
+    <string name="home_phone_hint">Tap a place to choose its widgets. Hold one and drag it onto another to swap them, or onto a + to put it beside one or on a line of its own. Drag the lines between them to make them bigger or smaller.</string>
+    <string name="home_split_reset">Same sizes</string>
+    <string name="home_reset_layout">Back to the default home</string>
+    <plurals name="home_widget_count">
+        <item quantity="one">%d widget</item>
+        <item quantity="other">%d widgets</item>
+    </plurals>
+    <string name="home_fewer_widgets">Fewer widgets</string>
+    <string name="home_more_widgets">More widgets</string>
+    <string name="home_rows">Rows</string>
+    <string name="home_columns">Columns</string>
+    <string name="home_shape_landscape">Landscape screen</string>
+    <string name="home_shape_portrait">Portrait screen</string>
+    <string name="home_move">Move</string>
+    <string name="home_remove">Remove</string>
+    <string name="home_remove_place">Remove this place</string>
+    <string name="home_move_cancel">Cancel</string>
+    <string name="home_moving_hint">Where does %1$s go? Onto another widget to swap them, or onto a +.</string>
+    <string name="home_drop_swap">Swap with %1$s</string>
+    <string name="home_drop_beside">Put it beside</string>
+    <string name="home_drop_new_row">New row</string>
+    <string name="home_drop_new_column">New column</string>
     <string name="home_stack_title">In this place</string>
     <string name="home_stack_hint">The first one is shown; the others are a swipe away, or a press on the dots with the knob. Drag them to change the order. During a navigation the map comes forward by itself.</string>
     <string name="home_stack_add">Add, to swipe to</string>
@@ -794,7 +810,7 @@
     <string name="settings_exlap_desc">Extra vehicle data from VW, Audi, SEAT, Škoda and Porsche head units, shown in the car under Vehicle.</string>
     <string name="settings_smart_home_desc">Gates, lights and scenes on the car screen, and buttons that show up when you arrive.</string>
     <string name="settings_smart_home_none">Not connected</string>
-    <string name="widget_in_slot">In %1$s</string>
+    <string name="widget_in_place">In place %1$d</string>
     <string name="settings_default">Default</string>
     <string name="action_done">Done</string>
     <string name="home_edit_change">Change</string>
