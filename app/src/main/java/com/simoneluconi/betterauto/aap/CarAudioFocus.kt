@@ -46,6 +46,17 @@ class CarAudioFocus(private val send: (AudioFocusRequestType) -> Unit) {
         guidancePlaying = true
     }
 
+    /**
+     * A voice command is over: the music, if it holds the focus, asks for it again so the car puts it back in
+     * front. A Toyota (Harman TAS600) left its volume knob on the voice after the session's end otherwise.
+     */
+    @Synchronized
+    fun reclaimForMusic(): Boolean {
+        if (!mediaHolds || !granted) return false
+        request(Owner.MEDIA, AudioFocusRequestType.AUDIO_FOCUS_GAIN)
+        return true
+    }
+
     /** [owner] no longer needs the focus; it goes back to the car only when the other stream does not need it either. */
     @Synchronized
     fun release(owner: Owner) {

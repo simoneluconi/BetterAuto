@@ -11,6 +11,7 @@ import aap_protobuf.service.media.source.message.MicrophoneResponseOuterClass.Mi
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.audio.CarMicrophone
 import com.simoneluconi.betterauto.audio.PcmFormat
+import android.os.SystemClock
 
 /**
  * The car's microphone (media source service): set up once, then opened on demand. While open, the
@@ -29,6 +30,13 @@ class MicrophoneChannel(
 
     private var sessionId = 0
     private var chunks = 0
+
+    // After our close: a Toyota (Harman TAS600) sent audio again right after answering it, and kept its volume
+    // knob on the voice; audio still coming a second later gets the close once more
+    @Volatile
+    private var closedAt = 0L
+    private var afterClose = 0
+    private var closedAgain = false
 
     private val format = config?.let { PcmFormat(it.samplingRate, it.numberOfChannels, it.numberOfBits) } ?: PcmFormat(16_000, 1, 16)
 
@@ -58,8 +66,19 @@ class MicrophoneChannel(
             }
             MediaMessageId.MEDIA_MESSAGE_DATA_VALUE -> {
                 // 8-byte timestamp, then PCM
-                if (msg.payload.size > 8) CarMicrophone.onPcm(msg.payload.copyOfRange(8, msg.payload.size))
-                if (chunks++ == 0) EventLog.log("Car microphone: first audio (${msg.payload.size - 8} bytes)")
+                if (closedAt != 0L) {
+                    afterClose++
+                    if (!closedAgain && SystemClock.elapsedRealtime() - closedAt > CLOSE_AGAIN_MS) {
+                        closedAgain = true
+                        EventLog.log("Car microphone: still sending after the close ($afterClose chunks), closing it again")
+                        sendRequest(open = false)
+                    }
+                } else {
+                    if (msg.payload.size > 8) CarMicrophone.onPcm(msg.payload.copyOfRange(8, msg.payload.size))
+                    if (chunks++ == 0) EventLog.log("Car microphone: first audio (${msg.payload.size - 8} bytes)")
+                }
+                // Acknowledged even after the close: with one unacknowledged chunk allowed, a missing ack could
+                // hold back the next session's audio
                 send(MediaMessageId.MEDIA_MESSAGE_ACK_VALUE, Ack.newBuilder().setSessionId(sessionId).setAck(1).build())
             }
             else -> EventLog.log("Car microphone: unhandled message ${msg.id} (${msg.payload.size} bytes)")
@@ -67,15 +86,29 @@ class MicrophoneChannel(
     }
 
     private fun request(open: Boolean) {
-        if (open) voiceSession(true)
-        send(
-            MediaMessageId.MEDIA_MESSAGE_MICROPHONE_REQUEST_VALUE,
-            MicrophoneRequest.newBuilder().setOpen(open).setAncEnabled(true).setEcEnabled(true).setMaxUnacked(1).build(),
-        )
+        if (open) {
+            if (afterClose > 0) EventLog.log("Car microphone: $afterClose chunks came after the last close")
+            closedAt = 0L
+            voiceSession(true)
+        } else {
+            afterClose = 0
+            closedAgain = false
+            closedAt = SystemClock.elapsedRealtime()
+        }
+        sendRequest(open)
         if (!open) voiceSession(false)
     }
 
+    private fun sendRequest(open: Boolean) = send(
+        MediaMessageId.MEDIA_MESSAGE_MICROPHONE_REQUEST_VALUE,
+        MicrophoneRequest.newBuilder().setOpen(open).setAncEnabled(true).setEcEnabled(true).setMaxUnacked(1).build(),
+    )
+
     override fun close() {
         CarMicrophone.onAvailable(null, null)
+    }
+
+    private companion object {
+        const val CLOSE_AGAIN_MS = 1_000L
     }
 }

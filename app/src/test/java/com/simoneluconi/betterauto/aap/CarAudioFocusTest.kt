@@ -69,6 +69,20 @@ class CarAudioFocusTest {
     }
 
     @Test
+    fun afterAVoiceCommandTheMusicAsksAgainOnlyIfItHoldsTheFocus() {
+        assertFalse(focus.reclaimForMusic())
+        focus.request(Owner.MEDIA, AudioFocusRequestType.AUDIO_FOCUS_GAIN)
+        answer(AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN)
+        focus.mediaGained()
+        assertTrue(focus.reclaimForMusic())
+        assertEquals(listOf(AudioFocusRequestType.AUDIO_FOCUS_GAIN, AudioFocusRequestType.AUDIO_FOCUS_GAIN), sent)
+        assertEquals(setOf(Owner.MEDIA), answer(AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN))
+        // Taken by the car meanwhile: nothing to ask back
+        focus.onNotification(AudioFocusStateType.AUDIO_FOCUS_STATE_LOSS, unsolicited = true)
+        assertFalse(focus.reclaimForMusic())
+    }
+
+    @Test
     fun theReleaseAnswerGoesToWhoeverReleased() {
         focus.guidanceStarted()
         focus.request(Owner.GUIDANCE, AudioFocusRequestType.AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK)

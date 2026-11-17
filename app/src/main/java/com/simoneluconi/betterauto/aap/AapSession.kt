@@ -343,6 +343,9 @@ class AapSession(
             VoiceSessionNotification.newBuilder().setStatus(status).build(),
             encrypted = true,
         )
+        if (!active && audioFocus.reclaimForMusic()) {
+            EventLog.log("Media audio: focus asked again after the voice command, the car's volume back on the music")
+        }
     }
 
     private fun send(id: Int, payload: ByteArray, encrypted: Boolean) =

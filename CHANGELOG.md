@@ -6,19 +6,23 @@ version and date.
 
 ## Unreleased
 
-## 0.3.1 (2026-11-17)
+## 0.3.2 (2026-11-17)
 
 ### English
 
 - Cars that offer two music channels (a Toyota with a Harman head unit) now get the music on the first one:
   sent to the other, nothing was heard.
 - With Shizuku, the voice commands' replies and tones are heard in the car instead of from the phone.
+- After a voice command the car's volume knob goes back to the music: on a Toyota it kept changing the
+  voice's volume.
 
 ### Italiano
 
 - Le auto che offrono due canali per la musica (una Toyota con l'autoradio Harman) ora ricevono la musica sul
   primo: mandata sull'altro, non si sentiva nulla.
 - Con Shizuku, le risposte e i suoni dei comandi vocali si sentono in auto invece che dal telefono.
+- Dopo un comando vocale la manopola del volume dell'auto torna a regolare la musica: su una Toyota
+  continuava a regolare il volume della voce.
 
 ## 0.3.0 (2026-11-16)
 
