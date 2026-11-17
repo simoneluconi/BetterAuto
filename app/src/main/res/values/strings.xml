@@ -48,6 +48,7 @@
     <string name="wifi">Wi-Fi</string>
     <string name="music_nothing_playing">Nothing playing</string>
     <string name="music_start_hint">Start music on the phone or pick an app from the bar</string>
+    <string name="music_play_app">Play %1$s</string>
     <string name="music_access_hint">Allow notification access for BetterAuto on the phone to show your music</string>
     <string name="music_unknown_title">Unknown title</string>
     <string name="music_playing_from">Playing from %1$s</string>

@@ -48,6 +48,7 @@
     <string name="wifi">Wi-Fi</string>
     <string name="music_nothing_playing">Niente in riproduzione</string>
     <string name="music_start_hint">Avvia la musica sul telefono o scegli un\'app dalla barra</string>
+    <string name="music_play_app">Riproduci %1$s</string>
     <string name="music_access_hint">Consenti a BetterAuto l\'accesso alle notifiche sul telefono per vedere la tua musica</string>
     <string name="music_unknown_title">Titolo sconosciuto</string>
     <string name="music_playing_from">In riproduzione da %1$s</string>

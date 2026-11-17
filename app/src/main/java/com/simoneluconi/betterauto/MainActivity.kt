@@ -673,6 +673,8 @@ private val PhonePermissions = arrayOf(
     Manifest.permission.READ_CONTACTS, Manifest.permission.READ_CALL_LOG, Manifest.permission.CALL_PHONE,
     // The network type next to the signal (5G, 4G+...); same group as calls, so no extra question
     Manifest.permission.READ_PHONE_STATE,
+    // The car's phone key on phones that never show us their calls; same group again
+    Manifest.permission.ANSWER_PHONE_CALLS,
 )
 
 /** Voice commands use the phone's own offline recognizer: there or not, nothing to grant. */

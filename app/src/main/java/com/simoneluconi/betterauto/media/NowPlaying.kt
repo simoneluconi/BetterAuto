@@ -21,6 +21,7 @@ import androidx.annotation.OptIn
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.C
@@ -30,6 +31,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
+import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
@@ -37,6 +39,7 @@ import androidx.media3.session.SessionToken
 import androidx.palette.graphics.Palette
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -95,7 +98,8 @@ data class Track(
 /** [id] is the item's position in the player's queue. */
 data class QueueEntry(val id: Long, val title: String, val subtitle: String, val icon: ImageBitmap?)
 
-data class MediaAction(val action: String, val name: String, val icon: ImageBitmap?)
+/** [rank]: how much it matters in the car, lower first ([PlayerButtons]). */
+data class MediaAction(val action: String, val name: String, val icon: ImageBitmap?, val rank: Int = 0)
 
 /**
  * Follows the phone's active media session (any app: Spotify, YouTube Music, ...) and controls it
@@ -157,6 +161,7 @@ object NowPlaying {
 
     // The album art as the player sent it (bytes or URI, by identity) and its screen-sized copy
     private var loggedQueueSize = -1
+    private var loggedButtons: String? = null
     private var artKey: Any? = null
     private var artImage: ImageBitmap? = null
     private var accent: Color? = null
@@ -190,6 +195,7 @@ object NowPlaying {
         if (users > 0) return
         sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener)
         sessionManager = null
+        releaseStarter()
         attach(null)
     }
 
@@ -301,21 +307,84 @@ object NowPlaying {
     private fun customButtonNamed(c: MediaController, word: String) =
         c.mediaButtonPreferences.firstOrNull { it.displayName.toString().contains(word, ignoreCase = true) }
 
-    /** Switches to a media app: controls its session if active, otherwise asks it to start playing. */
+    /**
+     * Switches to a media app: controls its session if active, otherwise asks it to start playing. Asked as
+     * Android Auto does, through its media browser, which starts the app even when it isn't running; an app that
+     * refuses us there (Spotify takes only the callers it trusts) gets the play key, which a closed app often
+     * ignores when it comes from another app, but not from the system: that one goes to the last player.
+     */
     fun open(packageName: String) {
-        LauncherSettings.get(appContext).markRecent(packageName)
+        val settings = LauncherSettings.get(appContext)
+        val wasLast = settings.recentApps.value.firstOrNull() == packageName
+        settings.markRecent(packageName)
         val active = sessionManager?.let { activeSessions(it) }?.firstOrNull { it.packageName == packageName }
         if (active != null) {
             attach(active)
             return
         }
-        for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
-            appContext.sendBroadcast(
-                Intent(Intent.ACTION_MEDIA_BUTTON)
-                    .setPackage(packageName)
-                    .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(action, KeyEvent.KEYCODE_MEDIA_PLAY))
-            )
+        // Its session, once it shows up, is followed and played by the controller that connects to it
+        resumeAskedAt = SystemClock.elapsedRealtime()
+        startThroughBrowser(packageName) { started ->
+            if (started) return@startThroughBrowser
+            EventLog.log("Now playing: $packageName not started through its media browser, sending it the play key${if (wasLast) " (and the system's)" else ""}")
+            for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+                appContext.sendBroadcast(
+                    Intent(Intent.ACTION_MEDIA_BUTTON)
+                        .setPackage(packageName)
+                        .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(action, KeyEvent.KEYCODE_MEDIA_PLAY))
+                )
+            }
+            // The system's key goes to the app that played last: only when that is surely this one
+            if (wasLast) appContext.getSystemService(AudioManager::class.java)?.let { audio ->
+                audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+                audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+            }
         }
+    }
+
+    // A player started through its media browser: the connection is held while that app is followed, as Android Auto
+    // holds it. Let go after 15 s, Symfonium closed its service at the next pause and the card lost the song
+    private var starter: ListenableFuture<MediaBrowser>? = null
+    private var starterPackage: String? = null
+    private const val STARTER_TIMEOUT_MS = 4_000L
+
+    private fun startThroughBrowser(packageName: String, done: (Boolean) -> Unit) {
+        releaseStarter()
+        val service = appContext.packageManager
+            .queryIntentServices(Intent("android.media.browse.MediaBrowserService").setPackage(packageName), 0)
+            .firstOrNull()?.serviceInfo ?: return done(false)
+        val future = MediaBrowser.Builder(appContext, SessionToken(appContext, ComponentName(service.packageName, service.name))).buildAsync()
+        starter = future
+        starterPackage = packageName
+        var finished = false
+        val giveUp = Runnable {
+            if (finished) return@Runnable
+            finished = true
+            if (starter === future) releaseStarter()
+            done(false)
+        }
+        main.postDelayed(giveUp, STARTER_TIMEOUT_MS)
+        future.addListener({
+            if (finished) return@addListener
+            finished = true
+            main.removeCallbacks(giveUp)
+            val browser = runCatching { future.get() }.getOrNull()
+            if (browser == null || starter !== future) {
+                if (starter === future) releaseStarter()
+                done(false)
+                return@addListener
+            }
+            EventLog.log("Now playing: starting $packageName through its media browser")
+            browser.prepare()
+            browser.play()
+            done(true)
+        }, ContextCompat.getMainExecutor(appContext))
+    }
+
+    private fun releaseStarter() {
+        starter?.let { MediaBrowser.releaseFuture(it) }
+        starter = null
+        starterPackage = null
     }
 
     private fun start() {
@@ -346,7 +415,11 @@ object NowPlaying {
 
     private fun onSessionsChanged(sessions: List<PlatformController>?) {
         val list = sessions.orEmpty()
-        val best = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list.firstOrNull()
+        // Paused, only a music app's: chat apps leave sessions behind (a voice message heard), and one of those
+        // took the card as "Unknown title" with the music app closed. Anything playing is followed
+        val musicApps = MediaApps.installed(appContext).toSet()
+        val best = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: list.firstOrNull { it.packageName in musicApps }
         if (best?.sessionToken == attachedToken) {
             publish()
             return
@@ -363,6 +436,8 @@ object NowPlaying {
         }
         controller = null
         attachedToken = session?.sessionToken
+        // Another app followed now: the one we started needn't be held any more
+        if (session != null && starterPackage != null && session.packageName != starterPackage) releaseStarter()
         if (session == null) {
             publish()
             return
@@ -448,7 +523,12 @@ object NowPlaying {
             customActions = c.mediaButtonPreferences.mapNotNull { button ->
                 val command = button.sessionCommand?.takeIf { it.commandCode == SessionCommand.COMMAND_CODE_CUSTOM }
                     ?: return@mapNotNull null
-                MediaAction(command.customAction, button.displayName.toString(), actionIcon(packageName, button.iconResId))
+                val name = button.displayName.toString()
+                val overflowOnly = button.slots.length() > 0 && button.slots.asList().all { it == CommandButton.SLOT_OVERFLOW }
+                MediaAction(
+                    command.customAction, name, actionIcon(packageName, button.iconResId),
+                    PlayerButtons.rank(button.icon, name, overflowOnly),
+                )
             },
             canSeek = c.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
         )
@@ -456,6 +536,12 @@ object NowPlaying {
         // the car's media status don't start over for nothing
         if (!sameState(_track.value, next)) _track.value = next
         rememberArtist(next.artist)
+        // Which buttons of its own a player offers (Spotify's filled a whole row)
+        val buttons = "$packageName: " + next.customActions.joinToString { it.name }
+        if (buttons != loggedButtons) {
+            loggedButtons = buttons
+            EventLog.log("Now playing: player buttons (${next.customActions.size}) of $buttons")
+        }
     }
 
     /** Equal but for the position, which only moves on as [Track.positionAt] already predicts. */

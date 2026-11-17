@@ -4,6 +4,7 @@ import aap_protobuf.service.inputsource.InputMessageIdOuterClass.InputMessageId
 import aap_protobuf.service.inputsource.message.InputReportOuterClass.InputReport
 import aap_protobuf.service.media.sink.message.KeyBindingRequestOuterClass.KeyBindingRequest
 import aap_protobuf.service.media.sink.message.KeyBindingResponseOuterClass.KeyBindingResponse
+import android.view.KeyEvent
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.projection.Projection
 
@@ -22,6 +23,8 @@ class InputChannel(
     override val name = "input"
 
     override fun onOpened() {
+        // A car with its own answer and hang-up keys (an Audi) may have a phone key too, only to show the phone
+        projection.phoneKeyHandlesCalls = KeyEvent.KEYCODE_CALL !in keycodes && KeyEvent.KEYCODE_ENDCALL !in keycodes
         if (keycodes.isEmpty()) return
         send(
             InputMessageId.INPUT_MESSAGE_KEY_BINDING_REQUEST_VALUE,

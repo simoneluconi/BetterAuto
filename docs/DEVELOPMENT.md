@@ -157,7 +157,8 @@ picks one, `-Serial <id>` picks the phone.
   the text (e.g. to see whether a car really fills an object, or what it sends for hazards).
   Other extras: `--es section music`, `--ez musicPanel true`, `--es theme night`,
   `--ez night true` (the car's night sensor), `--es call ringing` (a pretend call: ringing, dialing,
-  active, holding, ended or off; the call screen buttons work on it). The pretend call also goes to the
+  active, holding, ended or off; the call screen buttons work on it; `--ei phoneKey 1` presses the car's phone key
+  on it, also with no car, as a car without answer and hang-up keys does, `0` as one with them). The pretend call also goes to the
   car's phone status channel (instrument cluster), logged as `Phone status: …`; `--es cluster call`
   pretends the car's display pressed a button (call or enter answers a ringing call).
   Pretend messages: `--es notify "Text" --es from "Name"` (add `--ez group true` for a group chat);

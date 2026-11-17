@@ -1,6 +1,8 @@
 package com.simoneluconi.betterauto.phone
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -10,10 +12,12 @@ import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.CallEndpoint
 import android.telecom.TelecomManager
+import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import android.telecom.VideoProfile
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.settings.Section
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -215,6 +219,60 @@ object Calls {
             context.getSystemService(TelecomManager::class.java)
                 .placeCall(Uri.fromParts("tel", number, null), Bundle())
         }.onFailure { EventLog.log("Calls: place failed: $it") }
+    }
+
+    /**
+     * The car's phone key (KEYCODE_TEL): a ringing call is answered; one going on is hung up where the car has no
+     * hang-up key of its own ([handlesCalls], a Toyota: not handled, the car closed its call screen while the call
+     * went on); otherwise the phone section opens. With its own answer and hang-up keys (an Audi) the phone key
+     * may be the one to look at the phone with, so it never hangs up there.
+     */
+    fun phoneKey(context: Context, handlesCalls: Boolean) {
+        val call = current.value
+        EventLog.log("Input: phone key, ${call?.phase ?: "no call"}${if (handlesCalls) "" else " (the car has its own hang-up key)"}")
+        when {
+            call?.phase == CallPhase.RINGING -> answer()
+            call != null && call.phase != CallPhase.ENDED -> if (handlesCalls) end() else openPhone(context)
+            call == null && answerOrEndUnseen(context, mayEnd = handlesCalls) -> Unit
+            else -> openPhone(context)
+        }
+    }
+
+    private fun openPhone(context: Context) = LauncherSettings.get(context).setSection(Section.PHONE)
+
+    /**
+     * The car's phone key when Android never showed us the call (a Xiaomi doesn't bind our in-call service):
+     * a ringing call is answered, one going on hung up ([mayEnd]), through the system. False if there is none, or
+     * no permission to.
+     */
+    private fun answerOrEndUnseen(context: Context, mayEnd: Boolean): Boolean {
+        if (calls.isNotEmpty()) return false
+        if (context.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS) != PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED
+        ) {
+            EventLog.log("Calls: phone key with no call seen, and no permission to answer or end one")
+            return false
+        }
+        return runCatching {
+            val telephony = context.getSystemService(TelephonyManager::class.java)
+            @Suppress("DEPRECATION")
+            val state = if (Build.VERSION.SDK_INT >= 31) telephony.callStateForSubscription else telephony.callState
+            val telecom = context.getSystemService(TelecomManager::class.java)
+            when (state) {
+                TelephonyManager.CALL_STATE_RINGING -> {
+                    EventLog.log("Calls: answering a call we were not shown, through the system")
+                    @Suppress("DEPRECATION")
+                    telecom.acceptRingingCall()
+                    true
+                }
+                TelephonyManager.CALL_STATE_OFFHOOK -> mayEnd && run {
+                    EventLog.log("Calls: ending a call we were not shown, through the system")
+                    @Suppress("DEPRECATION")
+                    telecom.endCall()
+                }
+                else -> false
+            }
+        }.onFailure { EventLog.log("Calls: phone key through the system failed: $it") }.getOrDefault(false)
     }
 
     /** The call that matters most: ringing first, then the active one, then any other. */

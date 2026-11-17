@@ -26,13 +26,24 @@ class CarAudioFocusTest {
     }
 
     @Test
-    fun aPromptOverTheMusicNeverReleasesIt() {
+    fun aPromptOverTheMusicAsksForItsMomentAndTheMusicAsksBackNeverReleasing() {
         focus.request(Owner.MEDIA, AudioFocusRequestType.AUDIO_FOCUS_GAIN)
         assertEquals(setOf(Owner.MEDIA), answer(AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN))
         focus.mediaGained()
         focus.guidanceStarted()
+        focus.request(Owner.GUIDANCE, AudioFocusRequestType.AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        assertEquals(setOf(Owner.GUIDANCE), answer(AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN_TRANSIENT_GUIDANCE_ONLY))
         focus.release(Owner.GUIDANCE)
-        assertEquals(listOf(AudioFocusRequestType.AUDIO_FOCUS_GAIN), sent)
+        assertEquals(
+            listOf(
+                AudioFocusRequestType.AUDIO_FOCUS_GAIN,
+                AudioFocusRequestType.AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK,
+                AudioFocusRequestType.AUDIO_FOCUS_GAIN,
+            ),
+            sent,
+        )
+        // The car's answer to the music asking back is the music's
+        assertEquals(setOf(Owner.MEDIA), answer(AudioFocusStateType.AUDIO_FOCUS_STATE_GAIN))
         assertTrue(focus.granted)
     }
 

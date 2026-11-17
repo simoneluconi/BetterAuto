@@ -60,6 +60,8 @@ import kotlin.concurrent.thread
  *   ... --ei holdKey 87 --ei holdMs 4000   hold a key (87 next, 88 previous: runs through the track)
  *   ... --ei longKey 23      hold a key on the car screen for 800 ms (--ei holdMs to change it): the knob's long
  *                            press (23 = center: on a home widget it edits the home, on a bar button it arranges the bar)
+ *   ... --ei phoneKey 1      the car's phone key (KEYCODE_TEL), also with no car: 1 as on a car without answer and
+ *                            hang-up keys (a Toyota), 0 as on one with them (an Audi); try it with --es call ringing
  *   ... --es longTouch 400,300  a finger held for 900 ms (video pixels)
  *   ... --es editHome on     the home screen's edit mode ("off" leaves it, "pick 1" opens place 1's widget list,
  *                            "move 1" moves place 1: the knob then turns through where it can go)
@@ -386,6 +388,11 @@ class DebugInputReceiver : BroadcastReceiver() {
                 { com.simoneluconi.betterauto.media.KeyScrub.release() },
                 intent.getIntExtra("holdMs", 3000).toLong(),
             )
+        }
+
+        // The car's phone key, also with no car (the preview on the phone): phoneKey 1 as a Toyota's, 0 as an Audi's
+        if (intent.hasExtra("phoneKey")) {
+            com.simoneluconi.betterauto.phone.Calls.phoneKey(context, handlesCalls = intent.getIntExtra("phoneKey", 1) != 0)
         }
 
         val projection = Projection.active ?: return

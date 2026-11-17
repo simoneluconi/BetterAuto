@@ -38,8 +38,8 @@ import kotlin.concurrent.thread
  *
  * Audio focus works like Android Auto ([CarAudioFocus] shares it between the two sinks): the music
  * starts once the car grants it, and when the car takes it back (radio, a call, its own navigation
- * prompt) the phone player is paused, to come back by itself after a transient loss. A prompt plays
- * over the music when that holds the focus, and otherwise asks for it only for a moment.
+ * prompt) the phone player is paused, to come back by itself after a transient loss. A prompt asks for the
+ * focus for a moment, letting the car lower the rest, also over the music (which asks it back after).
  */
 class AudioSinkChannel(
     session: AapSession,
@@ -302,8 +302,10 @@ class AudioSinkChannel(
         val ask = if (media) {
             if (hasFocus) null else AudioFocusRequestType.AUDIO_FOCUS_GAIN
         } else {
+            // Asked even over the music: a Toyota (Harman TAS600) never let a prompt out of its speakers
+            // that came without its own request
             focus.guidanceStarted()
-            if (focus.granted) null else AudioFocusRequestType.AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK
+            AudioFocusRequestType.AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK
         }
         if (ask != null) {
             focusGranted.drainPermits()

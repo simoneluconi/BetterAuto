@@ -6,6 +6,38 @@ version and date.
 
 ## Unreleased
 
+## 0.3.3 (2026-11-17)
+
+### English
+
+- The navigation prompts ask the car for their moment on its speakers, also over the music: a Toyota with a
+  Harman head unit didn't play them otherwise.
+- The car's phone key answers a ringing call, otherwise opens the phone; on cars without separate answer and
+  hang-up keys (a Toyota) it also hangs up: the car closed its call screen while the call went on. Where Android
+  doesn't show BetterAuto the calls (some Xiaomi phones), it still answers and hangs up, with the permission to
+  answer calls.
+- With nothing playing, the music card has a button to play the music app used last; a music app picked in the
+  bar is started as Android Auto does, also when it was closed.
+- A player's own buttons (like, radio, add to playlist...) no longer fill the row and squeeze the app's name:
+  only the two that matter most in the car are shown, liking the song first.
+- A chat app's paused voice message no longer takes the music card as "Unknown title" when the music app is
+  closed.
+
+### Italiano
+
+- Le indicazioni del navigatore chiedono all'auto il loro momento sugli altoparlanti, anche sopra la musica:
+  una Toyota con l'autoradio Harman altrimenti non le faceva sentire.
+- Il tasto del telefono dell'auto risponde a una chiamata che squilla, altrimenti apre il telefono; sulle auto
+  senza tasti separati per rispondere e riagganciare (una Toyota) riaggancia anche: l'auto chiudeva la sua
+  schermata della chiamata mentre la chiamata continuava. Dove Android non fa vedere le chiamate a BetterAuto
+  (alcuni telefoni Xiaomi), risponde e riaggancia lo stesso, con il permesso di rispondere alle chiamate.
+- Con niente in riproduzione, il riquadro della musica ha un pulsante per far partire l'ultima app di musica
+  usata; un'app scelta dalla barra viene avviata come fa Android Auto, anche se era chiusa.
+- I pulsanti propri di un player (mi piace, radio, aggiungi a playlist...) non riempiono più la riga
+  schiacciando il nome dell'app: si vedono solo i due che contano di più in auto, prima il "mi piace".
+- Un messaggio vocale in pausa di un'app di chat non prende più il riquadro della musica come "Titolo
+  sconosciuto" quando l'app di musica è chiusa.
+
 ## 0.3.2 (2026-11-17)
 
 ### English

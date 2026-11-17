@@ -8,8 +8,9 @@ import aap_protobuf.service.control.message.AudioFocusStateTypeOuterClass.AudioF
  * navigation prompts. This decides who asks, who hears the car's answer, and when the focus really
  * goes back, so that one stream ending never takes the speakers from the other:
  * - music asks for the focus to keep (GAIN);
- * - a prompt asks only when the phone holds nothing, for a moment and letting the car lower its own
- *   sources (GAIN_TRANSIENT_MAY_DUCK); while the music holds the focus it just plays over it;
+ * - a prompt asks for a moment, letting the car lower the rest (GAIN_TRANSIENT_MAY_DUCK), also while the
+ *   music holds the focus: a car may play the guidance stream only once asked (a Toyota did not otherwise);
+ *   after it, the music asks for its focus again;
  * - the focus goes back (RELEASE) only once neither stream needs it.
  *
  * No Android here: [send] puts the request on the wire.
@@ -63,6 +64,11 @@ class CarAudioFocus(private val send: (AudioFocusRequestType) -> Unit) {
         when (owner) {
             Owner.MEDIA -> mediaHolds = false
             Owner.GUIDANCE -> guidancePlaying = false
+        }
+        // The prompt's moment is over: the music, still holding on, asks for its full focus again
+        if (owner == Owner.GUIDANCE && mediaHolds) {
+            request(Owner.MEDIA, AudioFocusRequestType.AUDIO_FOCUS_GAIN)
+            return
         }
         if (mediaHolds || guidancePlaying || !granted) return
         granted = false

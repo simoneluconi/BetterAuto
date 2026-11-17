@@ -58,6 +58,8 @@
     <!-- The mobile network type next to the signal in the car (5G, 4G+, H+...) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.CALL_COMPANION_APP" />
+    <!-- The car's phone key answers or hangs up through the system where Android never shows us the calls (a Xiaomi) -->
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Calendar home widget: asked only when the driver picks it -->

@@ -2,6 +2,7 @@ package com.simoneluconi.betterauto.projection
 
 import aap_protobuf.service.inputsource.message.PointerActionOuterClass.PointerAction
 import aap_protobuf.service.inputsource.message.TouchEventOuterClass.TouchEvent
+import aap_protobuf.service.media.sink.message.KeyCodeOuterClass.KeyCode
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -118,6 +119,10 @@ class Projection(val context: Context) {
         event.recycle()
     }
 
+    /** The car's phone key answers and hangs up: it has no keys of its own for those (set by the input channel). */
+    @Volatile
+    var phoneKeyHandlesCalls = true
+
     /** A key from the car (d-pad, knob press, back, media keys); AA keycodes below 65536 are Android's. */
     fun dispatchKey(keyCode: Int, down: Boolean, longPress: Boolean) = main.post {
         val target = presentation ?: return@post
@@ -157,6 +162,10 @@ class Projection(val context: Context) {
             }
             KeyEvent.KEYCODE_ENDCALL -> if (Calls.current.value != null) {
                 if (down) Calls.end()
+                return@post
+            }
+            KeyCode.KEYCODE_TEL_VALUE -> {
+                if (down) Calls.phoneKey(context, phoneKeyHandlesCalls)
                 return@post
             }
         }

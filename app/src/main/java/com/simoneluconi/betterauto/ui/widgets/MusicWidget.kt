@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +71,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.media.KeyScrub
+import com.simoneluconi.betterauto.media.MediaApps
+import com.simoneluconi.betterauto.media.PlayerButtons
+import com.simoneluconi.betterauto.settings.LauncherSettings
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.media.Track
 import com.simoneluconi.betterauto.ui.CarIcon
@@ -269,6 +273,32 @@ private fun EmptyPlayer(hasAccess: Boolean) {
             stringResource(if (hasAccess) R.string.music_start_hint else R.string.music_access_hint),
             22.sp, colors.text2, maxLines = 2, textAlign = TextAlign.Center,
         )
+        if (hasAccess) StartLastApp()
+    }
+}
+
+/**
+ * Play on the music app used last (the one picked in the bar, or that played before): with nothing playing the
+ * card had nothing to press, by finger or knob. The app is started even when closed ([NowPlaying.open]).
+ */
+@Composable
+private fun StartLastApp() {
+    val context = LocalContext.current
+    val colors = LocalCarColors.current
+    val recent by LauncherSettings.get(context).recentApps.collectAsStateWithLifecycle()
+    val app = remember(recent.firstOrNull()) { recent.firstOrNull()?.let { MediaApps.info(context, it) } } ?: return
+    val label = stringResource(R.string.music_play_app, app.label)
+    Row(
+        Modifier
+            .carClickable(RoundedCornerShape(50), label) { NowPlaying.open(app.packageName) }
+            .background(colors.focus, RoundedCornerShape(50))
+            .padding(start = 10.dp, end = 26.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Image(app.icon, contentDescription = null, modifier = Modifier.size(40.dp).clip(CircleShape))
+        CarIcon(CarIcons.Play, colors.bg, Modifier.size(24.dp))
+        CarLabel(label, 21.sp, colors.bg, weight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -304,6 +334,11 @@ private fun Cover(track: Track, size: Dp, badge: Boolean, modifier: Modifier = M
 @Composable
 private fun SourceRow(track: Track, extended: Boolean, onShowPanel: (() -> Unit)?) {
     val colors = LocalCarColors.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    // The player's own buttons only where the app's chip keeps a readable width: with all of Spotify's in a row
+    // its name had shrunk to nothing
+    val ours = 2 + (if (onShowPanel != null) 1 else 0)
+    val room = ((maxWidth - SOURCE_MIN_WIDTH) / BUTTON_SLOT).toInt() - ours
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         // The app's chip gives way to the buttons on a narrow card: its name shortens instead
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -319,12 +354,22 @@ private fun SourceRow(track: Track, extended: Boolean, onShowPanel: (() -> Unit)
             }
         }
         Row(Modifier.focusRequester(LocalPlayerLinks.current?.secondary ?: remember { FocusRequester() }), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (extended) CustomActions(track)
+            if (extended) CustomActions(track, max = room)
             ShuffleRepeat(track)
             onShowPanel?.let { ShowPanelButton(it) }
         }
     }
+    }
 }
+
+/** What the app's chip keeps on the source row before any of the player's own buttons. */
+private val SOURCE_MIN_WIDTH = 180.dp
+
+/** A round button and its gap. */
+private val BUTTON_SLOT = 60.dp
+
+/** The player's own buttons shown at most: a few apps offer a long row of them. */
+private const val MAX_PLAYER_BUTTONS = 2
 
 /** Next track in the queue: an icon instead of a label, to leave room for title and artist. */
 @Composable
@@ -342,13 +387,12 @@ private fun ShowPanelButton(onClick: () -> Unit) {
     ToggleButton(CarIcons.List, stringResource(R.string.music_show_panel), active = false, onClick = onClick)
 }
 
-/** The player's own buttons, except shuffle/repeat which our toggles already cover. */
+/** The player's own buttons that matter most ([PlayerButtons]: liking the song first), [max] at most. */
 @Composable
-private fun CustomActions(track: Track) {
+private fun CustomActions(track: Track, max: Int = MAX_PLAYER_BUTTONS) {
     val colors = LocalCarColors.current
-    for (action in track.customActions) {
-        val name = action.name.lowercase()
-        if ("shuffle" in name || "repeat" in name) continue
+    val shown = PlayerButtons.pick(track.customActions, max.coerceAtMost(MAX_PLAYER_BUTTONS))
+    for (action in shown) {
         Box(
             Modifier
                 .secondaryLinks()
