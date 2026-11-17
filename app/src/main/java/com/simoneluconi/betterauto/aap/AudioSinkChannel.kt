@@ -47,6 +47,8 @@ class AudioSinkChannel(
     private val configs: List<AudioConfiguration>,
     stream: AudioStreamType,
     private val focus: CarAudioFocus,
+    /** False for a second sink of the same kind: set up as the car expects, but never fed. */
+    private val carriesSound: Boolean = true,
 ) : ServiceChannel(session, channelId), AudioSink {
     private val media = stream != AudioStreamType.AUDIO_STREAM_GUIDANCE
     private val owner = if (media) CarAudioFocus.Owner.MEDIA else CarAudioFocus.Owner.GUIDANCE
@@ -139,7 +141,8 @@ class AudioSinkChannel(
         maxBatchBytes = bytesPerSecond * (if (media) MAX_BATCH_MS else MAX_BATCH_GUIDANCE_MS) / 1000
         maxQueuedBytes = bytesPerSecond * (if (media) MAX_QUEUE_MS else MAX_QUEUE_GUIDANCE_MS) / 1000
         window = Semaphore(response.maxUnacked.coerceAtLeast(1))
-        EventLog.log("$label ready: $format, max_unacked=${response.maxUnacked}")
+        EventLog.log("$label ready: $format, max_unacked=${response.maxUnacked}${if (carriesSound) "" else ", left unused"}")
+        if (!carriesSound) return
         if (media) CarState.audio.value = "$format · idle"
 
         running = true
@@ -354,6 +357,7 @@ class AudioSinkChannel(
     override fun close() {
         running = false
         sender?.interrupt()
+        if (!carriesSound) return
         // On the main thread, after the pause a disconnect posts there: the phone volume comes back only then
         if (media) {
             main.post { CarAudio.setSink(null) }

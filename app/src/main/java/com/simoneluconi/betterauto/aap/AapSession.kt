@@ -231,12 +231,25 @@ class AapSession(
         service.hasMediaSinkService() &&
             service.mediaSinkService.audioType in OpenedAudio &&
             service.mediaSinkService.audioConfigsCount > 0 -> {
-            val type = service.mediaSinkService.audioType
+            val sink = service.mediaSinkService
+            val type = sink.audioType
+            EventLog.log(
+                "    audio type ${if (sink.hasAudioType()) type.name else "not given"}, while in a call " +
+                    "${if (sink.hasAvailableWhileInCall()) sink.availableWhileInCall else "not given"}" +
+                    if (sink.hasDisplayId()) ", display ${sink.displayId}" else ""
+            )
             service.mediaSinkService.audioConfigsList.forEachIndexed { i, cfg ->
                 EventLog.log("    audio config $i: ${cfg.samplingRate} Hz ${cfg.numberOfBits}-bit ${cfg.numberOfChannels}ch")
             }
-            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList, type, audioFocus).also {
-                if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink = it else guidanceSink = it
+            // A car may offer two of a kind (a Toyota Harman TAS600: two media, two guidance): the first carries
+            // the sound (sent to the last one, nothing was heard there); the others are opened and left idle
+            val first = if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink == null else guidanceSink == null
+            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList, type, audioFocus, carriesSound = first).also {
+                if (first) {
+                    if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink = it else guidanceSink = it
+                } else {
+                    EventLog.log("    another one of its kind: opened, left unused")
+                }
             }
         }
         service.hasInputSourceService() -> {

@@ -4,7 +4,9 @@ import aap_protobuf.service.phonestatus.PhoneStatusMessageIdOuterClass.PhoneStat
 import aap_protobuf.service.phonestatus.message.PhoneStatusInputOuterClass.PhoneStatusInput
 import aap_protobuf.service.phonestatus.message.PhoneStatusOuterClass.PhoneStatus
 import aap_protobuf.shared.InstrumentClusterInputOuterClass.InstrumentClusterInput.InstrumentClusterAction
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Handler
@@ -62,6 +64,9 @@ class PhoneStatusChannel(session: AapSession, channelId: Int, private val contex
     private val photosSent = HashMap<Int, String>()
 
     override fun onOpened() {
+        // Without it Android never shows us the calls (no "in-call service bound" when one comes): seen on a Xiaomi
+        val companion = context.checkSelfPermission(Manifest.permission.CALL_COMPANION_APP) == PackageManager.PERMISSION_GRANTED
+        EventLog.log("Calls: call companion permission ${if (companion) "granted" else "missing"}")
         val signal = PhoneSignal.of(context).map { it.level }.distinctUntilChanged()
         scope.launch {
             combine(Calls.all, signal) { calls, level -> snapshot(calls, level) }.collect(::sendIfChanged)

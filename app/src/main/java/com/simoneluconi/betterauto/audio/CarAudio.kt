@@ -1,11 +1,14 @@
 package com.simoneluconi.betterauto.audio
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
+import android.speech.tts.TextToSpeech
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.aap.AudioSinkChannel
@@ -95,13 +98,20 @@ object CarAudio {
     /**
      * Only the music apps go to the car when Shizuku moves the audio: the players BetterAuto lists (they
      * offer a media browser) and the one playing now. Videos in a social app, for instance, keep playing
-     * on the phone.
+     * on the phone. Also BetterAuto itself (the voice chimes) and the speech engines, which speak the voice
+     * replies in their own process: left out, both were heard from the phone.
      */
     private fun musicApps(): IntArray {
-        val packages = (MediaApps.installed(appContext) + listOfNotNull(NowPlaying.track.value?.packageName)).distinct()
-        return packages.mapNotNull { runCatching { appContext.packageManager.getApplicationInfo(it, 0).uid }.getOrNull() }
-            .distinct().toIntArray()
+        val packages = (MediaApps.installed(appContext) + listOfNotNull(NowPlaying.track.value?.packageName) +
+            speechEngines()).distinct()
+        return (packages.mapNotNull { runCatching { appContext.packageManager.getApplicationInfo(it, 0).uid }.getOrNull() } +
+            Process.myUid()).distinct().toIntArray()
     }
+
+    private fun speechEngines(): List<String> = runCatching {
+        appContext.packageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0)
+            .map { it.serviceInfo.packageName }
+    }.getOrDefault(emptyList())
 
     val hasProjection: Boolean
         @Synchronized get() = projection != null
