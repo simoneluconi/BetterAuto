@@ -4,7 +4,7 @@
 scratch.**
 
 BetterAuto is an Android app that takes the place of Android Auto on the phone. When the phone is
-plugged into a head unit, BetterAuto answers instead of Google's app, speaks the Android Auto
+connected to a head unit, by cable or wirelessly, BetterAuto answers instead of Google's app, speaks the Android Auto
 protocol itself and shows its own interface on the car screen: a widget-based home designed for the
 road, with music, phone, notifications, vehicle data and voice commands.
 
@@ -58,19 +58,21 @@ How the phone's certificate is loaded is described in
 
 Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
 
-- 🔌 **The Android Auto protocol, from scratch in Kotlin**: USB accessory (AOA) negotiation,
-  framing, TLS, service discovery, audio and video focus, and one class per service channel.
+- 🔌 **The Android Auto protocol, from scratch in Kotlin**: USB accessory (AOA) negotiation, or wireless
+  (Bluetooth handshake, the head unit's WiFi, TCP; auto-connect when the car comes on), framing, TLS,
+  service discovery, audio and video focus, and one class per service channel.
 - 🖥️ **The car screen is a Jetpack Compose app**, drawn on a private virtual display, encoded as
   H.264 in hardware and streamed to the car; touch, rotary knob, joystick and steering wheel buttons
   come back the other way.
 - 🎵 **Music player** for whatever plays on the phone (Spotify, YouTube Music, local FLAC
   players…), with cover art, colors taken from the album, library browsing and big controls.
-- 🔊 **Car audio over the USB cable**, uncompressed PCM, captured from the phone and reduced to the
+- 🔊 **Car audio over the same connection**, uncompressed PCM, captured from the phone and reduced to the
   car's format only at the very end, with dithering.
 - 🚘 **Now playing, calls and phone signal on the car's own displays** (instrument cluster, driver
   info screen) when the car supports it.
 - 📞 **Phone**: recents, favorites, contacts with A–Z jump, keypad, and a call screen to answer,
-  hang up, mute and hold (call audio goes through the car's Bluetooth, as with Android Auto).
+  hang up, mute and hold, also from the steering wheel's phone keys (call audio goes through the car's
+  Bluetooth, as with Android Auto).
 - 🔔 **Notifications** grouped by chat, with filters per app and for group chats, a quiet mode, and
   a privacy mode that hides what they say (on Auto, only while the car reports a passenger).
 - 🚗 **Vehicle**: everything the car shares (tyre pressure, range, odometer, climate, gear, doors…),
@@ -105,7 +107,7 @@ Developed and tested with a Raspberry Pi 4 running Crankshaft as the head unit:
 - 🌍 English and Italian, following the phone's language.
 
 Ideas for what could come next: speed camera warnings, fuel stations on the map, more smart-home
-services, a trip log, wireless Android Auto.
+services, a trip log.
 
 ## Trying it
 
@@ -114,18 +116,23 @@ You need an Android phone (Android 10 or newer), a head unit that doesn't verify
 [Crankshaft](https://github.com/opencardev/crankshaft) is the easy route) and a computer with
 [ADB](https://developer.android.com/tools/releases/platform-tools).
 
-1. **Build and install** with Android Studio, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Open
-   the app and follow its setup checklist.
+1. **Install the APK** from the [Releases](https://github.com/simoneluconi/BetterAuto/releases) page (each
+   one says what changed), or build it with Android Studio, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+   Open the app and follow its setup checklist.
 2. **Disable the official Android Auto app**, otherwise it grabs the USB connection first. The
    `adb` commands to disable and re-enable it are in
    [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#disabling-android-auto).
-3. **Optional: skip the audio prompt** on every connection:
+3. **Optional, only without [Shizuku](#with-shizuku-the-sound-is-moved-like-the-official-app): skip
+   the audio prompt.** Without Shizuku the sound is copied, and Android asks for that on every
+   connection; this answers once for all (with Shizuku there is no prompt to skip):
 
    ```sh
    adb shell appops set com.simoneluconi.betterauto PROJECT_MEDIA allow
    ```
 
-4. **Plug the phone into the head unit** and pick BetterAuto when Android asks which app to open.
+4. **Plug the phone into the head unit** and pick BetterAuto when Android asks which app to open. A
+   wireless head unit or a wireless dongle is picked in the app's *Wireless* page instead, once: from
+   then on the phone connects by itself when the car comes on.
 
 ## Car audio: how it works
 
@@ -136,7 +143,8 @@ through the screen-capture permission. It works well, with a few side effects:
 - Android shows a permission prompt on every connection (an `adb` command removes it) and a
   screen-sharing indicator while audio goes to the car;
 - the phone's own speaker is muted while connected, since the sound is copied, not moved;
-- apps can refuse to be captured (typically paid video apps);
+- apps can refuse to be captured (paid video apps, and recent Spotify versions): their sound then
+  stays on the phone, with a notification saying why;
 - navigation prompts (Maps, Waze...) can't be captured at all: BetterAuto lets them play on the
   phone, bringing its speaker back up while they speak, and lowers the music in the car meanwhile
   (for that moment the music is heard faintly from the phone too);
@@ -160,18 +168,20 @@ described above, automatically.
 - **With the USB cable, Shizuku needs a rooted phone.** Started without root (wireless debugging),
   Shizuku stops as soon as the phone connects to the car: switching the USB port to accessory mode
   restarts Android's debugging service, which Shizuku runs under. BetterAuto then falls back to
-  copying. Wireless Android Auto (planned) won't have this limit.
+  copying. Connected wirelessly (a wireless head unit or dongle) there is no such limit.
 - Without root, Shizuku must be started again after every phone restart. Keep *Developer options*
   and *USB debugging* on, enable *Disable adb authorization timeout* (Android 11+) and let Shizuku run
   in the background (see the [Shizuku guide](https://shizuku.rikka.app/guide/setup/)).
 
 ## Status
 
-Tested on a Samsung Galaxy S25 Ultra (Android 17) with a Raspberry Pi 4 running Crankshaft.
+Tested on a Samsung Galaxy S25 Ultra (Android 17) with a Raspberry Pi 4 running Crankshaft, by cable and
+wirelessly through a wireless Android Auto dongle; also used on OnePlus (ColorOS) and Xiaomi (HyperOS) phones.
 
 ## How it works, in short
 
-When the phone is plugged in, the head unit asks it to start Android Auto. BetterAuto answers
+When the phone is plugged in, or a wireless head unit calls it over Bluetooth and hands it its WiFi, the
+head unit asks it to start Android Auto. BetterAuto answers
 instead, speaks the protocol, draws its interface on a virtual screen, encodes it as video and
 streams it to the head unit, along with the audio. Touches, knob turns, button presses, sensor data
 and the microphone travel back the other way. Architecture, build, test bench and debugging tools
