@@ -6,6 +6,24 @@ version and date.
 
 ## Unreleased
 
+## 0.3.4 (2026-11-18)
+
+### English
+
+- Phones that don't hand BetterAuto its notifications again after closing it for memory (some Xiaomi phones)
+  no longer show "no notification access" in the car with access given: BetterAuto asks for them back.
+- On cars with two navigation streams (a Toyota with a Harman head unit) the prompts go to the other one: on the
+  first nothing was heard, even with the car granting them their moment.
+- Spotify's like ("Add to your collection") is the first of its own buttons shown, before the radio.
+
+### Italiano
+
+- I telefoni che non ridanno le notifiche a BetterAuto dopo averla chiusa per memoria (alcuni Xiaomi) non
+  mostrano più "nessun accesso alle notifiche" in auto con l'accesso dato: BetterAuto le richiede.
+- Sulle auto con due canali per il navigatore (una Toyota con l'autoradio Harman) le indicazioni vanno
+  sull'altro: sul primo non si sentiva nulla, anche con l'auto che dava loro il permesso.
+- Il "mi piace" di Spotify ("Aggiungi alla raccolta") è il primo dei suoi pulsanti mostrati, prima della radio.
+
 ## 0.3.3 (2026-11-17)
 
 ### English

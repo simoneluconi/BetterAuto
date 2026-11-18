@@ -19,6 +19,18 @@ class PlayerButtonsTest {
     }
 
     @Test
+    fun spotifysOwnButtonsInItalianPutItsLikeFirst() {
+        assertEquals(
+            listOf("Aggiungi alla raccolta", "Avvia radio"),
+            picked(
+                action("Attiva/Disattiva riproduzione casuale"), action("Avvia radio"),
+                action("Aggiungi alla raccolta"), action("Inizia la ripetizione di un brano"),
+            ),
+        )
+        assertEquals(listOf("Rimuovi dalla collezione"), picked(action("Avvia radio"), action("Rimuovi dalla collezione"), max = 1))
+    }
+
+    @Test
     fun shuffleAndRepeatAreNeverShownTwice() {
         assertEquals(
             listOf("Favorite"),

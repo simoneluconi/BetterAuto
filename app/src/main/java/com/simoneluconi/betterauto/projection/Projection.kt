@@ -48,7 +48,7 @@ class Projection(val context: Context) {
             presentation = LauncherPresentation(context, display.display).also { it.show() }
             LauncherSettings.get(context).onSessionStart()
             NowPlaying.acquire(context) // released by stop(), which checks for a presentation
-            CarNotifications.acquire()
+            CarNotifications.acquire(context)
             EventLog.log("Projection started: ${width}x$height @ $densityDpi dpi")
         } catch (e: Exception) {
             EventLog.log("Projection failed: $e")

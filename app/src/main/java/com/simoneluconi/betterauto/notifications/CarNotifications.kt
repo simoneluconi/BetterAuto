@@ -2,6 +2,7 @@ package com.simoneluconi.betterauto.notifications
 
 import android.app.Notification
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.drawable.Icon
 import android.service.notification.NotificationListenerService
@@ -9,14 +10,17 @@ import android.service.notification.StatusBarNotification
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.simoneluconi.betterauto.EventLog
 import com.simoneluconi.betterauto.media.MediaApps
+import com.simoneluconi.betterauto.media.MediaListenerService
 import com.simoneluconi.betterauto.settings.LauncherSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -73,9 +77,29 @@ object CarNotifications {
     private var users = 0
 
     /** A car screen starts showing notifications: the ones already on the phone are read now. */
-    fun acquire() {
-        worker.launch { if (users++ == 0) listener?.let(::reload) }
+    fun acquire(context: Context) {
+        val app = context.applicationContext
+        worker.launch {
+            if (users++ == 0) listener?.let(::reload)
+            delay(REBIND_AFTER_MS)
+            if (users > 0) ensureBound(app)
+        }
     }
+
+    /**
+     * Access granted but our listener not bound: a Xiaomi (HyperOS) never bound it again after killing the app for
+     * memory, and the car said "no notification access" with access given. Android is asked to bind it.
+     */
+    private fun ensureBound(context: Context) {
+        if (connected.value) return
+        if (context.packageName !in NotificationManagerCompat.getEnabledListenerPackages(context)) return
+        EventLog.log("Notifications: access granted but the listener not connected, asking Android to bind it again")
+        runCatching { NotificationListenerService.requestRebind(ComponentName(context, MediaListenerService::class.java)) }
+            .onFailure { EventLog.log("Notifications: rebind refused: $it") }
+    }
+
+    /** Time Android normally takes to bind the listener of an app just started. */
+    private const val REBIND_AFTER_MS = 3_000L
 
     /** The car screen is gone: nothing is kept until the next one. */
     fun release() {

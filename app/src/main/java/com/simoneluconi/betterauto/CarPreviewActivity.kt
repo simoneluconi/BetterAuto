@@ -27,7 +27,7 @@ class CarPreviewActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         NowPlaying.acquire(this)
-        CarNotifications.acquire()
+        CarNotifications.acquire(this)
     }
 
     override fun onStop() {

@@ -51,8 +51,11 @@ object PlayerButtons {
     // Names as the apps write them, in English and Italian; checked in this order ("non mi piace" before "mi piace")
     private val OursWords = listOf("shuffle", "repeat", "casuale", "ripeti", "ripetizione")
     private val DislikeWords = listOf("dislike", "thumbs down", "thumb down", "non mi piace")
-    // Not "star": "Start radio" would pass for a like
-    private val LikeWords = listOf("like", "favorit", "favourit", "heart", "love", "preferit", "mi piace", "save", "salva")
+    // Not "star": "Start radio" would pass for a like. Spotify's like is "Aggiungi alla raccolta" / "Rimuovi dalla collezione"
+    private val LikeWords = listOf(
+        "like", "favorit", "favourit", "heart", "love", "preferit", "mi piace", "save", "salva",
+        "collection", "raccolta", "collezion", "library", "libreria",
+    )
     private val JumpWords = listOf("skip", "seek", "rewind", "forward", "avanti", "indietro", "riavvolgi")
     private val RadioWords = listOf("radio")
     private val ListsWords = listOf("playlist", "queue", "coda")

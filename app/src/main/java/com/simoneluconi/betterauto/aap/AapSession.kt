@@ -61,6 +61,8 @@ class AapSession(
     private val channels = ConcurrentHashMap<Int, ServiceChannel>()
     private var audioSink: AudioSinkChannel? = null
     private var guidanceSink: AudioSinkChannel? = null
+    private var mediaCarrier: Int? = null
+    private var guidanceCarrier: Int? = null
     private val audioFocus = CarAudioFocus(::requestAudioFocus)
 
     @Volatile
@@ -200,6 +202,15 @@ class AapSession(
             ),
             sensors?.sensorsList.orEmpty().map { it.sensorType.name.removePrefix("SENSOR_") },
         )
+        // A car may offer two sinks of a kind (a Toyota Harman TAS600: two media, two guidance), and only one is heard:
+        // of the music's the first (sent to the last, nothing), of the prompts' the last (sent to the first with the
+        // focus granted, nothing). The others are opened and left idle
+        fun audioSinks(type: AudioStreamType) = services.filter {
+            it.hasMediaSinkService() && it.mediaSinkService.videoConfigsCount == 0 &&
+                it.mediaSinkService.audioConfigsCount > 0 && it.mediaSinkService.audioType == type
+        }.map { it.id }
+        mediaCarrier = audioSinks(AudioStreamType.AUDIO_STREAM_MEDIA).firstOrNull()
+        guidanceCarrier = audioSinks(AudioStreamType.AUDIO_STREAM_GUIDANCE).lastOrNull()
         for (service in services) {
             EventLog.log("  channel ${service.id}: ${service.kind()}")
             // Car makers' own channels (e.g. VW's Exlap): logged to find out what a car offers
@@ -241,11 +252,10 @@ class AapSession(
             service.mediaSinkService.audioConfigsList.forEachIndexed { i, cfg ->
                 EventLog.log("    audio config $i: ${cfg.samplingRate} Hz ${cfg.numberOfBits}-bit ${cfg.numberOfChannels}ch")
             }
-            // A car may offer two of a kind (a Toyota Harman TAS600: two media, two guidance): the first carries
-            // the sound (sent to the last one, nothing was heard there); the others are opened and left idle
-            val first = if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink == null else guidanceSink == null
-            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList, type, audioFocus, carriesSound = first).also {
-                if (first) {
+            // Which one of its kind carries the sound: chosen with all of them in view, see onServiceDiscovery
+            val carries = service.id == (if (type == AudioStreamType.AUDIO_STREAM_MEDIA) mediaCarrier else guidanceCarrier)
+            AudioSinkChannel(this, service.id, service.mediaSinkService.audioConfigsList, type, audioFocus, carriesSound = carries).also {
+                if (carries) {
                     if (type == AudioStreamType.AUDIO_STREAM_MEDIA) audioSink = it else guidanceSink = it
                 } else {
                     EventLog.log("    another one of its kind: opened, left unused")
