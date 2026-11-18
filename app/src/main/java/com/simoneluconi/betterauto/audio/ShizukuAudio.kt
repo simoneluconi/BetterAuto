@@ -140,6 +140,10 @@ object ShizukuAudio {
         return result.startsWith("exit 0")
     }
 
+    /** Has Android bind our notification listener again, its access unchanged; null without Shizuku. */
+    fun bindNotificationListener(context: Context, component: ComponentName): String? =
+        if (state(context) == State.READY) withService(context) { it.bindNotificationListener(component.flattenToString()) } else null
+
     /** The phone's real Bluetooth address through the shell service; null without Shizuku. */
     fun bluetoothAddress(context: Context): String? =
         if (state(context) == State.READY) withService(context) { it.bluetoothAddress() } else null

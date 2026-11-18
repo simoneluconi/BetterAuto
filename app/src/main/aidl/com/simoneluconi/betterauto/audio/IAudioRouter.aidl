@@ -42,6 +42,13 @@ interface IAudioRouter {
     void watchApp(IBinder app) = 9;
 
     /**
+     * Has Android bind this notification listener (flattened component) again, as `cmd notification
+     * allow_listener` does; refused unless its access is already granted, so nothing is ever allowed here.
+     * Returns what the command said.
+     */
+    String bindNotificationListener(String component) = 10;
+
+    /**
      * Stops every route and ends the process. Called by Shizuku when the app unbinds for good (fixed transaction
      * id from the Shizuku API), and by the app to end its own shell process (ShizukuShellProcess).
      */

@@ -163,7 +163,9 @@ picks one, `-Serial <id>` picks the phone.
   pretends the car's display pressed a button (call or enter answers a ringing call).
   Pretend messages: `--es notify "Text" --es from "Name"` (add `--ez group true` for a group chat);
   `--ez demo true` shows only pretend notifications, for screenshots without personal data
-  (see `docs/screenshots`).
+  (see `docs/screenshots`). `--ez rebindNotifications true` binds the notification listener afresh (turned off
+  and on, then its access stated again through Shizuku), as done where Android left it unbound; check with
+  `adb shell dumpsys notification` that the listener's binding changed and its access stayed.
   Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
   `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes;
   `--es passenger on` pretends someone sits beside the driver (`rear`, `off`, `none`), which the

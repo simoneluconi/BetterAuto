@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -13,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.graphics.drawable.toBitmap
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.audio.ShizukuAudio
 import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.media.MediaListenerService
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -26,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class NotificationMessage(val sender: String?, val text: String, val time: Long)
 
@@ -88,18 +91,70 @@ object CarNotifications {
 
     /**
      * Access granted but our listener not bound: a Xiaomi (HyperOS) never bound it again after killing the app for
-     * memory, and the car said "no notification access" with access given. Android is asked to bind it.
+     * memory, and the car said "no notification access" with access given.
+     *
+     * An app cannot have it bound again by itself: [NotificationListenerService.requestRebind] only undoes a
+     * requestUnbind (it did nothing there), and turning the listener off and on unbinds it for good (Android 16).
+     * The shell can, through Shizuku: stating the access again binds every allowed listener that isn't bound. If
+     * Android still holds the old binding, the listener is turned off and on first, which drops it.
      */
-    private fun ensureBound(context: Context) {
+    private suspend fun ensureBound(context: Context) {
         if (connected.value) return
         if (context.packageName !in NotificationManagerCompat.getEnabledListenerPackages(context)) return
-        EventLog.log("Notifications: access granted but the listener not connected, asking Android to bind it again")
-        runCatching { NotificationListenerService.requestRebind(ComponentName(context, MediaListenerService::class.java)) }
-            .onFailure { EventLog.log("Notifications: rebind refused: $it") }
+        if (ShizukuAudio.state(context) != ShizukuAudio.State.READY) {
+            EventLog.log("Notifications: access granted but the listener not connected, and without Shizuku it can't be bound again (on Xiaomi phones: Autostart)")
+            return
+        }
+        EventLog.log("Notifications: access granted but the listener not connected, binding it again through Shizuku")
+        askBind(context)
+        delay(REBIND_AFTER_MS)
+        if (!connected.value) bindAfresh(context)
+        if (connected.value) EventLog.log("Notifications: listener bound again")
+        else EventLog.log("Notifications: still not connected (on Xiaomi phones Autostart may be off)")
+    }
+
+    /** Development: what [ensureBound] does when Android holds an old binding, done whatever the state. */
+    fun rebind(context: Context) {
+        val app = context.applicationContext
+        worker.launch {
+            bindAfresh(app)
+            EventLog.log("Notifications: listener ${if (connected.value) "connected" else "not connected"} after binding it afresh")
+        }
+    }
+
+    private suspend fun bindAfresh(context: Context) {
+        turnOffAndOn(context)
+        askBind(context)
+        delay(REBIND_AFTER_MS)
+    }
+
+    private suspend fun askBind(context: Context) {
+        val component = ComponentName(context, MediaListenerService::class.java)
+        val result = withContext(Dispatchers.IO) { ShizukuAudio.bindNotificationListener(context, component) }
+        EventLog.log("Notifications: bind asked through Shizuku (${result ?: "service not started"})")
+    }
+
+    /** Off for a moment, so that Android unbinds it: turned on again at once, Android saw it on and kept the old binding. */
+    private suspend fun turnOffAndOn(context: Context) {
+        val component = ComponentName(context, MediaListenerService::class.java)
+        val pm = context.packageManager
+        try {
+            pm.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+            delay(OFF_FOR_MS)
+        } catch (e: Exception) {
+            EventLog.log("Notifications: binding again refused: $e")
+        } finally {
+            // Never left off
+            runCatching { pm.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP) }
+                .onFailure { EventLog.log("Notifications: listener not turned on again: $it") }
+        }
     }
 
     /** Time Android normally takes to bind the listener of an app just started. */
     private const val REBIND_AFTER_MS = 3_000L
+
+    /** Long enough for Android to see the listener off and unbind it. */
+    private const val OFF_FOR_MS = 1_500L
 
     /** The car screen is gone: nothing is kept until the next one. */
     fun release() {

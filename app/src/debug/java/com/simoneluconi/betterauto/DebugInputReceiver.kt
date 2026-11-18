@@ -62,6 +62,7 @@ import kotlin.concurrent.thread
  *                            press (23 = center: on a home widget it edits the home, on a bar button it arranges the bar)
  *   ... --ei phoneKey 1      the car's phone key (KEYCODE_TEL), also with no car: 1 as on a car without answer and
  *                            hang-up keys (a Toyota), 0 as on one with them (an Audi); try it with --es call ringing
+ *   ... --ez rebindNotifications true  the notification listener turned off and on (bound again by Android)
  *   ... --es longTouch 400,300  a finger held for 900 ms (video pixels)
  *   ... --es editHome on     the home screen's edit mode ("off" leaves it, "pick 1" opens place 1's widget list,
  *                            "move 1" moves place 1: the knob then turns through where it can go)
@@ -393,6 +394,11 @@ class DebugInputReceiver : BroadcastReceiver() {
         // The car's phone key, also with no car (the preview on the phone): phoneKey 1 as a Toyota's, 0 as an Audi's
         if (intent.hasExtra("phoneKey")) {
             com.simoneluconi.betterauto.phone.Calls.phoneKey(context, handlesCalls = intent.getIntExtra("phoneKey", 1) != 0)
+        }
+
+        // The notification listener turned off and on, as done where Android didn't bind it again
+        if (intent.hasExtra("rebindNotifications")) {
+            com.simoneluconi.betterauto.notifications.CarNotifications.rebind(context)
         }
 
         val projection = Projection.active ?: return

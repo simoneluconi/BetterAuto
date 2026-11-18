@@ -6,6 +6,22 @@ version and date.
 
 ## Unreleased
 
+## 0.3.5 (2026-11-18)
+
+### English
+
+- With Shizuku, the car's notifications come back on phones that don't hand them to BetterAuto again after closing
+  it for memory (some Xiaomi phones): 0.3.4 asked Android in a way that did nothing. Without Shizuku, allow
+  BetterAuto's Autostart on those phones.
+- Spotify's cover no longer flickers in the car: it was taken as a new one at every update.
+
+### Italiano
+
+- Con Shizuku, le notifiche in auto tornano sui telefoni che non le ridanno a BetterAuto dopo averla chiusa per
+  memoria (alcuni Xiaomi): la 0.3.4 lo chiedeva ad Android in un modo che non faceva nulla. Senza Shizuku,
+  su quei telefoni consenti l'avvio automatico di BetterAuto.
+- La copertina di Spotify non lampeggia più in auto: veniva presa come nuova a ogni aggiornamento.
+
 ## 0.3.4 (2026-11-18)
 
 ### English

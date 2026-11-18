@@ -159,7 +159,7 @@ object NowPlaying {
     @kotlin.OptIn(ExperimentalCoroutinesApi::class)
     private val artDispatcher = Dispatchers.IO.limitedParallelism(3)
 
-    // The album art as the player sent it (bytes or URI, by identity) and its screen-sized copy
+    // The album art as the player sent it (bytes or URI) and its screen-sized copy
     private var loggedQueueSize = -1
     private var loggedButtons: String? = null
     private var artKey: Any? = null
@@ -436,6 +436,7 @@ object NowPlaying {
         }
         controller = null
         attachedToken = session?.sessionToken
+        followed = session
         // Another app followed now: the one we started needn't be held any more
         if (session != null && starterPackage != null && session.packageName != starterPackage) releaseStarter()
         if (session == null) {
@@ -463,6 +464,7 @@ object NowPlaying {
                 EventLog.log(
                     "Now playing: legacy queue ${session.queue?.size ?: "none"}, timeline ${built.currentTimeline.windowCount}, " +
                         "commands timeline=${built.isCommandAvailable(Player.COMMAND_GET_TIMELINE)} " +
+                        "metadata=${built.isCommandAvailable(Player.COMMAND_GET_METADATA)} " +
                         "seekItem=${built.isCommandAvailable(Player.COMMAND_SEEK_TO_MEDIA_ITEM)} " +
                         "custom=${built.availableSessionCommands.commands.count { it.commandCode == SessionCommand.COMMAND_CODE_CUSTOM }} " +
                         "buttons=${built.mediaButtonPreferences.size}"
@@ -495,7 +497,9 @@ object NowPlaying {
         val active = if (timeline.isEmpty) -1 else c.currentMediaItemIndex
         if (timeline.windowCount != loggedQueueSize) {
             loggedQueueSize = timeline.windowCount
-            EventLog.log("Now playing: queue of ${timeline.windowCount} items, playing #${active + 1}")
+            // The system's own copy of the queue says whether a short one is the player's choice or ours
+            val system = runCatching { followed?.queue?.size }.getOrNull()
+            EventLog.log("Now playing: queue of ${timeline.windowCount} items, playing #${active + 1} (system's queue ${system ?: "none"})")
         }
 
         val next = Track(
@@ -536,6 +540,7 @@ object NowPlaying {
         // the car's media status don't start over for nothing
         if (!sameState(_track.value, next)) _track.value = next
         rememberArtist(next.artist)
+        logMissingTitle(c, next)
         // Which buttons of its own a player offers (Spotify's filled a whole row)
         val buttons = "$packageName: " + next.customActions.joinToString { it.name }
         if (buttons != loggedButtons) {
@@ -543,6 +548,29 @@ object NowPlaying {
             EventLog.log("Now playing: player buttons (${next.customActions.size}) of $buttons")
         }
     }
+
+    /**
+     * A playing track with no title showed as "Unknown title" while Android had the player's title: says once per
+     * track what the controller got (the command to read it, the item's own metadata, the system's session).
+     */
+    private fun logMissingTitle(c: MediaController, track: Track) {
+        val key = if (track.title.isEmpty() && track.playing) "${track.packageName}|${c.currentMediaItemIndex}" else null
+        if (key == loggedNoTitle) return
+        loggedNoTitle = key
+        if (key == null) return
+        val item = c.currentMediaItem
+        EventLog.log(
+            "Now playing: no title from ${track.packageName}: metadata command ${c.isCommandAvailable(Player.COMMAND_GET_METADATA)}, " +
+                "current item command ${c.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)}, " +
+                "item ${if (item == null) "none" else "with title ${item.mediaMetadata.title != null}"}, " +
+                "items ${c.mediaItemCount}"
+        )
+    }
+
+    private var loggedNoTitle: String? = null
+
+    /** The system's session of the app followed, for the log. */
+    private var followed: PlatformController? = null
 
     /** Equal but for the position, which only moves on as [Track.positionAt] already predicts. */
     private fun sameState(old: Track?, new: Track): Boolean {
@@ -643,7 +671,10 @@ object NowPlaying {
         val data = metadata.artworkData
         val uri = metadata.artworkUri
         val key: Any? = data ?: uri
-        if (key === artKey || (key != null && key == artKey)) return
+        // Bytes by content: Spotify sends a new copy of the same cover with every update, and taken as a new one
+        // the cover went blank and back, on the screen and in the car, several times a second
+        val old = artKey
+        if (key === old || (key != null && key == old) || (key is ByteArray && old is ByteArray && key.contentEquals(old))) return
         artKey = key
         artImage = null
         accent = null

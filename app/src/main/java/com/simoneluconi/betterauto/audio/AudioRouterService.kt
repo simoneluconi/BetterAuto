@@ -4,6 +4,7 @@ import android.content.AttributionSource
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.media.AudioAttributes
@@ -15,6 +16,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import com.simoneluconi.betterauto.media.MediaListenerService
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -217,6 +219,26 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         val output = process.inputStream.bufferedReader().readText().trim()
         "exit ${process.waitFor()}${if (output.isNotEmpty()) ", $output" else ""}"
     }.getOrElse { "failed: $it" }
+
+    /**
+     * Android binds again every listener whose access is (re)stated: a Xiaomi left ours unbound after killing the
+     * app. Only our own listener, and only with its access already given by the user.
+     */
+    override fun bindNotificationListener(component: String): String = runCatching {
+        val name = ComponentName.unflattenFromString(component)
+        require(name != null && name.className == MediaListenerService::class.java.name) { "not our listener: $component" }
+        val granted = shell("settings", "get", "secure", "enabled_notification_listeners").second
+            .split(':').mapNotNull(ComponentName::unflattenFromString)
+        require(name in granted) { "access not granted" }
+        val (exit, output) = shell("cmd", "notification", "allow_listener", name.flattenToString())
+        "exit $exit${if (output.isNotEmpty()) ", $output" else ""}"
+    }.getOrElse { "failed: $it" }
+
+    private fun shell(vararg command: String): Pair<Int, String> {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        return process.waitFor() to output
+    }
 
     /** The app processes already watched: the same process' binder comes back as the same proxy. */
     private val watched = HashSet<IBinder>()
