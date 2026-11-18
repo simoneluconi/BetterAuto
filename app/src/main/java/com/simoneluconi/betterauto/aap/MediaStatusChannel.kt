@@ -29,6 +29,9 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
     // Off the main thread: sending blocks on the USB link, so an IO thread, one at a time to keep the order
     private val scope = channelScope(Dispatchers.IO.limitedParallelism(1))
     private var sentMetadata: String? = null
+    /** The song last sent (without its cover), and whether a cover went with it. */
+    private var sentKey: String? = null
+    private var sentWithCover = false
     private var sentStatus: MediaPlaybackStatus? = null
     private var artKey: String? = null
     private var art: ByteString? = null
@@ -56,9 +59,14 @@ class MediaStatusChannel(session: AapSession, channelId: Int) : ServiceChannel(s
         if (track == null) return
         val key = listOf(track.packageName, track.title, track.artist, track.album, track.playlist, track.durationMs).joinToString("|")
         val cover = cover(track, key)
+        // The same song with its cover gone for a moment (the player sending it again) keeps the one the car has:
+        // a Toyota got the song a dozen times in a few seconds at every change, with and without its cover
+        if (cover == null && key == sentKey && sentWithCover) return
         val fullKey = "$key|${cover?.size()}"
         if (fullKey == sentMetadata) return
         sentMetadata = fullKey
+        sentKey = key
+        sentWithCover = cover != null
         // What the player does not know is left out, so the car shows its own placeholder rather than a blank
         val metadata = MediaPlaybackMetadata.newBuilder()
         track.title.takeIf { it.isNotBlank() }?.let { metadata.setSong(it) }
