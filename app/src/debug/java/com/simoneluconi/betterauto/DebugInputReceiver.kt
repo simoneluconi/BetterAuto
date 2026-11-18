@@ -63,6 +63,7 @@ import kotlin.concurrent.thread
  *   ... --ei phoneKey 1      the car's phone key (KEYCODE_TEL), also with no car: 1 as on a car without answer and
  *                            hang-up keys (a Toyota), 0 as on one with them (an Audi); try it with --es call ringing
  *   ... --ez rebindNotifications true  the notification listener turned off and on (bound again by Android)
+ *   ... --ez vitals true     one "Memory:" line now, as a session logs every minute
  *   ... --es longTouch 400,300  a finger held for 900 ms (video pixels)
  *   ... --es editHome on     the home screen's edit mode ("off" leaves it, "pick 1" opens place 1's widget list,
  *                            "move 1" moves place 1: the knob then turns through where it can go)
@@ -399,6 +400,12 @@ class DebugInputReceiver : BroadcastReceiver() {
         // The notification listener turned off and on, as done where Android didn't bind it again
         if (intent.hasExtra("rebindNotifications")) {
             com.simoneluconi.betterauto.notifications.CarNotifications.rebind(context)
+        }
+
+        // The session's minute line on memory, now and without a session (no WiFi signal then)
+        if (intent.hasExtra("vitals")) {
+            val app = context.applicationContext
+            kotlin.concurrent.thread(name = "debug-vitals") { com.simoneluconi.betterauto.SessionVitals(app) { null }.log() }
         }
 
         val projection = Projection.active ?: return

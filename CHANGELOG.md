@@ -6,6 +6,18 @@ version and date.
 
 ## Unreleased
 
+## 0.3.6 (2026-11-18)
+
+### English
+
+- A wireless connection cut by the phone closing BetterAuto for memory during the drive (some Xiaomi phones,
+  even with the car screen on) connects again by itself, with auto-connect on.
+
+### Italiano
+
+- Una connessione senza fili interrotta dal telefono che chiude BetterAuto per memoria durante la guida (alcuni
+  Xiaomi, anche con lo schermo dell'auto acceso) si ricollega da sola, con la connessione automatica attiva.
+
 ## 0.3.5 (2026-11-18)
 
 ### English

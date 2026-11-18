@@ -166,6 +166,9 @@ picks one, `-Serial <id>` picks the phone.
   (see `docs/screenshots`). `--ez rebindNotifications true` binds the notification listener afresh (turned off
   and on, then its access stated again through Shizuku), as done where Android left it unbound; check with
   `adb shell dumpsys notification` that the listener's binding changed and its access stayed.
+  `--ez vitals true` logs one "Memory:" line now (a session logs one a minute, with the WiFi signal on a
+  wireless link). A wireless session the app was killed in is connected again at the next start within 3
+  minutes (`WirelessResume`), when the device is watched for auto-connect.
   Vehicle: `--es vehicle demo` fills the vehicle screen with pretend data (`off` clears it,
   `diagnostics` opens the fault codes); `--es dtc "P0300,P0171"` sets the fault codes;
   `--es passenger on` pretends someone sits beside the driver (`rear`, `off`, `none`), which the

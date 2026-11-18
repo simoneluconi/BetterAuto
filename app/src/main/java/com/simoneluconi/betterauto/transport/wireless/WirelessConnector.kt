@@ -54,6 +54,9 @@ class WirelessConnector(private val context: Context) : Closeable {
     var wifiLost = false
         private set
 
+    /** The head unit's WiFi signal during the session, see [WifiJoin.signal]. */
+    val wifiSignal: String? get() = wifi?.signal
+
     /** The step in progress, or the one that failed. */
     @Volatile
     var step = WirelessStep.BLUETOOTH

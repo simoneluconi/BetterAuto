@@ -7,6 +7,7 @@ import android.net.MacAddress
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiNetworkSpecifier
 import com.simoneluconi.betterauto.EventLog
 import java.io.IOException
@@ -24,6 +25,11 @@ class WifiJoin(context: Context) {
 
     @Volatile
     var onLost: (() -> Unit)? = null
+
+    /** The head unit's WiFi as the phone last measured it ("-62 dBm, 433 Mbps"), null before the first report. */
+    @Volatile
+    var signal: String? = null
+        private set
 
     fun join(endpoint: WifiEndpoint, timeoutMs: Long): Network {
         // Dongles often hide their network: without asking for it by name the phone never finds it
@@ -50,6 +56,12 @@ class WifiJoin(context: Context) {
             }
 
             override fun onUnavailable() = ready.countDown()
+
+            // Android reports every change of the signal here: kept for the session's minute log
+            override fun onCapabilitiesChanged(changed: Network, capabilities: NetworkCapabilities) {
+                if (changed != network) return
+                (capabilities.transportInfo as? WifiInfo)?.let { signal = "${it.rssi} dBm, ${it.linkSpeed} Mbps" }
+            }
 
             override fun onLost(lost: Network) {
                 if (lost == network) {

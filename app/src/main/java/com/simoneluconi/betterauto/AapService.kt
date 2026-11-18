@@ -36,6 +36,7 @@ import com.simoneluconi.betterauto.transport.TcpTransport
 import com.simoneluconi.betterauto.transport.Transport
 import com.simoneluconi.betterauto.transport.UsbAccessoryTransport
 import com.simoneluconi.betterauto.transport.wireless.WirelessConnector
+import com.simoneluconi.betterauto.transport.wireless.WirelessResume
 import com.simoneluconi.betterauto.transport.wireless.WirelessState
 import com.simoneluconi.betterauto.transport.wireless.WirelessStep
 import com.simoneluconi.betterauto.voice.Speech
@@ -68,6 +69,8 @@ class AapService : Service() {
     private var stoppedByUser = false
     /** The session that got through the setup (service discovery), to time out one that does not. */
     private var establishedSession: AapSession? = null
+    /** The minute log of memory and WiFi while a session runs. */
+    private var vitals: SessionVitals? = null
 
     // Every startForeground call replaces the types, so keep the media projection type once granted
     private var foregroundTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -314,6 +317,7 @@ class AapService : Service() {
                 main.post {
                     establishedSession = session
                     cancelProblem(this)
+                    if (link == Link.NETWORK) wirelessDevice?.let { WirelessResume.running(this, it) }
                 }
             },
             onProblem = { problem, code ->
@@ -324,6 +328,9 @@ class AapService : Service() {
             AppIcon.Sizes.mapNotNull { AppIcon.png(this, it) }.takeIf { it.size == AppIcon.Sizes.size }.orEmpty()
         }
         session = newSession
+        val wireless = if (newLink == Link.NETWORK) wirelessLink else null
+        vitals?.stop()
+        vitals = SessionVitals(this) { wireless?.wifiSignal }.also { it.start() }
         // A dongle can take the session and never bring up its side to the car: give up and try again
         if (newLink == Link.NETWORK) {
             main.postDelayed({
@@ -383,6 +390,9 @@ class AapService : Service() {
         // A newer session may already have replaced this one
         if (session !== ended) return
         session = null
+        vitals?.stop()
+        vitals = null
+        WirelessResume.ended(this)
         if (link == Link.NETWORK && WirelessConnector.status.value == WirelessState.Connected) {
             WirelessConnector.report(WirelessState.Idle)
         }
@@ -423,6 +433,9 @@ class AapService : Service() {
         NowPlaying.release()
         session?.let { endSession(it) }
         session = null
+        vitals?.stop()
+        vitals = null
+        WirelessResume.ended(this)
         EventLog.status = null
         super.onDestroy()
     }
