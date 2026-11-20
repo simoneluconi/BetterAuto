@@ -13,10 +13,13 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.view.Surface
 import com.simoneluconi.betterauto.media.MediaListenerService
+import com.simoneluconi.betterauto.projection.AppDisplayHost
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -240,6 +243,35 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
         return process.waitFor() to output
     }
 
+    /** The display for phone apps in the car (Android 14+: virtual devices), made on first use. */
+    private val apps by lazy {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) AppDisplayHost(context) else null
+    }
+
+    override fun createAppDisplay(width: Int, height: Int, densityDpi: Int, surface: Surface, listener: IAppDisplayListener?): Int = asShell {
+        val host = apps ?: return@asShell (-1).also { lastStatus = "app display: needs Android 14" }
+        host.create(width, height, densityDpi, surface, listener).also { lastStatus = host.status }
+    }
+
+    override fun launchOnAppDisplay(packageName: String): String? = asShell {
+        val host = apps ?: return@asShell "needs Android 14"
+        host.launch(packageName).also { lastStatus = host.status }
+    }
+
+    override fun appDisplayKey(keyCode: Int, down: Boolean, shift: Boolean) = asShell { apps?.key(keyCode, down, shift) ?: Unit }
+
+    override fun appDisplayTouch(pointerId: Int, action: Int, x: Float, y: Float) = asShell { apps?.touch(pointerId, action, x, y) ?: Unit }
+
+    override fun setAppDisplayOn(on: Boolean) = asShell {
+        apps?.let { host -> host.setOn(on).also { lastStatus = host.status } } ?: Unit
+    }
+
+    override fun releaseAppDisplay() = asShell { apps?.release() ?: Unit }
+
+    override fun updateAppDisplay(width: Int, height: Int, densityDpi: Int, surface: Surface?) = asShell {
+        apps?.let { host -> host.update(width, height, densityDpi, surface).also { lastStatus = host.status } } ?: Unit
+    }
+
     /** The app processes already watched: the same process' binder comes back as the same proxy. */
     private val watched = HashSet<IBinder>()
 
@@ -252,6 +284,7 @@ class AudioRouterService(private val context: Context) : IAudioRouter.Stub() {
 
     override fun destroy() {
         synchronized(this) { routes.keys.toList().forEach { stop(it) } }
+        runCatching { releaseAppDisplay() }
         exitProcess(0)
     }
 

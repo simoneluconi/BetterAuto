@@ -833,4 +833,43 @@
     <string name="notif_way_in_bell">La campanella è l\'ultimo modo per aprire le notifiche: prima rimetti il pulsante Notifiche nella barra.</string>
     <string name="notif_way_in_button">Questo pulsante è l\'ultimo modo per aprire le notifiche: prima mostra la campanella nella barra in alto (Impostazioni › Aspetto).</string>
     <string name="smarthome_arrival_more">Altre opzioni (da %1$s)</string>
+
+    <!-- App: le nostre e quelle del telefono, mostrate dentro il launcher -->
+    <string name="nav_apps">App</string>
+    <string name="rail_slot_when_needed">Se serve</string>
+    <string name="apps_native">In BetterAuto</string>
+    <string name="apps_phone">Dal telefono</string>
+    <string name="apps_phone_none">Scegli le app del telefono da aprire in auto in Impostazioni › App.</string>
+    <string name="apps_phone_needs_shizuku">Le app del telefono si aprono in auto con Shizuku avviato sul telefono (Android 14 o successivo).</string>
+    <string name="app_from_phone">%1$s, dal telefono</string>
+    <string name="app_chip_from_phone">%1$s · dal telefono</string>
+    <string name="phone_app_parked_title">Disponibile a veicolo fermo</string>
+    <string name="phone_app_parked_desc">Le app del telefono si fermano durante la guida e riprendono quando ti fermi. Puoi cambiarlo in Impostazioni › App.</string>
+    <string name="phone_app_secure_title">Questa app non può essere mostrata in auto</string>
+    <string name="phone_app_secure_desc">Protegge quello che mostra (film, banca): fuori dallo schermo del telefono resta nera.</string>
+    <string name="phone_app_problem_title">Non riesco a mostrare l\'app</string>
+    <string name="phone_app_problem_shizuku">Shizuku non è avviato: avvialo sul telefono, poi apri di nuovo l\'app.</string>
+    <string name="phone_app_problem_failed">Android non ha creato lo schermo per l\'app. Riprova, o riavvia Shizuku sul telefono.</string>
+    <string name="phone_app_back">Torna alle app</string>
+    <string name="phone_app_screen">%1$s: gira la manopola o usa le frecce per spostarti, premi per scegliere, tieni premuto per il puntatore e altro</string>
+    <string name="phone_app_screen_pointer">%1$s: spingi la manopola per muovere il puntatore, girala per scorrere, premi per toccare, tieni premuto per altro</string>
+    <string name="phone_app_mode_focus">La manopola si sposta tra i comandi dell\'app</string>
+    <string name="phone_app_mode_pointer">La manopola muove un puntatore: spingila per muoverlo, girala per scorrere, premi per toccare</string>
+    <string name="phone_app_use_pointer">Usa un puntatore</string>
+    <string name="phone_app_use_focus">Spostati tra i comandi</string>
+    <string name="phone_app_to_bar">Torna alla barra</string>
+    <string name="phone_app_close">Chiudi l\'app</string>
+    <string name="phone_app_back_in_app">Indietro nell\'app</string>
+    <string name="settings_cat_apps">App</string>
+    <string name="settings_phone_apps">App dal telefono</string>
+    <string name="settings_phone_apps_desc">App del telefono da aprire in auto, dentro BetterAuto, anche a telefono bloccato. Servono Shizuku e Android 14 o successivo.</string>
+    <string name="settings_phone_apps_note">Le app che proteggono quello che mostrano (Netflix, banca) restano nere in auto. Con la manopola, le app che non si usano con una tastiera potrebbero non rispondere: tieni premuta la manopola sull\'app e scegli Usa un puntatore.</string>
+    <string name="settings_phone_apps_needs_shizuku">Shizuku non è attivo o non autorizza BetterAuto: le app del telefono non compaiono in auto.</string>
+    <string name="settings_phone_apps_needs_android">Questo telefono non può mostrare le sue app in auto: serve Android 14 o successivo.</string>
+    <string name="settings_phone_apps_moving">App dal telefono in movimento</string>
+    <string name="settings_phone_apps_moving_desc">Solo da fermo: l\'app si ferma quando l\'auto parte e riprende quando si ferma. Sempre: anche durante la guida.</string>
+    <string name="settings_phone_app_size">Dimensione delle app del telefono</string>
+    <string name="settings_phone_app_size_desc">Quanto sono grandi le app del telefono in auto. Auto: più o meno come su un telefono girato, per lo schermo di questa auto. Più grande mostra meno dell\'app alla volta.</string>
+    <string name="option_parked_only">Solo da fermo</string>
+    <string name="option_always">Sempre</string>
 </resources>

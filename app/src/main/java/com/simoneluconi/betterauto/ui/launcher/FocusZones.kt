@@ -26,6 +26,9 @@ import kotlin.math.abs
  */
 val LocalContentFocus = staticCompositionLocalOf<FocusRequester?> { null }
 
+/** Takes the knob to the app bar, on the current section: for a screen whose keys all go elsewhere (a phone app). */
+val LocalLeaveToBar = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /** Marks the main control of the screen in view. Put it on one control per screen. */
 fun Modifier.contentFocus(enabled: Boolean = true): Modifier = composed {
     val requester = LocalContentFocus.current

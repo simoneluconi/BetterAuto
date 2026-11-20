@@ -82,7 +82,9 @@ import com.simoneluconi.betterauto.ui.carClickable
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import com.simoneluconi.betterauto.ui.verticalScrollWithBar
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 
 /** Where the car's settings are: kept while the process lives, so coming back finds the same category. */
 object CarSettingsNav {
@@ -343,8 +345,7 @@ private fun Line() {
 
 @Composable
 private fun SettingRow(item: SettingItem, settings: LauncherSettings, focus: Modifier, openList: (ListSetting) -> Unit) {
-    val widget = item.widget
-    val note = if (widget != null && !widgetPlaced(settings, widget)) stringResource(R.string.settings_widget_not_placed) else null
+    val note = settingNote(item, settings)
     when (item) {
         is ChoiceSetting<*> -> if (item.isSwitch) SwitchRow(item, settings, focus) else ChoiceRow(item, settings, focus)
         is WidgetSlotsSetting -> LinkRow(R.string.settings_edit_home, item, settings, focus, note) { HomeEdit.start(settings) }
@@ -564,8 +565,19 @@ private fun AppsList(item: AppsSetting, settings: LauncherSettings, entry: Focus
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val stored by item.state(settings).collectAsStateWithLifecycle()
-    // The list itself only when coming in: ticking must not reorder or drop rows under the knob
-    val apps = remember { item.apps(context, settings).mapNotNull { MediaApps.info(context, it) } }
+    // The list itself only when coming in: ticking must not reorder or drop rows under the knob. Loaded off the main
+    // thread: the phone apps' list is every app on the phone, with its icon
+    val loaded by produceState<List<MediaApps.App>?>(null) {
+        value = withContext(Dispatchers.IO) { item.apps(context, settings).mapNotNull { MediaApps.info(context, it) } }
+    }
+    // Why the ticks would do nothing in the car right now, above the list
+    settingNote(item, settings)?.let { CarLabel(it, 17.sp, colors.focus, Modifier.padding(4.dp), weight = FontWeight.Bold, maxLines = 3) }
+    val apps = loaded ?: return
+    // The page opened before the rows were there (the focus waited on Back): the knob goes to the first row now
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { entry.requestFocus() }
+    }
     if (apps.isEmpty()) CarLabel(stringResource(item.empty), 19.sp, colors.text2, Modifier.padding(4.dp), maxLines = 2)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         apps.forEachIndexed { i, app ->

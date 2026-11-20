@@ -11,14 +11,34 @@ version and date.
 - The arrival buttons no longer close as the car enters the garage: the car's GPS losing the satellites there
   made them start over.
 - When a panel closes (arrival buttons and the like) the car screen no longer stays halfway through the fade,
-  lighter, until the knob is moved.
+  lighter, until the knob is moved; nor does a screen opened over a phone app that keeps drawing.
+- Phone apps in the car (with Shizuku, Android 14 or later): pick them in Settings › Apps and they open inside
+  BetterAuto's screen, also with the phone locked, by touch or with the knob (turn, arrows, press). They pause while
+  driving unless you allow them; apps that protect what they show (Netflix, banking) can't be shown. They sit in the
+  bar after the media apps, with a phone badge; when there is no room an Apps button gathers them, and the new Apps
+  screen lists every app. Maps, Waze, YouTube, Chrome, WhatsApp and Telegram are chosen until you change the list.
+  Without Shizuku running (or on Android 13 and earlier) the setting says so, in the car and on the phone.
+- Holding the knob's press on a phone app opens a panel: go back to the bar, close the app, and, on cars without a
+  touchscreen, use a pointer for apps that don't answer the knob (push the knob to move it, turn to scroll, press to
+  tap; remembered per app).
 
 ### Italiano
 
 - I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage: il GPS dell'auto, perdendo lì i
   satelliti, li faceva ripartire da capo.
 - Quando un pannello si chiude (pulsanti dell'arrivo e simili) lo schermo dell'auto non resta più a metà della
-  dissolvenza, più chiaro, finché non si muove la manopola.
+  dissolvenza, più chiaro, finché non si muove la manopola; neanche una schermata aperta sopra un'app del telefono
+  che continua a disegnare.
+- App del telefono in auto (con Shizuku, Android 14 o successivo): sceglile in Impostazioni › App e si aprono dentro
+  lo schermo di BetterAuto, anche a telefono bloccato, col tocco o con la manopola (gira, frecce, premi). Si fermano
+  durante la guida, se non lo permetti; le app che proteggono quello che mostrano (Netflix, banca) non si possono
+  mostrare. Stanno nella barra dopo le app musicali, con il badge del telefono; quando non c'è spazio le raccoglie
+  un pulsante App, e la nuova schermata App elenca tutte le app. Maps, Waze, YouTube, Chrome, WhatsApp e Telegram
+  sono già scelte finché non cambi l'elenco. Senza Shizuku attivo (o con Android 13 e precedenti) l'impostazione lo
+  dice, in auto e sul telefono.
+- Tenendo premuta la manopola su un'app del telefono si apre un pannello: torna alla barra, chiudi l'app e, sulle auto
+  senza touchscreen, usa un puntatore per le app che non rispondono alla manopola (spingi la manopola per muoverlo,
+  girala per scorrere, premi per toccare; ricordato per ogni app).
 
 ## 0.3.6 (2026-11-18)
 

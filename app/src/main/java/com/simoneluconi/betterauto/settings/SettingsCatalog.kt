@@ -7,6 +7,9 @@ import com.simoneluconi.betterauto.R
 import com.simoneluconi.betterauto.car.TemperatureUnit
 import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.media.MediaApps
+import com.simoneluconi.betterauto.projection.PhoneAppChoices
+import com.simoneluconi.betterauto.projection.PhoneAppDisplay
+import android.os.Build
 import kotlinx.coroutines.flow.StateFlow
 
 /** Where a setting is being changed from, for the log, and where it is shown. */
@@ -30,6 +33,7 @@ enum class SettingsCategory(@param:StringRes val title: Int, val summaryKeys: Li
     MAP(R.string.settings_cat_map, listOf("map_orientation")),
     VEHICLE(R.string.settings_cat_vehicle, listOf("units", "temperature_unit")),
     SMART_HOME(R.string.settings_cat_smart_home, emptyList()),
+    APPS(R.string.settings_cat_apps, listOf("phone_apps", "phone_apps_moving")),
     ADVANCED(R.string.settings_cat_advanced, listOf("debug_overlay")),
 }
 
@@ -141,6 +145,8 @@ class AppsSetting(
     private val toggleStored: (LauncherSettings, String) -> Unit,
     /** A line under the list, when picking needs explaining. */
     @param:StringRes val note: Int? = null,
+    /** Why the apps picked can't work on this phone now (a string), or null: shown highlighted with the setting. */
+    val unavailable: ((Context) -> Int?)? = null,
 ) : ListSetting(key, category, title, description, summary, more = false, widget = null) {
     fun apps(context: Context, settings: LauncherSettings): List<String> = candidates(context, settings)
 
@@ -477,6 +483,38 @@ object SettingsCatalog {
 
         // Smart home: linked and chosen on the phone
         PhoneNote("smart_home_note", SettingsCategory.SMART_HOME, R.string.smarthome_title, R.string.settings_smart_home_car_desc),
+
+        // Phone apps, shown inside the launcher
+        AppsSetting(
+            "phone_apps", SettingsCategory.APPS, R.string.settings_phone_apps, R.string.settings_phone_apps_desc,
+            R.string.settings_shown_summary, R.string.settings_no_apps,
+            { context, _ -> PhoneAppChoices.installed(context) },
+            { it.phoneApps }, listedMeansSelected = true, LauncherSettings::togglePhoneApp,
+            note = R.string.settings_phone_apps_note,
+            // Without these nothing shows in the car, and nothing else would say why
+            unavailable = { context ->
+                when {
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> R.string.settings_phone_apps_needs_android
+                    !PhoneAppDisplay.supported(context) -> R.string.settings_phone_apps_needs_shizuku
+                    else -> null
+                }
+            },
+        ),
+        ChoiceSetting(
+            "phone_apps_moving", SettingsCategory.APPS, R.string.settings_phone_apps_moving, R.string.settings_phone_apps_moving_desc,
+            listOf(SettingOption(false, R.string.option_parked_only), SettingOption(true, R.string.option_always)),
+            { it.phoneAppsWhileMoving }, LauncherSettings::setPhoneAppsWhileMoving,
+        ),
+        ChoiceSetting(
+            "phone_app_size", SettingsCategory.APPS, R.string.settings_phone_app_size, R.string.settings_phone_app_size_desc,
+            listOf(
+                SettingOption(UiSize.SMALLER, R.string.option_size_smaller),
+                SettingOption(UiSize.AUTO, R.string.option_auto),
+                SettingOption(UiSize.LARGER, R.string.option_size_larger),
+                SettingOption(UiSize.LARGEST, R.string.option_size_largest),
+            ),
+            { it.phoneAppSize }, LauncherSettings::setPhoneAppSize,
+        ),
 
         // Advanced
         ChoiceSetting(

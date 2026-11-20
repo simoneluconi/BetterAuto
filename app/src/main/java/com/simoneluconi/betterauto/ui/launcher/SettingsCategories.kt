@@ -15,5 +15,6 @@ val SettingsCategory.icon: ImageVector
         SettingsCategory.MAP -> CarIcons.Map
         SettingsCategory.VEHICLE -> CarIcons.Car
         SettingsCategory.SMART_HOME -> CarIcons.SmartHome
+        SettingsCategory.APPS -> CarIcons.Apps
         SettingsCategory.ADVANCED -> CarIcons.Settings
     }

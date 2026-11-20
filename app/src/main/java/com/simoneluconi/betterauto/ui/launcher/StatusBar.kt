@@ -44,6 +44,7 @@ import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
 import com.simoneluconi.betterauto.settings.Section
 import com.simoneluconi.betterauto.ui.notifications.rememberVisibleNotifications
 import com.simoneluconi.betterauto.ui.phone.CallPill
+import com.simoneluconi.betterauto.ui.apps.PhoneAppChip
 import com.simoneluconi.betterauto.ui.smarthome.ArrivalStatusButton
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -100,6 +101,7 @@ fun StatusBar(settings: LauncherSettings, showLayoutButton: Boolean) {
 
         // The row hangs from the right edge: what comes and goes (a call, the engine light, the layout button on
         // the home screen) sits on the left, so the buttons that are always there never move under the finger
+        if (section == Section.PHONE_APP) PhoneAppChip()
         call?.takeIf { callMinimized }?.let { CallPill(it) }
         if (showEngine) EngineLight(settings)
         ArrivalStatusButton()

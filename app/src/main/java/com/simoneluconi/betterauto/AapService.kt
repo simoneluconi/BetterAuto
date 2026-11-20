@@ -30,6 +30,7 @@ import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.exlap.ExlapSettings
+import com.simoneluconi.betterauto.projection.PhoneAppDisplay
 import com.simoneluconi.betterauto.projection.Projection
 import com.simoneluconi.betterauto.smarthome.SmartHome
 import com.simoneluconi.betterauto.transport.TcpTransport
@@ -402,6 +403,8 @@ class AapService : Service() {
         CarState.reset()
         VehicleData.onDisconnected()
         Speech.release()
+        // The phone apps shown in the car close with it
+        PhoneAppDisplay.release()
         if (endedLink == Link.NETWORK && retryAfterWirelessEnd()) return
         stopSelf()
     }
@@ -433,6 +436,8 @@ class AapService : Service() {
         NowPlaying.release()
         session?.let { endSession(it) }
         session = null
+        // onSessionEnded finds no session any more and returns early: the phone apps go here
+        PhoneAppDisplay.release()
         vitals?.stop()
         vitals = null
         WirelessResume.ended(this)

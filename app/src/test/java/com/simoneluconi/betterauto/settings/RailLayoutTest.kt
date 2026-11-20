@@ -20,9 +20,38 @@ class RailLayoutTest {
     fun itemsAddedLaterAreAppended() {
         // A layout saved before the vehicle and notifications items existed
         val old = RailLayout.decode("PHONE:BAR,HOME:BAR,MUSIC:HIDDEN,MAP:GROUP_2")
-        assertEquals(listOf(RailItem.PHONE, RailItem.HOME, RailItem.MUSIC, RailItem.MAP, RailItem.VEHICLE, RailItem.NOTIFICATIONS), old.map { it.item })
+        assertEquals(
+            listOf(RailItem.PHONE, RailItem.HOME, RailItem.MUSIC, RailItem.MAP, RailItem.VEHICLE, RailItem.NOTIFICATIONS, RailItem.APPS),
+            old.map { it.item },
+        )
         assertEquals(RailSlot.HIDDEN, old.first { it.item == RailItem.MUSIC }.slot)
         assertEquals(RailSlot.HIDDEN, old.first { it.item == RailItem.NOTIFICATIONS }.slot)
+        // Out of the bar: it comes by itself when the phone's apps don't fit
+        assertEquals(RailSlot.HIDDEN, old.first { it.item == RailItem.APPS }.slot)
+    }
+
+    @Test
+    fun appsThatFitAllShowWithoutTheAppsButton() {
+        assertEquals(RailLayout.AppsRoom(2, 3, appsButton = false), RailLayout.phoneAppsRoom(free = 5, media = 2, phone = 3, appsPlaced = false))
+    }
+
+    @Test
+    fun phoneAppsLeftOutBringTheAppsButtonInOnePlace() {
+        // 4 places: the button takes one, the media apps come first
+        assertEquals(RailLayout.AppsRoom(2, 1, appsButton = true), RailLayout.phoneAppsRoom(free = 4, media = 2, phone = 3, appsPlaced = false))
+        // Already in the bar: no second one, every place for the apps
+        assertEquals(RailLayout.AppsRoom(2, 2, appsButton = false), RailLayout.phoneAppsRoom(free = 4, media = 2, phone = 3, appsPlaced = true))
+        // Room for one: the button alone
+        assertEquals(RailLayout.AppsRoom(0, 0, appsButton = true), RailLayout.phoneAppsRoom(free = 1, media = 2, phone = 3, appsPlaced = false))
+        // None at all: not even the button, Settings stays on the bar (the driver can still place Apps in a group)
+        assertEquals(RailLayout.AppsRoom(0, 0, appsButton = false), RailLayout.phoneAppsRoom(free = 0, media = 2, phone = 3, appsPlaced = false))
+        assertEquals(RailLayout.AppsRoom(0, 0, appsButton = false), RailLayout.phoneAppsRoom(free = -2, media = 2, phone = 3, appsPlaced = false))
+    }
+
+    @Test
+    fun mediaAppsAloneNeverBringTheAppsButton() {
+        // They live in Music too: trimmed as before
+        assertEquals(RailLayout.AppsRoom(2, 0, appsButton = false), RailLayout.phoneAppsRoom(free = 2, media = 4, phone = 0, appsPlaced = false))
     }
 
     @Test

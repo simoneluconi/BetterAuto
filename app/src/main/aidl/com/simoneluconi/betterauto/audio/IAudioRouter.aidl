@@ -1,6 +1,12 @@
 package com.simoneluconi.betterauto.audio;
 
-/** The Shizuku service that moves the phone's media audio (and a WiFi setting), running as the shell user. */
+import android.view.Surface;
+import com.simoneluconi.betterauto.audio.IAppDisplayListener;
+
+/**
+ * The Shizuku service that moves the phone's media audio (and a WiFi setting, Bluetooth answers, the display for
+ * phone apps in the car), running as the shell user.
+ */
 interface IAudioRouter {
     /**
      * Starts routing audio away from the speaker on [route] (any id the app picks: one per stream, e.g.
@@ -47,6 +53,34 @@ interface IAudioRouter {
      * Returns what the command said.
      */
     String bindNotificationListener(String component) = 10;
+
+    /**
+     * Creates the display that runs phone apps for the car, drawing into [surface] (replacing the one before):
+     * a virtual device of ours, whose display keeps running with the phone locked or asleep. [listener] hears
+     * what happens on it. Returns its display id, or -1 ([status] says why).
+     */
+    int createAppDisplay(int width, int height, int densityDpi, in Surface surface, IAppDisplayListener listener) = 11;
+
+    /** Starts [packageName]'s main activity on the app display (back to front if it runs); why it could not, or null. */
+    String launchOnAppDisplay(String packageName) = 12;
+
+    /** A key (KeyEvent.KEYCODE_*, pressed or let go) for the app on the app display; [shift] held with it. */
+    oneway void appDisplayKey(int keyCode, boolean down, boolean shift) = 13;
+
+    /** A finger on the app display (MotionEvent.ACTION_DOWN, _MOVE or _UP), in its pixels. */
+    oneway void appDisplayTouch(int pointerId, int action, float x, float y) = 14;
+
+    /** Wakes the app display or puts it to sleep (its app pauses, as on a phone whose screen goes off). */
+    void setAppDisplayOn(boolean on) = 15;
+
+    /** Removes the app display and its virtual device; the apps on it are closed. */
+    void releaseAppDisplay() = 17;
+
+    /**
+     * The app display draws into [surface] from now on, resized to [width] x [height] at [densityDpi] (a width of
+     * 0 keeps its size); a null [surface] leaves it drawing nowhere, while the car shows something else.
+     */
+    void updateAppDisplay(int width, int height, int densityDpi, in Surface surface) = 18;
 
     /**
      * Stops every route and ends the process. Called by Shizuku when the app unbinds for good (fixed transaction

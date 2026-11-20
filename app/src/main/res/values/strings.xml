@@ -835,4 +835,43 @@
     <string name="notif_way_in_bell">The bell is the last way to your notifications: first put the Notifications button back in the bar.</string>
     <string name="notif_way_in_button">This button is the last way to your notifications: first show the bell in the top bar (Settings › Display).</string>
     <string name="smarthome_arrival_more">More options (from %1$s)</string>
+
+    <!-- Apps: ours and the phone's, shown inside the launcher -->
+    <string name="nav_apps">Apps</string>
+    <string name="rail_slot_when_needed">When needed</string>
+    <string name="apps_native">In BetterAuto</string>
+    <string name="apps_phone">From the phone</string>
+    <string name="apps_phone_none">Choose the phone apps to open in the car in Settings › Apps.</string>
+    <string name="apps_phone_needs_shizuku">Phone apps open in the car with Shizuku running on the phone (Android 14 or later).</string>
+    <string name="app_from_phone">%1$s, from the phone</string>
+    <string name="app_chip_from_phone">%1$s · from the phone</string>
+    <string name="phone_app_parked_title">Available when the car stands</string>
+    <string name="phone_app_parked_desc">Phone apps pause while driving and go on when you stop. You can change this in Settings › Apps.</string>
+    <string name="phone_app_secure_title">This app can\'t be shown in the car</string>
+    <string name="phone_app_secure_desc">It protects what it shows (films, banking): outside the phone\'s own screen it stays black.</string>
+    <string name="phone_app_problem_title">The app can\'t be shown</string>
+    <string name="phone_app_problem_shizuku">Shizuku isn\'t running: start it on the phone, then open the app again.</string>
+    <string name="phone_app_problem_failed">Android didn\'t make the screen for it. Try again, or restart Shizuku on the phone.</string>
+    <string name="phone_app_back">Back to the apps</string>
+    <string name="phone_app_screen">%1$s: turn the knob or use the arrows to move, press to choose, hold for the pointer and more</string>
+    <string name="phone_app_screen_pointer">%1$s: push the knob to move the pointer, turn it to scroll, press to tap, hold for more</string>
+    <string name="phone_app_mode_focus">The knob moves between the app\'s controls</string>
+    <string name="phone_app_mode_pointer">The knob moves a pointer: push it to move, turn it to scroll, press to tap</string>
+    <string name="phone_app_use_pointer">Use a pointer</string>
+    <string name="phone_app_use_focus">Move between controls</string>
+    <string name="phone_app_to_bar">Back to the bar</string>
+    <string name="phone_app_close">Close the app</string>
+    <string name="phone_app_back_in_app">Back in the app</string>
+    <string name="settings_cat_apps">Apps</string>
+    <string name="settings_phone_apps">Phone apps</string>
+    <string name="settings_phone_apps_desc">Phone apps to open in the car, inside BetterAuto, also with the phone locked. Needs Shizuku and Android 14 or later.</string>
+    <string name="settings_phone_apps_note">Apps that protect what they show (Netflix, banking) stay black in the car. With the knob, apps that can\'t be used with a keyboard may not respond: hold the knob\'s press on the app and choose Use a pointer.</string>
+    <string name="settings_phone_apps_needs_shizuku">Shizuku isn\'t running or doesn\'t allow BetterAuto: phone apps don\'t show in the car.</string>
+    <string name="settings_phone_apps_needs_android">This phone can\'t show its apps in the car: it needs Android 14 or later.</string>
+    <string name="settings_phone_apps_moving">Phone apps while driving</string>
+    <string name="settings_phone_apps_moving_desc">Only when the car stands: the app pauses as the car moves off and goes on when it stops. Always: also while driving.</string>
+    <string name="settings_phone_app_size">Phone apps\' size</string>
+    <string name="settings_phone_app_size_desc">How big phone apps are drawn in the car. Auto: about as on a phone held sideways, for this car\'s screen. Bigger shows less of the app at once.</string>
+    <string name="option_parked_only">Only when standing</string>
+    <string name="option_always">Always</string>
 </resources>

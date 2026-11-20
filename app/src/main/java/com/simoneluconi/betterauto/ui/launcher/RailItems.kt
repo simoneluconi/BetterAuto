@@ -15,6 +15,7 @@ val RailItem.icon: ImageVector
         RailItem.PHONE -> CarIcons.Phone
         RailItem.VEHICLE -> CarIcons.Car
         RailItem.NOTIFICATIONS -> CarIcons.Bell
+        RailItem.APPS -> CarIcons.Apps
     }
 
 @get:StringRes
@@ -26,6 +27,7 @@ val RailItem.label: Int
         RailItem.PHONE -> R.string.nav_phone
         RailItem.VEHICLE -> R.string.nav_vehicle
         RailItem.NOTIFICATIONS -> R.string.nav_notifications
+        RailItem.APPS -> R.string.nav_apps
     }
 
 @get:StringRes
@@ -36,3 +38,8 @@ val RailSlot.label: Int
         RailSlot.GROUP_2 -> R.string.rail_slot_group_2
         RailSlot.HIDDEN -> R.string.rail_slot_hidden
     }
+
+/** [slot]'s name for [item]: the Apps button left out of the bar still comes when the phone's apps don't fit. */
+@StringRes
+fun RailItem.slotLabel(slot: RailSlot): Int =
+    if (this == RailItem.APPS && slot == RailSlot.HIDDEN) R.string.rail_slot_when_needed else slot.label

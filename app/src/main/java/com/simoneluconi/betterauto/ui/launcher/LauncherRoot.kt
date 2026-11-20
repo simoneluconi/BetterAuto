@@ -55,6 +55,10 @@ import com.simoneluconi.betterauto.car.Edges
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.settings.AppLocales
+import com.simoneluconi.betterauto.projection.PhoneAppDisplay
+import com.simoneluconi.betterauto.ui.apps.AppsScreen
+import com.simoneluconi.betterauto.ui.apps.PhoneAppPanelShown
+import com.simoneluconi.betterauto.ui.apps.PhoneAppScreen
 import com.simoneluconi.betterauto.ui.phone.CallScreen
 import com.simoneluconi.betterauto.ui.vehicle.VehicleScreen
 import com.simoneluconi.betterauto.ui.voice.VoiceOverlay
@@ -225,6 +229,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     runCatching { NavOverlayShown.first?.requestFocus() }
                     true
                 }
+                // And the panel held open over a phone app
+                PhoneAppPanelShown.value && PhoneAppPanelShown.first != null -> {
+                    runCatching { PhoneAppPanelShown.first?.requestFocus() }
+                    true
+                }
                 // And the home's edit mode: on its first place, or where a moving place can go
                 HomeEdit.active.value && HomeEdit.entry != null -> {
                     runCatching { HomeEdit.entry?.requestFocus() }
@@ -286,6 +295,23 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                             return@onPreviewKeyEvent true
                         }
                     }
+                    // The press held to open the panel over a phone app: its repeats and its release are not a press
+                    // in the panel, wherever the focus is by then
+                    if (PhoneAppPanelShown.holdingPress && event.key in PressKeys) {
+                        if (!down) PhoneAppPanelShown.holdingPress = false
+                        return@onPreviewKeyEvent true
+                    }
+                    // That panel as the others: Back closes it, a knob move from outside lands in it
+                    if (PhoneAppPanelShown.value && shownCall == null) {
+                        if (event.key == Key.Back || event.key == Key.Escape) {
+                            if (!down) PhoneAppPanelShown.close?.invoke()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (!PhoneAppPanelShown.hasFocus && event.key in KnobKeys) {
+                            if (down) PhoneAppPanelShown.first?.let { runCatching { it.requestFocus() } }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
                     // Knob nudges move between zones (the bar, each widget or panel of the screen); turning goes
                     // through every control. Not out of a panel that waits for the driver: there they move inside it
                     val toScreen = when {
@@ -305,8 +331,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         Key.DirectionDown -> FocusDirection.Down
                         else -> null
                     }
-                    val panelOpen = ArrivalPanelShown.value || NavOverlayShown.value || VoiceAssistant.isBusy || BarEditor.open.value || HomeEdit.active.value
-                    if (shownCall == null && hasFocus && !panelOpen && nudge != null) {
+                    val panelOpen = ArrivalPanelShown.value || NavOverlayShown.value || VoiceAssistant.isBusy || BarEditor.open.value ||
+                        HomeEdit.active.value || PhoneAppPanelShown.value
+                    // On a phone app's picture the arrows are the app's (or its pointer's): holding the knob's press
+                    // opens its panel, with the way back to the bar
+                    if (shownCall == null && hasFocus && !panelOpen && nudge != null && !PhoneAppDisplay.hasKnob) {
                         if (railHasFocus) {
                             if (event.key == toScreen) {
                                 // Back where the knob was on this screen; the main control the first time
@@ -365,7 +394,13 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
             }
             SideEffect { railVertical = left }
             val main = @Composable { mod: Modifier ->
-                CompositionLocalProvider(LocalContentFocus provides contentFocus) { MainArea(section, settings, mod) }
+                CompositionLocalProvider(
+                    LocalContentFocus provides contentFocus,
+                    LocalLeaveToBar provides {
+                        CarZones.leaving()
+                        runCatching { railFocus.requestFocus() }
+                    },
+                ) { MainArea(section, settings, mod) }
             }
             val rail = @Composable { vertical: Boolean ->
                 Box(Modifier.onFocusChanged { railHasFocus = it.hasFocus }) {
@@ -478,6 +513,8 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
                 Section.NOTIFICATIONS -> NotificationsWidget(settings, Modifier.fillMaxSize(), primary = true)
                 Section.SETTINGS -> SettingsScreen(settings, Modifier.fillMaxSize())
                 Section.SMART_HOME -> SmartHomeScreen(Modifier.fillMaxSize())
+                Section.APPS -> AppsScreen(settings, Modifier.fillMaxSize())
+                Section.PHONE_APP -> PhoneAppScreen(settings, Modifier.fillMaxSize())
             }
         }
     }
@@ -490,3 +527,6 @@ private val KnobKeys = setOf(
     Key.Tab, Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown,
     Key.DirectionCenter, Key.Enter, Key.NumPadEnter,
 )
+
+/** The knob's press (and the keys that act like it). */
+private val PressKeys = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)

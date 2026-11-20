@@ -57,21 +57,30 @@ class LauncherPresentation(context: Context, display: Display) :
      * rate, often the last of an animation, and its repeats then kept showing one from halfway (the arrival
      * panel half faded out) until something else redrew. Only after a frame that came close behind another:
      * a lone one (the music's progress, every second) is never dropped, and settling it too added a frame a second.
+     * Not put off by every frame: a phone app's picture ([com.simoneluconi.betterauto.ui.apps.PhoneAppScreen])
+     * draws without pause, and the screen faded in over it stayed 16% see-through until the knob moved. While
+     * frames keep coming, one settling draw every [SETTLE_MS] at the most, the one after the last frame included.
      */
     private val settle = Runnable {
+        settlePending = false
         settling = true
         window?.decorView?.invalidate()
     }
     private var settling = false
+    private var settlePending = false
     private var lastDrawAt = 0L
     private val settleOnDraw = ViewTreeObserver.OnDrawListener {
         val decor = window?.decorView ?: return@OnDrawListener
         val now = SystemClock.uptimeMillis()
         val quick = now - lastDrawAt < QUICK_FRAME_MS
         lastDrawAt = now
-        decor.removeCallbacks(settle)
         // The settling draw itself asks for no other
-        if (settling) settling = false else if (quick) decor.postDelayed(settle, SETTLE_MS)
+        if (settling) {
+            settling = false
+        } else if (quick && !settlePending) {
+            settlePending = true
+            decor.postDelayed(settle, SETTLE_MS)
+        }
     }
 
     override fun onStart() {
@@ -84,6 +93,7 @@ class LauncherPresentation(context: Context, display: Display) :
             it.removeCallbacks(settle)
             it.viewTreeObserver.removeOnDrawListener(settleOnDraw)
         }
+        settlePending = false
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         super.onStop()
     }

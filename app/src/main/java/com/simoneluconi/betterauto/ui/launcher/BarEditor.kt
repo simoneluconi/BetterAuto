@@ -192,7 +192,7 @@ private fun EditorRow(
         for (slot in RailSlot.entries) {
             val chipShape = RoundedCornerShape(50)
             val selected = entry.slot == slot
-            val label = stringResource(slot.label)
+            val label = stringResource(entry.item.slotLabel(slot))
             Box(
                 Modifier
                     .then(if (selected && start != null) Modifier.focusRequester(start) else Modifier)

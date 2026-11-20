@@ -39,7 +39,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +56,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.R
+import com.simoneluconi.betterauto.audio.ShizukuAudio
+import com.simoneluconi.betterauto.projection.PhoneAppChoices
+import com.simoneluconi.betterauto.projection.PhoneAppDisplay
+import com.simoneluconi.betterauto.ui.apps.AppIcon
 import com.simoneluconi.betterauto.media.MediaApps
 import com.simoneluconi.betterauto.media.NowPlaying
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -83,7 +90,8 @@ private fun buttons(layout: List<RailEntry>): List<RailButtonSpec> = buildList {
 
 /**
  * Sections (as the driver arranged them, some grouped) plus pinned/recent media apps (not the one Music
- * follows), on the left (wide screens) or at the bottom. Settings always closes the bar. [onOpenGroup] shows a group's items.
+ * follows) and the phone apps chosen for the car, on the left (wide screens) or at the bottom; the Apps button
+ * comes for the phone apps there is no room for. Settings always closes the bar. [onOpenGroup] shows a group's items.
  */
 @Composable
 fun AppRail(
@@ -105,13 +113,17 @@ fun AppRail(
     // Linked smart-home services sit with the apps, each with its own icon
     val homes by SmartHome.linked.collectAsStateWithLifecycle()
     val screenHome by SmartHome.screenProvider.collectAsStateWithLifecycle()
-    // The knob starts from the current section's button (or its group), else from the first one
-    val focused = buttons.firstOrNull { b ->
-        when (b) {
-            is RailButtonSpec.Single -> b.item.section == section
-            is RailButtonSpec.Group -> b.items.any { it.section == section }
+    // Then the phone's apps chosen for the car, while they can be shown
+    val chosenPhoneApps by settings.phoneApps.collectAsStateWithLifecycle()
+    val shizuku by ShizukuAudio.changes.collectAsStateWithLifecycle()
+    val openPhoneApp by PhoneAppDisplay.open.collectAsStateWithLifecycle()
+    // Package queries and icons off the main thread: the bar draws without them for a moment at most
+    val phoneApps by produceState(emptyList<MediaApps.App>(), chosenPhoneApps, shizuku) {
+        value = withContext(Dispatchers.IO) {
+            if (PhoneAppDisplay.supported(context)) PhoneAppChoices.available(context, chosenPhoneApps).mapNotNull { MediaApps.info(context, it) } else emptyList()
         }
-    } ?: buttons.firstOrNull().takeIf { section != Section.SETTINGS }
+    }
+    val appsPlaced = layout.any { it.item == RailItem.APPS && it.slot != RailSlot.HIDDEN }
 
     val surface = Modifier
         .background(colors.surface)
@@ -123,13 +135,31 @@ fun AppRail(
         }
         .padding(16.dp)
     BoxWithConstraints(if (vertical) surface.fillMaxHeight().width(RAIL_WIDTH) else surface.fillMaxWidth().height(RAIL_HEIGHT)) {
-        // Media apps take the room left by the sections, never pushing Settings out of the screen
+        // Media apps, then phone apps, take the room left by the sections, never pushing Settings out of the screen;
+        // phone apps left out bring the Apps button
         val length = if (vertical) maxHeight else maxWidth
-        val free = ((length - SLOT * (buttons.size + 1 + homes.size) - DIVIDER) / SLOT).toInt().coerceIn(0, MAX_APPS)
-        val apps = remember(pinned, recent, followed, free) {
-            RailLayout.mediaApps(pinned, recent, followed) { MediaApps.suggested(context) }
-                .mapNotNull { MediaApps.info(context, it) }.take(free)
+        val free = ((length - SLOT * (buttons.size + 1 + homes.size) - DIVIDER) / SLOT).toInt()
+        // An app chosen as a phone app gets that button only, not a media one too
+        val mediaApps by produceState(emptyList<MediaApps.App>(), pinned, recent, followed, phoneApps) {
+            value = withContext(Dispatchers.IO) {
+                RailLayout.mediaApps(pinned, recent, followed) { MediaApps.suggested(context) }
+                    .filter { p -> phoneApps.none { it.packageName == p } }
+                    .mapNotNull { MediaApps.info(context, it) }.take(MAX_APPS)
+            }
         }
+        val room = RailLayout.phoneAppsRoom(free, mediaApps.size, phoneApps.size, appsPlaced)
+        val apps = mediaApps.take(room.media)
+        val shownPhoneApps = phoneApps.take(room.phone)
+        // The phone app on screen lights its own button, else the Apps button
+        val appOnBar = section == Section.PHONE_APP && shownPhoneApps.any { it.packageName == openPhoneApp }
+        fun RailItem.lit() = section == this.section || (this == RailItem.APPS && section == Section.PHONE_APP && !appOnBar)
+        // The knob starts from the current section's button (or its group), else from the first one
+        val focused = buttons.firstOrNull { b ->
+            when (b) {
+                is RailButtonSpec.Single -> b.item.lit()
+                is RailButtonSpec.Group -> b.items.any { it.lit() }
+            }
+        } ?: buttons.firstOrNull().takeIf { section != Section.SETTINGS && !appOnBar && !(room.appsButton && RailItem.APPS.lit()) }
         val items: @Composable (spacerModifier: Modifier) -> Unit = { spacerModifier ->
             for (button in buttons) {
                 val mod = if (button == focused) Modifier.focusRequester(firstFocus) else Modifier
@@ -137,19 +167,19 @@ fun AppRail(
                     is RailButtonSpec.Single -> RailButton(
                         icon = button.item.icon,
                         label = stringResource(button.item.label),
-                        selected = section == button.item.section,
+                        selected = button.item.lit(),
                         modifier = mod,
                         onLongClick = { BarEditor.open(button.item) },
                     ) { settings.setSection(button.item.section) }
                     is RailButtonSpec.Group -> GroupButton(
-                        button.items, selected = button.items.any { it.section == section }, modifier = mod,
+                        button.items, selected = button.items.any { it.lit() }, modifier = mod,
                         onLongClick = { BarEditor.open(button.items.first()) },
                     ) {
                         onOpenGroup(button.slot)
                     }
                 }
             }
-            if (apps.isNotEmpty() || homes.isNotEmpty()) RailDivider(vertical)
+            if (apps.isNotEmpty() || homes.isNotEmpty() || shownPhoneApps.isNotEmpty() || room.appsButton) RailDivider(vertical)
             for (home in homes) {
                 SmartHomeRailButton(home, selected = section == Section.SMART_HOME && home.id == (screenHome ?: homes.first().id)) {
                     settings.setSection(Section.SMART_HOME)
@@ -182,10 +212,36 @@ fun AppRail(
                     }
                 }
             }
+            // The phone's apps: a rounded square with the phone badge, as in the Apps screen
+            for (app in shownPhoneApps) {
+                val shape = RoundedCornerShape(22.dp)
+                val selected = section == Section.PHONE_APP && app.packageName == openPhoneApp
+                Box(
+                    Modifier
+                        .then(if (selected) Modifier.focusRequester(firstFocus) else Modifier)
+                        .carClickable(shape, stringResource(R.string.app_from_phone, app.label)) {
+                            PhoneAppDisplay.open(app.packageName)
+                            settings.setSection(Section.PHONE_APP)
+                        }
+                        .background(if (selected) colors.focus.copy(alpha = 0.2f) else colors.surface, shape)
+                        .size(72.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AppIcon(app.icon, phone = true, size = 48)
+                }
+            }
+            if (room.appsButton) {
+                val lit = RailItem.APPS.lit()
+                RailButton(
+                    RailItem.APPS.icon, stringResource(RailItem.APPS.label), lit,
+                    modifier = if (lit) Modifier.focusRequester(firstFocus) else Modifier,
+                    onLongClick = { BarEditor.open(RailItem.APPS) },
+                ) { settings.setSection(Section.APPS) }
+            }
             Spacer(spacerModifier)
             RailButton(
                 CarIcons.Settings, stringResource(R.string.nav_settings), section == Section.SETTINGS,
-                modifier = if (focused == null) Modifier.focusRequester(firstFocus) else Modifier,
+                modifier = if (focused == null && !appOnBar && !(room.appsButton && RailItem.APPS.lit())) Modifier.focusRequester(firstFocus) else Modifier,
                 onLongClick = { BarEditor.open(null) },
             ) { settings.setSection(Section.SETTINGS) }
         }
@@ -268,7 +324,7 @@ fun RailGroupPanel(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items.forEachIndexed { i, item ->
-            val selected = item.section == section
+            val selected = item.section == section || (item == RailItem.APPS && section == Section.PHONE_APP)
             val shape = RoundedCornerShape(24.dp)
             Column(
                 Modifier

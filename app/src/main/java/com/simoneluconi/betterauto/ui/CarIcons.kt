@@ -134,6 +134,17 @@ object CarIcons {
     val SpeakerMute = icon("M11 5L6 9H3v6h3l5 4V5z", "M16 9.5l5 5", "M21 9.5l-5 5")
     val Plus = icon("M12 5v14M5 12h14")
     val Minus = icon("M5 12h14")
+    /** Every app: four tiles. */
+    val Apps = icon(roundRect(4f, 4f, 6f, 6f, 1.5f), roundRect(14f, 4f, 6f, 6f, 1.5f), roundRect(4f, 14f, 6f, 6f, 1.5f), roundRect(14f, 14f, 6f, 6f, 1.5f))
+    /** An app that runs on the phone, shown from there: the badge on its icon. */
+    val Smartphone = icon(roundRect(6f, 2f, 12f, 20f, 2.5f), "M11 18h2")
+    /** A phone app driven with a pointer: the arrow of a mouse. */
+    val Pointer = icon("M6 3v15l4-3.5 3 6.5 2.6-1.2-3-6.3H18z")
+    /** A phone app driven by moving between its controls: two buttons, the knob on the first. */
+    val Controls = icon(roundRect(3f, 4f, 18f, 7f, 3.5f), roundRect(5f, 15f, 14f, 5f, 2.5f), "M8 7.5h8")
+
+    private fun roundRect(x: Float, y: Float, w: Float, h: Float, r: Float) =
+        "M${x + r} ${y}h${w - 2 * r}a$r $r 0 0 1 $r ${r}v${h - 2 * r}a$r $r 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a$r $r 0 0 1 ${-r} ${-r}v${-(h - 2 * r)}a$r $r 0 0 1 $r ${-r}z"
 
     private fun circle(cx: Float, cy: Float, r: Float) =
         "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0"

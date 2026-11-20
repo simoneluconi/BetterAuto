@@ -1,6 +1,8 @@
 package com.simoneluconi.betterauto
 
 import com.simoneluconi.betterauto.ui.verticalScrollWithBar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
@@ -30,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -65,6 +68,8 @@ import com.simoneluconi.betterauto.settings.WidgetSlotsSetting
 import com.simoneluconi.betterauto.ui.launcher.categorySummary
 import com.simoneluconi.betterauto.ui.launcher.icon
 import com.simoneluconi.betterauto.ui.launcher.label
+import com.simoneluconi.betterauto.ui.launcher.slotLabel
+import com.simoneluconi.betterauto.ui.launcher.settingNote
 import com.simoneluconi.betterauto.ui.launcher.settingValue
 import com.simoneluconi.betterauto.ui.launcher.widgetPlaced
 import com.simoneluconi.betterauto.ui.CarLabel
@@ -253,8 +258,7 @@ private fun CategoryPage(category: SettingsCategory, settings: LauncherSettings,
 private fun SettingRows(items: List<SettingItem>, settings: LauncherSettings, onOpenList: (ListSetting) -> Unit) {
     items.forEachIndexed { i, item ->
         if (i > 0) PhoneLine()
-        val widget = item.widget
-        val note = if (widget != null && !widgetPlaced(settings, widget)) stringResource(R.string.settings_widget_not_placed) else null
+        val note = settingNote(item, settings)
         when (item) {
             is ChoiceSetting<*> -> if (item.isSwitch) PhoneSwitchRow(item, settings) else PhoneChoiceRow(item, settings)
             is ListSetting -> PhoneLinkRow(stringResource(item.title), stringResource(item.description), settingValue(item, settings), note) { onOpenList(item) }
@@ -466,7 +470,7 @@ private fun PhoneRailEditor(item: RailLayoutSetting, settings: LauncherSettings)
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (slot in RailSlot.entries) {
-                            Chip(stringResource(slot.label), selected = entry.slot == slot) {
+                            Chip(stringResource(entry.item.slotLabel(slot)), selected = entry.slot == slot) {
                                 refused = item.place(settings, entry.item, slot, SettingsSurface.PHONE)
                             }
                         }
@@ -502,8 +506,14 @@ private fun PhoneApps(item: AppsSetting, settings: LauncherSettings) {
     val context = LocalContext.current
     val colors = LocalCarColors.current
     val stored by item.state(settings).collectAsStateWithLifecycle()
-    // Read once per visit: ticking must not reorder the rows under the finger
-    val apps = remember { item.apps(context, settings).mapNotNull { MediaApps.info(context, it) } }
+    // Read once per visit: ticking must not reorder the rows under the finger. Off the main thread: the phone apps'
+    // list is every app on the phone, with its icon
+    val loaded by produceState<List<MediaApps.App>?>(null) {
+        value = withContext(Dispatchers.IO) { item.apps(context, settings).mapNotNull { MediaApps.info(context, it) } }
+    }
+    // Why the ticks would do nothing in the car right now, above the list
+    settingNote(item, settings)?.let { CarLabel(it, 14.sp, colors.focus, weight = FontWeight.Bold, maxLines = 3) }
+    val apps = loaded ?: return
     if (apps.isEmpty()) CarLabel(stringResource(item.empty), 15.sp, colors.text2, maxLines = 2)
     for (app in apps) {
         PhoneTickRow(app.label, item.isSelected(stored, app.packageName), icon = app.icon) {

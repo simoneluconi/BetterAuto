@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.simoneluconi.betterauto.car.TemperatureUnit
 import com.simoneluconi.betterauto.car.UnitSystem
+import com.simoneluconi.betterauto.projection.PhoneAppChoices
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
@@ -27,7 +28,8 @@ enum class DriverSide {
 }
 
 /** SMART_HOME shows the provider in [com.simoneluconi.betterauto.smarthome.SmartHome.screenProvider]. */
-enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS, SMART_HOME }
+/** [APPS]: the grid of every app (ours and the phone's); [PHONE_APP]: a phone app open inside the launcher. */
+enum class Section { HOME, MUSIC, MAP, PHONE, VEHICLE, NOTIFICATIONS, SETTINGS, SMART_HOME, APPS, PHONE_APP }
 
 /**
  * Kinds of home widget; what each one shows and when it is offered is in `ui/widgets/HomeWidgets`.
@@ -257,6 +259,50 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     private val _recentApps = MutableStateFlow(loadList(KEY_RECENT))
     val recentApps: StateFlow<List<String>> = _recentApps
 
+    private val _phoneApps = MutableStateFlow(
+        if (prefs.contains(KEY_PHONE_APPS)) loadList(KEY_PHONE_APPS) else PhoneAppChoices.DEFAULTS,
+    )
+    /**
+     * Phone apps the driver chose to open in the car, in the order they were picked; until the list is first
+     * changed, the likely ones ([PhoneAppChoices.DEFAULTS], those not installed are left out where shown).
+     */
+    val phoneApps: StateFlow<List<String>> = _phoneApps
+
+    fun togglePhoneApp(packageName: String) {
+        val list = phoneApps.value
+        saveList(KEY_PHONE_APPS, if (packageName in list) list - packageName else list + packageName, _phoneApps)
+    }
+
+    /** Back to the likely apps, as before any change (bench and tests). */
+    fun resetPhoneApps() {
+        prefs.edit().remove(KEY_PHONE_APPS).apply()
+        _phoneApps.value = PhoneAppChoices.DEFAULTS
+    }
+
+    private val _phoneAppsWhileMoving = boolFlow(KEY_PHONE_APPS_MOVING, false)
+    /** Phone apps stay on while the car moves; off (the default), they pause until it stops. */
+    val phoneAppsWhileMoving: StateFlow<Boolean> = _phoneAppsWhileMoving
+
+    fun setPhoneAppsWhileMoving(value: Boolean) = saveBool(KEY_PHONE_APPS_MOVING, value, _phoneAppsWhileMoving)
+
+    private val _phoneAppSize = MutableStateFlow(enumOf(KEY_PHONE_APP_SIZE, UiSize.AUTO))
+    /** How big phone apps are drawn in the car, on top of what fits the screen (`projection/AppDensity`). */
+    val phoneAppSize: StateFlow<UiSize> = _phoneAppSize
+
+    fun setPhoneAppSize(value: UiSize) = saveEnum(KEY_PHONE_APP_SIZE, value, _phoneAppSize)
+
+    private val _phonePointerApps = MutableStateFlow(loadList(KEY_PHONE_POINTER_APPS))
+    /**
+     * Phone apps the knob drives with a pointer (nudges move it, turns scroll, a press taps), chosen in the app's
+     * hold panel; the others get the knob as keys (focus mode, the default).
+     */
+    val phonePointerApps: StateFlow<List<String>> = _phonePointerApps
+
+    fun togglePhonePointer(packageName: String) {
+        val list = phonePointerApps.value
+        saveList(KEY_PHONE_POINTER_APPS, if (packageName in list) list - packageName else list + packageName, _phonePointerApps)
+    }
+
     fun setThemeMode(value: ThemeMode) = saveEnum(KEY_THEME, value, _themeMode)
 
     fun setBarPosition(value: BarPosition) = saveEnum(KEY_BAR, value, _barPosition)
@@ -310,12 +356,14 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
 
     /**
      * The section a new car session opens: home, or where the driver left off. Settings and the notifications
-     * are passing visits, not a place to come back to: the section before them, else home.
+     * are passing visits, not a place to come back to: the section before them, else home. A phone app does not
+     * outlive the session: its section comes back as the apps.
      */
     fun onSessionStart() {
         val left = _section.value
         val next = when {
             _startOnHome.value -> Section.HOME
+            left == Section.PHONE_APP -> Section.APPS
             left == Section.SETTINGS || left == Section.NOTIFICATIONS ->
                 previousSection.takeIf { it != Section.SETTINGS && it != Section.NOTIFICATIONS } ?: Section.HOME
             else -> left
@@ -532,6 +580,10 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val MAX_NOTIF_APPS = 40
         private const val KEY_PHONE_TAB = "phone_tab"
         private const val KEY_PINNED = "pinned_apps"
+        private const val KEY_PHONE_APPS = "phone_apps"
+        private const val KEY_PHONE_APPS_MOVING = "phone_apps_while_moving"
+        private const val KEY_PHONE_APP_SIZE = "phone_app_size"
+        private const val KEY_PHONE_POINTER_APPS = "phone_pointer_apps"
         private const val KEY_RECENT = "recent_apps"
         private const val MAX_RECENT = 4
 

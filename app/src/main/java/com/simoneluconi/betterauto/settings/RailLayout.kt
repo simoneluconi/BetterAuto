@@ -8,6 +8,8 @@ enum class RailItem(val section: Section) {
     PHONE(Section.PHONE),
     VEHICLE(Section.VEHICLE),
     NOTIFICATIONS(Section.NOTIFICATIONS),
+    /** Hidden, it still comes when the phone's apps don't all fit in the bar ([RailLayout.phoneAppsRoom]). */
+    APPS(Section.APPS),
 }
 
 /** Where an item goes: its own button, one of two grouped buttons, or nowhere. */
@@ -25,6 +27,8 @@ object RailLayout {
         RailEntry(RailItem.VEHICLE, RailSlot.BAR),
         // The bell in the status bar already opens them
         RailEntry(RailItem.NOTIFICATIONS, RailSlot.HIDDEN),
+        // Comes by itself when needed
+        RailEntry(RailItem.APPS, RailSlot.HIDDEN),
     )
 
     val Groups = listOf(RailSlot.GROUP_1, RailSlot.GROUP_2)
@@ -58,6 +62,24 @@ object RailLayout {
      */
     fun mediaApps(pinned: List<String>, recent: List<String>, followed: String?, suggested: () -> List<String>): List<String> =
         (pinned + recent.filter { it !in pinned }).ifEmpty { suggested() }.filter { it != followed }
+
+    /** How many media and phone app buttons the bar shows, and whether its Apps button must come for the rest. */
+    data class AppsRoom(val media: Int, val phone: Int, val appsButton: Boolean)
+
+    /**
+     * [free] buttons' room after the sections, for [media] media apps and [phone] phone apps. All of them if they fit;
+     * otherwise the Apps button takes one place (unless [appsPlaced] in the bar already) and the media apps come first.
+     */
+    fun phoneAppsRoom(free: Int, media: Int, phone: Int, appsPlaced: Boolean): AppsRoom {
+        val room = free.coerceAtLeast(0)
+        if (media + phone <= room) return AppsRoom(media, phone, appsButton = false)
+        // The button is only needed for phone apps left out: media apps live in Music too; and never without room for
+        // itself, it would push Settings off the bar
+        if (phone == 0 || room == 0) return AppsRoom(minOf(media, room), 0, appsButton = false)
+        val left = if (appsPlaced) room else (room - 1).coerceAtLeast(0)
+        val shownMedia = minOf(media, left)
+        return AppsRoom(shownMedia, minOf(phone, left - shownMedia), appsButton = !appsPlaced)
+    }
 }
 
 /** How the clock in the status bar is shown. */

@@ -287,6 +287,20 @@ Without root, Shizuku dies whenever the phone switches its USB port to accessory
 so with the cable it only helps on rooted phones. Debug: `--es shizuku probe` routes audio for 3 s and
 logs bytes and peak; `--es shizuku allow` asks for the permission.
 
+### Phone apps in the car
+
+The same shell process runs `AppDisplayHost`: a VirtualDeviceManager device of the shell user whose display has a
+display group, and so a power state, of its own, so its apps keep running with the phone locked
+(`LOCK_STATE_ALWAYS_UNLOCKED`). Creating a device needs a companion association with an app-streaming profile:
+the first time, the shell makes one for itself (`cmd companiondevice associate <user> com.android.shell
+02:42:41:55:54:4f android.app.role.COMPANION_DEVICE_APP_STREAMING`, a made-up address). It stays on the phone,
+also after BetterAuto is uninstalled; `adb shell cmd companiondevice list <user>` shows it and
+`adb shell cmd companiondevice disassociate <user> com.android.shell 02:42:41:55:54:4f` removes it.
+The system finds the association by the caller's package name: the shell's context must carry
+`com.android.shell` (see `AppDisplayHost.shellIdentity`). Debug: `--es apps start,<package>` (keys, taps, power,
+see `AppDisplayProbe`; not with a car session's phone app open: they share the one display), `--es phoneApps
+<packages>` sets the chosen apps, `--es screen 800x480` tries the density on other screens.
+
 ## TLS certificate
 
 The phone identity is read from the PEM files (`.pem`, `.crt`, `.cer`, `.key`) at the root of

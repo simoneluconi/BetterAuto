@@ -39,6 +39,12 @@ data class CarColors(
 
     /** Card background tinted by the album color. */
     val albumCard: Color get() = lerp(surface, album, 0.16f)
+
+    /**
+     * Behind a phone app's picture, day and night alike, as behind a video: the first frame after its display wakes
+     * comes partly transparent, and the light card behind it showed through as a gray veil until the app drew again.
+     */
+    val appBackdrop: Color get() = Color.Black
 }
 
 val NightColors = CarColors(

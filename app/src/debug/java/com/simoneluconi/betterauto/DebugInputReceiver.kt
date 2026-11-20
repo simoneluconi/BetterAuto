@@ -76,6 +76,8 @@ import kotlin.concurrent.thread
  *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
  *   ... --es tcp 192.0.2.10:5277  start a session with a head unit listening on the network (port 5277 if left out)
  *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
+ *   ... --es apps start,com.spotify.music  a phone app on the app display, without a car (AppDisplayProbe: keys,
+ *                            taps, a frame saved, its power; the log counts the frames)
  *   ... --es shizuku bluetooth  answer a pairing that is not happening through Shizuku: logs whether the shell
  *                            side reaches Bluetooth ("false" is right, an exception is not)
  *   ... --es shizuku own     use BetterAuto's own shell process instead of Shizuku's user service, as on phones
@@ -87,7 +89,9 @@ import kotlin.concurrent.thread
  *                            --es driverSide right: the bar and the big widget on the right (left, auto)
  *   ... --es screen 9:16     pretend the car screen has this shape (or a size like 1280x480) inside the
  *                            real frame, to try portrait and wide layouts on any head unit; "off" to stop
- *   ... --es section music   open a section: home, music, map, phone or settings
+ *   ... --es section music   open a section: home, music, map, phone, settings, apps...
+ *   ... --es phoneApps com.google.android.youtube,com.android.chrome  the phone apps chosen for the car ("" none,
+ *                            "default" the likely ones, as before any change)
  *   ... --es home "rows:map|clock,music"  the home's widgets: rows or columns, the lines split by '|', their
  *                            places by ',', a place's swipe-away widgets after '+' (music, notifications, favorites,
  *                            clock, calendar, weather, map; "TYPE:param" for a type with a parameter; even sizes);
@@ -102,6 +106,7 @@ import kotlin.concurrent.thread
  *   ... --es notify "Text"   pretend message (add --es from "Name" and --ez group true for a group chat)
  *   ... --ez demo true       show only pretend notifications (screenshots without personal data)
  *   ... --ez clearDemo true  remove the pretend notifications
+ *   ... --ez touchscreen false  pretend the car has no touchscreen (knob only: phone apps get the pointer mode)
  *   ... --es motion moving   pretend the car moves ("standing" stands, "off" back to what the car says): the
  *                            car settings and the edit modes are only there while it stands
  *   ... --es vehicle demo    pretend car data on the vehicle screen ("off" clears it, "diagnostics" opens the codes);
@@ -195,6 +200,7 @@ class DebugInputReceiver : BroadcastReceiver() {
             "own" -> ShizukuShellProcess.remember(context).also { EventLog.log("Debug: Shizuku through our own shell process") }
             "userService" -> ShizukuShellProcess.forget(context).also { EventLog.log("Debug: Shizuku through its user service") }
         }
+        intent.getStringExtra("apps")?.let { command -> thread(name = "debug-apps-command") { AppDisplayProbe.command(context, command) } }
         intent.getStringExtra("units")?.let { name ->
             UnitSystem.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setUnitSystem(it) }
@@ -241,6 +247,18 @@ class DebugInputReceiver : BroadcastReceiver() {
         intent.getStringExtra("section")?.let { name ->
             Section.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
                 ?.let { LauncherSettings.get(context).setSection(it) }
+        }
+        intent.getStringExtra("phoneApps")?.let { list ->
+            val settings = LauncherSettings.get(context)
+            if (list == "default") {
+                settings.resetPhoneApps()
+            } else {
+                val wanted = list.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                // The chosen apps become exactly these, in this order
+                settings.phoneApps.value.forEach { settings.togglePhoneApp(it) }
+                wanted.forEach { settings.togglePhoneApp(it) }
+            }
+            EventLog.log("Debug: phone apps ${settings.phoneApps.value}")
         }
         intent.getStringExtra("mic")?.let { name ->
             MicSource.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -319,6 +337,11 @@ class DebugInputReceiver : BroadcastReceiver() {
             "moving" -> CarMotionState.pretend.value = CarMotion.MOVING
             "standing" -> CarMotionState.pretend.value = CarMotion.STANDING
             "off" -> CarMotionState.pretend.value = null
+        }
+        // A car without a touchscreen (the knob alone, a VW's), or with one, until the next session says again
+        if (intent.hasExtra("touchscreen")) {
+            CarState.touchscreen.value = intent.getBooleanExtra("touchscreen", true)
+            EventLog.log("Debug: the car has ${if (CarState.touchscreen.value) "a" else "no"} touchscreen")
         }
         intent.getStringExtra("mapDrive")?.let { spec ->
             val p = spec.split(',').mapNotNull { it.trim().toDoubleOrNull() }
