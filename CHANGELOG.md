@@ -6,6 +6,20 @@ version and date.
 
 ## Unreleased
 
+### English
+
+- The arrival buttons no longer close as the car enters the garage: the car's GPS losing the satellites there
+  made them start over.
+- When a panel closes (arrival buttons and the like) the car screen no longer stays halfway through the fade,
+  lighter, until the knob is moved.
+
+### Italiano
+
+- I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage: il GPS dell'auto, perdendo lì i
+  satelliti, li faceva ripartire da capo.
+- Quando un pannello si chiude (pulsanti dell'arrivo e simili) lo schermo dell'auto non resta più a metà della
+  dissolvenza, più chiaro, finché non si muove la manopola.
+
 ## 0.3.6 (2026-11-18)
 
 ### English

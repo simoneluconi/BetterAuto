@@ -3,9 +3,11 @@ package com.simoneluconi.betterauto.projection
 import android.app.Presentation
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -47,6 +49,29 @@ class LauncherPresentation(context: Context, display: Display) :
         }
         setContentView(composeView)
         composeView.requestFocus()
+        window?.decorView?.viewTreeObserver?.addOnDrawListener(settleOnDraw)
+    }
+
+    /**
+     * Once the screen stops changing it is drawn once more. The encoder drops frames faster than the car's
+     * rate, often the last of an animation, and its repeats then kept showing one from halfway (the arrival
+     * panel half faded out) until something else redrew. Only after a frame that came close behind another:
+     * a lone one (the music's progress, every second) is never dropped, and settling it too added a frame a second.
+     */
+    private val settle = Runnable {
+        settling = true
+        window?.decorView?.invalidate()
+    }
+    private var settling = false
+    private var lastDrawAt = 0L
+    private val settleOnDraw = ViewTreeObserver.OnDrawListener {
+        val decor = window?.decorView ?: return@OnDrawListener
+        val now = SystemClock.uptimeMillis()
+        val quick = now - lastDrawAt < QUICK_FRAME_MS
+        lastDrawAt = now
+        decor.removeCallbacks(settle)
+        // The settling draw itself asks for no other
+        if (settling) settling = false else if (quick) decor.postDelayed(settle, SETTLE_MS)
     }
 
     override fun onStart() {
@@ -55,6 +80,10 @@ class LauncherPresentation(context: Context, display: Display) :
     }
 
     override fun onStop() {
+        window?.decorView?.let {
+            it.removeCallbacks(settle)
+            it.viewTreeObserver.removeOnDrawListener(settleOnDraw)
+        }
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         super.onStop()
     }
@@ -94,6 +123,12 @@ class LauncherPresentation(context: Context, display: Display) :
     private var swallowUp: Int? = null
 
     private companion object {
+        /** Well past one frame at the car's rate (30 fps at the least), so this one is kept. */
+        const val SETTLE_MS = 120L
+
+        /** Closer than this to the previous draw, a frame may be dropped (one frame at 30 fps, with some jitter). */
+        const val QUICK_FRAME_MS = 45L
+
         private val NavigationKeys = setOf(
             KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,

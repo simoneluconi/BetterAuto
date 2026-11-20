@@ -131,7 +131,8 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
                     phoneWake.trySend(Unit)
                 }
                 carBlindLogged = true
-                if (lastCarSampleAt != 0L) forgetCarPosition()
+                // What it said while it saw them stays true: going blind is the car entering the garage, and
+                // starting over from not knowing closed the panel there, the buttons still needed
                 lastCarSampleAt = 0L
                 return@collect
             }
@@ -147,14 +148,6 @@ class ArrivalWatcher(private val context: Context, private val scope: CoroutineS
 
     /** Wakes the phone's location loop at once (the car's GPS just went blind). */
     private val phoneWake = Channel<Unit>(Channel.CONFLATED)
-
-    /** What the car's GPS said is not to be believed: the fences start again from not knowing. */
-    @Synchronized
-    private fun forgetCarPosition() {
-        lastSample = null
-        trackers.values.forEach { it.reset() }
-        _state.value = ArrivalState()
-    }
 
     private suspend fun followFakeCar() {
         while (true) {

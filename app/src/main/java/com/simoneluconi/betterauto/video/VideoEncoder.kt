@@ -50,6 +50,7 @@ class VideoEncoder(width: Int, height: Int, fps: Int, bitrate: Int) {
             // rather than re-encoding the same picture at full rate (battery, heat, USB)
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, STATIC_REPEAT_US)
             // Animations draw at the phone's refresh rate: frames beyond what the car shows are dropped before encoding
+            // (the last one too, at times: LauncherPresentation draws a still screen once more)
             setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps.toFloat())
         }
         try {
