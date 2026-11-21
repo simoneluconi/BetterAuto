@@ -60,6 +60,7 @@ import com.simoneluconi.betterauto.phone.Calls
 import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.projection.PhoneAppDisplay
 import com.simoneluconi.betterauto.ui.apps.AppsScreen
+import com.simoneluconi.betterauto.ui.apps.PhoneAppFullscreen
 import com.simoneluconi.betterauto.ui.apps.PhoneAppPanelShown
 import com.simoneluconi.betterauto.ui.apps.PhoneAppScreen
 import com.simoneluconi.betterauto.ui.phone.CallScreen
@@ -172,6 +173,13 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     val carDriverOnRight by CarState.driverOnRight.collectAsStateWithLifecycle()
     val railRight = driverSide.onRight(carDriverOnRight)
     var openGroup by remember { mutableStateOf<RailSlot?>(null) }
+    // A phone app on the whole screen: no bar, no status bar. Each app opens as the setting says, then as the driver
+    // chooses while it stays open
+    val appFullscreen by PhoneAppFullscreen.on.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) {
+        PhoneAppDisplay.open.collect { app -> PhoneAppFullscreen.on.value = app != null && settings.opensFullscreen(app) }
+    }
+    val fullApp = appFullscreen && section == Section.PHONE_APP && shownCall == null
     // The trip (set on the phone, said, picked in the panel, or left from before a break) is guided while the car's
     // screen is up (focus is only given there: never for the preview on the phone, which may sit in the background);
     // the map comes forward when one starts, or when a place waits for the driver's choice
@@ -321,6 +329,11 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                             return@onPreviewKeyEvent true
                         }
                     }
+                    // A phone app on the whole screen: Back first brings the bar back, before the app gets it
+                    if (fullApp && (event.key == Key.Back || event.key == Key.Escape)) {
+                        if (!down) PhoneAppFullscreen.on.value = false
+                        return@onPreviewKeyEvent true
+                    }
                     // Knob nudges move between zones (the bar, each widget or panel of the screen); turning goes
                     // through every control. Not out of a panel that waits for the driver: there they move inside it
                     val toScreen = when {
@@ -430,7 +443,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                         CarZones.leaving()
                         runCatching { railFocus.requestFocus() }
                     },
-                ) { MainArea(section, settings, mod) }
+                ) { MainArea(section, settings, mod, full = fullApp) }
             }
             val rail = @Composable { vertical: Boolean ->
                 Box(Modifier.onFocusChanged { railHasFocus = it.hasFocus }) {
@@ -442,15 +455,16 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 // The call takes the whole screen, so the knob only moves between its buttons
                 CallScreen(current, callFocus, Modifier.fillMaxSize())
             } else if (left) {
+                // The bar left out on the whole screen; the screen stays the same composable (the app's picture kept)
                 Row(Modifier.fillMaxSize()) {
-                    if (!railRight) rail(true)
+                    if (!railRight && !fullApp) rail(true)
                     main(Modifier.weight(1f))
-                    if (railRight) rail(true)
+                    if (railRight && !fullApp) rail(true)
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
                     main(Modifier.weight(1f))
-                    rail(false)
+                    if (!fullApp) rail(false)
                 }
             }
             // The bar's editor: after it closes, back where the knob was, else on the bar
@@ -487,7 +501,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
             if (current == null) ArrivalScrim(Modifier.fillMaxSize())
             // Centered over the screen beside the app bar, where the driver looks, not over the whole frame
             val besideRail = when {
-                current != null -> Modifier
+                current != null || fullApp -> Modifier
                 left -> Modifier.padding(start = RAIL_WIDTH)
                 else -> Modifier.padding(bottom = RAIL_HEIGHT)
             }
@@ -499,7 +513,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                 // At the very top, over the status bar, where it hides the least
                 NotificationBanner(
                     settings,
-                    Modifier.align(Alignment.TopCenter).then(if (left) Modifier.padding(start = RAIL_WIDTH) else Modifier)
+                    Modifier.align(Alignment.TopCenter).then(if (left && !fullApp) Modifier.padding(start = RAIL_WIDTH) else Modifier)
                         .padding(top = 10.dp, start = 24.dp, end = 24.dp),
                 )
             }
@@ -509,7 +523,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
 }
 
 @Composable
-private fun MainArea(section: Section, settings: LauncherSettings, modifier: Modifier) {
+private fun MainArea(section: Section, settings: LauncherSettings, modifier: Modifier, full: Boolean) {
     Column(
         modifier
             // Nudges never slip out of the screen sideways into the app bar: only the nudge toward the bar
@@ -521,10 +535,11 @@ private fun MainArea(section: Section, settings: LauncherSettings, modifier: Mod
             }
             .focusGroup()
             .fillMaxSize()
-            .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 24.dp),
+            .then(if (full) Modifier else Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 24.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        StatusBar(settings, showLayoutButton = section == Section.HOME)
+        // A phone app on the whole screen goes without (its panel has the ways back)
+        if (!full) StatusBar(settings, showLayoutButton = section == Section.HOME)
         AnimatedContent(
             targetState = section,
             transitionSpec = {

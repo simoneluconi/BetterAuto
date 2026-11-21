@@ -881,6 +881,9 @@
     <string name="phone_app_use_focus">Spostati tra i comandi</string>
     <string name="phone_app_to_bar">Torna alla barra</string>
     <string name="phone_app_close">Chiudi l\'app</string>
+    <string name="phone_app_fullscreen">Schermo intero</string>
+    <string name="phone_app_fullscreen_exit">Esci da schermo intero</string>
+    <string name="phone_app_more">Altre scelte per l\'app</string>
     <string name="phone_app_close_named">Chiudi %1$s</string>
     <string name="phone_app_back_to">Torna a %1$s</string>
     <string name="phone_app_back_in_app">Indietro nell\'app</string>
@@ -892,6 +895,10 @@
     <string name="settings_phone_apps_needs_android">Questo telefono non può mostrare le sue app in auto: serve Android 14 o successivo.</string>
     <string name="settings_phone_apps_moving">App dal telefono in movimento</string>
     <string name="settings_phone_apps_moving_desc">Solo da fermo: l\'app si ferma quando l\'auto parte e riprende quando si ferma. Sempre: anche durante la guida.</string>
+    <string name="settings_phone_app_fullscreen">App del telefono a schermo intero</string>
+    <string name="settings_phone_app_fullscreen_desc">Come si aprono le app del telefono: con la barra e la barra di stato, o su tutto lo schermo dell\'auto. Quando lo scegli: solo dopo Schermo intero nel pannello dell\'app (tieni premuta la manopola, o tocca la linguetta in alto). Per app: come l\'hai lasciata l\'ultima volta nel suo pannello. Sempre: ogni app. Back o il pannello riportano la barra.</string>
+    <string name="option_fullscreen_when_chosen">Quando lo scegli</string>
+    <string name="option_fullscreen_per_app">Per app</string>
     <string name="settings_phone_app_size">Dimensione delle app del telefono</string>
     <string name="settings_phone_app_size_desc">Quanto sono grandi le app del telefono in auto. Auto: più o meno come su un telefono girato, per lo schermo di questa auto. Più grande mostra meno dell\'app alla volta.</string>
     <string name="option_parked_only">Solo da fermo</string>

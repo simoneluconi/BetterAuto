@@ -81,6 +81,9 @@ data class RoutePreferences(
 /** How big the car screen is drawn: [scale] times the density the car states (Auto: as it states). */
 enum class UiSize(val scale: Double) { SMALLER(0.9), AUTO(1.0), LARGER(1.1), LARGEST(1.2) }
 
+/** When a phone app opens on the car's whole screen: only once chosen in its panel, as last chosen there, or always. */
+enum class AppFullscreenMode { WHEN_CHOSEN, PER_APP, ALWAYS }
+
 /**
  * Launcher preferences, persisted so the car screen comes back exactly as it was left.
  * Every setter saves immediately.
@@ -371,6 +374,30 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         saveList(KEY_PHONE_POINTER_APPS, if (packageName in list) list - packageName else list + packageName, _phonePointerApps)
     }
 
+    private val _phoneAppFullscreen = MutableStateFlow(enumOf(KEY_PHONE_APP_FULLSCREEN, AppFullscreenMode.WHEN_CHOSEN))
+    /** Whether phone apps open on the car's whole screen (the panel's choice works in every mode). */
+    val phoneAppFullscreen: StateFlow<AppFullscreenMode> = _phoneAppFullscreen
+
+    fun setPhoneAppFullscreen(value: AppFullscreenMode) = saveEnum(KEY_PHONE_APP_FULLSCREEN, value, _phoneAppFullscreen)
+
+    private val _phoneFullscreenApps = MutableStateFlow(loadList(KEY_PHONE_FULLSCREEN_APPS))
+    /** Phone apps last put on the whole screen from their panel, for [AppFullscreenMode.PER_APP]. */
+    val phoneFullscreenApps: StateFlow<List<String>> = _phoneFullscreenApps
+
+    /** The panel's choice for [packageName], kept when the mode remembers it per app. */
+    fun choosePhoneAppFullscreen(packageName: String, on: Boolean) {
+        if (phoneAppFullscreen.value != AppFullscreenMode.PER_APP) return
+        val list = phoneFullscreenApps.value - packageName
+        saveList(KEY_PHONE_FULLSCREEN_APPS, if (on) list + packageName else list, _phoneFullscreenApps)
+    }
+
+    /** Whether [packageName] opens on the whole screen. */
+    fun opensFullscreen(packageName: String): Boolean = when (phoneAppFullscreen.value) {
+        AppFullscreenMode.WHEN_CHOSEN -> false
+        AppFullscreenMode.PER_APP -> packageName in phoneFullscreenApps.value
+        AppFullscreenMode.ALWAYS -> true
+    }
+
     fun setThemeMode(value: ThemeMode) = saveEnum(KEY_THEME, value, _themeMode)
 
     fun setBarPosition(value: BarPosition) = saveEnum(KEY_BAR, value, _barPosition)
@@ -659,6 +686,8 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_PHONE_APPS_MOVING = "phone_apps_while_moving"
         private const val KEY_PHONE_APP_SIZE = "phone_app_size"
         private const val KEY_PHONE_POINTER_APPS = "phone_pointer_apps"
+        private const val KEY_PHONE_APP_FULLSCREEN = "phone_app_fullscreen"
+        private const val KEY_PHONE_FULLSCREEN_APPS = "phone_fullscreen_apps"
         private const val KEY_RECENT = "recent_apps"
         private const val MAX_RECENT = 4
 

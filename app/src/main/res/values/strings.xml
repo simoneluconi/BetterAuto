@@ -883,6 +883,9 @@
     <string name="phone_app_use_focus">Move between controls</string>
     <string name="phone_app_to_bar">Back to the bar</string>
     <string name="phone_app_close">Close the app</string>
+    <string name="phone_app_fullscreen">Full screen</string>
+    <string name="phone_app_fullscreen_exit">Exit full screen</string>
+    <string name="phone_app_more">More choices for the app</string>
     <string name="phone_app_close_named">Close %1$s</string>
     <string name="phone_app_back_to">Back to %1$s</string>
     <string name="phone_app_back_in_app">Back in the app</string>
@@ -894,6 +897,10 @@
     <string name="settings_phone_apps_needs_android">This phone can\'t show its apps in the car: it needs Android 14 or later.</string>
     <string name="settings_phone_apps_moving">Phone apps while driving</string>
     <string name="settings_phone_apps_moving_desc">Only when the car stands: the app pauses as the car moves off and goes on when it stops. Always: also while driving.</string>
+    <string name="settings_phone_app_fullscreen">Phone apps on the whole screen</string>
+    <string name="settings_phone_app_fullscreen_desc">How phone apps open: with the bar and the status bar, or on the car\'s whole screen. When chosen: only after Full screen in the app\'s panel (hold the knob\'s press, or tap the tab at the top). Per app: as you last chose in its panel. Always: every app. Back or the panel brings the bar back.</string>
+    <string name="option_fullscreen_when_chosen">When chosen</string>
+    <string name="option_fullscreen_per_app">Per app</string>
     <string name="settings_phone_app_size">Phone apps\' size</string>
     <string name="settings_phone_app_size_desc">How big phone apps are drawn in the car. Auto: about as on a phone held sideways, for this car\'s screen. Bigger shows less of the app at once.</string>
     <string name="option_parked_only">Only when standing</string>

@@ -34,7 +34,8 @@ import kotlin.concurrent.thread
  * Capture and sending are decoupled: the capture thread only queues PCM, and a sender thread sends
  * everything queued in one message each time the car acknowledges. Head units may allow a single
  * unacknowledged message and ack slowly; batching keeps the throughput equal to real time instead of
- * losing the audio captured while waiting. The queue is capped so latency cannot grow without bound.
+ * losing the audio captured while waiting. The queue is capped so latency cannot grow without bound; for the
+ * music [AudioPacing] also bounds what is sent ahead of the car's playing, so a video stays with its sound.
  *
  * Audio focus works like Android Auto ([CarAudioFocus] shares it between the two sinks): the music
  * starts once the car grants it, and when the car takes it back (radio, a call, its own navigation
@@ -79,6 +80,11 @@ class AudioSinkChannel(
     @Volatile
     private var window = Semaphore(1)
 
+    // Music only: the audio ahead of the car's playing, guarded by (and waited on through) [lock] with queuedBytes
+    @Volatile
+    private var pacing: AudioPacing? = null
+    private val lock = Object()
+
     @Volatile
     private var running = false
     private var sender: Thread? = null
@@ -106,6 +112,7 @@ class AudioSinkChannel(
     private var statsBytes = 0L
     private var statsDropped = 0L
     private var statsMaxWaitMs = 0L
+    private var statsMaxAheadMs = 0
     private var statsStart = 0L
 
     override fun onOpened() {
@@ -118,7 +125,16 @@ class AudioSinkChannel(
     override fun onChannelMessage(msg: AapMessage) {
         when (msg.id) {
             MediaMessageId.MEDIA_MESSAGE_CONFIG_VALUE -> onConfig(Config.parseFrom(msg.payload))
-            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> window.release(ackedMessages(msg.payload))
+            MediaMessageId.MEDIA_MESSAGE_ACK_VALUE -> {
+                val acked = ackedMessages(msg.payload)
+                window.release(acked)
+                pacing?.let { pace ->
+                    synchronized(lock) {
+                        pace.acked(acked)
+                        lock.notifyAll()
+                    }
+                }
+            }
             else -> EventLog.log("$label: unhandled message ${msg.id} (${msg.payload.size} bytes)")
         }
     }
@@ -141,6 +157,8 @@ class AudioSinkChannel(
         maxBatchBytes = bytesPerSecond * (if (media) MAX_BATCH_MS else MAX_BATCH_GUIDANCE_MS) / 1000
         maxQueuedBytes = bytesPerSecond * (if (media) MAX_QUEUE_MS else MAX_QUEUE_GUIDANCE_MS) / 1000
         window = Semaphore(response.maxUnacked.coerceAtLeast(1))
+        // Prompts have no picture to keep up with: a late word matters less than a lost one
+        pacing = if (media) AudioPacing(bytesPerSecond / 1000.0) else null
         EventLog.log("$label ready: $format, max_unacked=${response.maxUnacked}${if (carriesSound) "" else ", left unused"}")
         if (!carriesSound) return
         if (media) CarState.audio.value = "$format · idle"
@@ -228,14 +246,23 @@ class AudioSinkChannel(
             return
         }
         queue.add(Pcm(timestampUs, data))
-        synchronized(this) {
+        synchronized(lock) {
             queuedBytes += data.size
-            // Too far behind (car stopped acking): drop the oldest audio rather than build up delay
-            while (queuedBytes > maxQueuedBytes) {
+            // Too far behind (car stopped acking, or a hiccup left a backlog): drop the oldest audio rather than
+            // keep the delay. The music counts what is already on its way to the car too
+            val pace = pacing
+            val limit = if (pace != null) pace.latencyLimitBytes() - pace.inFlightBytes else maxQueuedBytes
+            var dropped = false
+            while (queuedBytes > limit) {
                 val oldest = queue.firstOrNull { it is Pcm } as Pcm? ?: break
                 if (!queue.remove(oldest)) break
                 queuedBytes -= oldest.data.size
                 statsDropped += oldest.data.size
+                dropped = true
+            }
+            // Dropping again and again: this car needs more ahead than we allow
+            if (dropped && pace != null && pace.loosen(SystemClock.elapsedRealtime())) {
+                EventLog.log("$label: audio dropped to keep up, allowing ${pace.allowanceMs} ms ahead")
             }
         }
     }
@@ -261,19 +288,32 @@ class AudioSinkChannel(
         if (!window.tryAcquire(ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
             EventLog.log("$label: no ack from the car for $ACK_TIMEOUT_MS ms, sending anyway")
         }
+        val pace = pacing
+        val room = if (pace == null) Int.MAX_VALUE else waitForRoom(pace)
         val waitedMs = (System.nanoTime() - waitStart) / 1_000_000
 
         // Everything captured while waiting goes out in this one message, copied once into it
         batch.clear()
         batch += first.data
         var size = first.data.size
-        while (size < maxBatchBytes) {
+        val most = minOf(maxBatchBytes, room)
+        while (size < most) {
             val next = queue.peekFirst() as? Pcm ?: break
             if (!queue.remove(next)) break
             batch += next.data
             size += next.data.size
         }
-        synchronized(this) { queuedBytes -= size }
+        synchronized(lock) {
+            queuedBytes -= size
+            if (pace != null) {
+                // Counted before it goes: its ack may come back before send() returns
+                pace.sent(size)
+                statsMaxAheadMs = maxOf(statsMaxAheadMs, pace.inFlightMs)
+                if (pace.tighten(SystemClock.elapsedRealtime())) {
+                    EventLog.log("$label: steady again, allowing ${pace.allowanceMs} ms ahead")
+                }
+            }
+        }
 
         val payload = ByteArray(MEDIA_TIMESTAMP_BYTES + size)
         putMediaTimestamp(payload, first.timestampUs)
@@ -285,6 +325,28 @@ class AudioSinkChannel(
         batch.clear()
         send(MediaMessageId.MEDIA_MESSAGE_DATA_VALUE, payload)
         recordStats(size, waitedMs)
+    }
+
+    /**
+     * Waits while the music ahead of the car's playing fills the allowance (the car plays what it has: more
+     * ahead is only more delay). Returns the bytes that may go now. A car that acks nothing for a while has
+     * not started playing yet: it gets more ahead, and after [ACK_TIMEOUT_MS] the audio goes anyway.
+     */
+    private fun waitForRoom(pace: AudioPacing): Int = synchronized(lock) {
+        val start = SystemClock.elapsedRealtime()
+        while (running && pace.roomBytes() <= 0) {
+            val waited = SystemClock.elapsedRealtime() - start
+            if (waited >= ACK_TIMEOUT_MS) {
+                EventLog.log("$label: no ack from the car for $ACK_TIMEOUT_MS ms with ${pace.inFlightMs} ms ahead, sending anyway")
+                break
+            }
+            val before = pace.inFlightBytes
+            lock.wait(minOf(AudioPacing.STALL_MS, ACK_TIMEOUT_MS - waited))
+            if (pace.inFlightBytes == before && pace.roomBytes() <= 0 && pace.loosen(SystemClock.elapsedRealtime())) {
+                EventLog.log("$label: the car waits for more before it plays, allowing ${pace.allowanceMs} ms ahead")
+            }
+        }
+        pace.roomBytes().coerceAtLeast(1)
     }
 
     /**
@@ -315,6 +377,7 @@ class AudioSinkChannel(
             }
         }
         val sessionId = nextSessionId++
+        pacing?.let { synchronized(lock) { it.reset() } }
         send(
             MediaMessageId.MEDIA_MESSAGE_START_VALUE,
             Start.newBuilder().setSessionId(sessionId).setConfigurationIndex(configIndex).build(),
@@ -343,16 +406,18 @@ class AudioSinkChannel(
         val elapsed = now - statsStart
         if (elapsed < 5_000_000_000L) return
         val bytesPerMs = format.sampleRate * format.channels * format.bits / 8 / 1000.0
+        val ahead = pacing?.let { ", up to $statsMaxAheadMs ms ahead (allowed ${it.allowanceMs})" }.orEmpty()
         EventLog.log(
-            "$label: %d messages, %.0f%% of real time sent, %.0f ms dropped, max ack wait %d ms".format(
+            "$label: %d messages, %.0f%% of real time sent, %.0f ms dropped, max ack wait %d ms%s".format(
                 java.util.Locale.ROOT, statsMessages, statsBytes / bytesPerMs / (elapsed / 1e6) * 100,
-                statsDropped / bytesPerMs, statsMaxWaitMs,
+                statsDropped / bytesPerMs, statsMaxWaitMs, ahead,
             )
         )
         statsMessages = 0
         statsBytes = 0
         statsDropped = 0
         statsMaxWaitMs = 0
+        statsMaxAheadMs = 0
         statsStart = now
     }
 

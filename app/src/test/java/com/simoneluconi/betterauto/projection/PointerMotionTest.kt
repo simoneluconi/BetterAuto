@@ -8,10 +8,10 @@ class PointerMotionTest {
     @Test
     fun aNudgeMovesAShareOfTheShorterSide() {
         val moved = PointerMotion.move(PointerPosition(500f, 300f), 1, 0, PointerMotion.NUDGE_STEP, 1000, 600)
-        assertEquals(500f + 0.04f * 600, moved.x, 0.01f)
+        assertEquals(500f + PointerMotion.NUDGE_STEP * 600, moved.x, 0.01f)
         assertEquals(300f, moved.y, 0.01f)
         val up = PointerMotion.move(PointerPosition(500f, 300f), 0, -1, PointerMotion.NUDGE_STEP, 1000, 600)
-        assertEquals(300f - 24f, up.y, 0.01f)
+        assertEquals(300f - PointerMotion.NUDGE_STEP * 600, up.y, 0.01f)
     }
 
     @Test
@@ -29,7 +29,7 @@ class PointerMotionTest {
         assertEquals(1, streak.press(1, 0, 1200))
         assertEquals(2, streak.press(1, 0, 1500))
         assertEquals(PointerMotion.NUDGE_STEP, PointerMotion.nudgeStep(0), 1e-6f)
-        assertEquals(PointerMotion.NUDGE_STEP * 2, PointerMotion.nudgeStep(2), 1e-6f)
+        assertEquals(PointerMotion.NUDGE_STEP * (1 + 2 * PointerMotion.STREAK_GROWTH), PointerMotion.nudgeStep(2), 1e-6f)
         assertEquals(PointerMotion.NUDGE_STEP * PointerMotion.MAX_STREAK_STEPS, PointerMotion.nudgeStep(50), 1e-6f)
     }
 

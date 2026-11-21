@@ -24,7 +24,12 @@ version and date.
   close it. Typing in a phone app brings up the phone's own keyboard inside the app, in the car.
 - Holding the knob's press on a phone app opens a panel: go back to the bar, close the app, and, on cars without a
   touchscreen, use a pointer for apps that don't answer the knob (push the knob to move it, turn to scroll, press to
-  tap; remembered per app).
+  tap; remembered per app). The pointer slides rather than jumps, and quick pushes the same way carry it further.
+  The panel also puts the app on the whole screen, without the bar and the status bar: Back (or the panel again,
+  from the small tab at the top by touch) brings them back. Settings › Apps says how apps open: only when chosen,
+  as last chosen per app, or always on the whole screen.
+- The music in the car keeps closer to the phone: after a hiccup of the connection its delay no longer stays
+  higher for the rest of the drive, so a video in a phone app stays with its sound.
 - Route preferences in Settings › Map: fastest or shortest, and avoid tolls, motorways, ferries (under More options
   also unpaved roads, cash-only tolls and borders). They are kept off only where there is another way; changed during
   a trip, the route is worked out again.
@@ -65,7 +70,13 @@ version and date.
   telefono dentro l'app, in auto.
 - Tenendo premuta la manopola su un'app del telefono si apre un pannello: torna alla barra, chiudi l'app e, sulle auto
   senza touchscreen, usa un puntatore per le app che non rispondono alla manopola (spingi la manopola per muoverlo,
-  girala per scorrere, premi per toccare; ricordato per ogni app).
+  girala per scorrere, premi per toccare; ricordato per ogni app). Il puntatore scivola invece di saltare, e più
+  spinte veloci nella stessa direzione lo portano più lontano. Il pannello mette anche l'app a schermo intero, senza
+  barra e barra di stato: Back (o di nuovo il pannello, col tocco dalla linguetta in alto) le riporta. In
+  Impostazioni › App scegli come si aprono le app: solo quando lo scegli, come l'hai lasciata per ogni app, o sempre
+  a schermo intero.
+- La musica in auto resta più vicina al telefono: dopo un intoppo della connessione il suo ritardo non resta più alto
+  per il resto del viaggio, così un video in un'app del telefono resta allineato al suo audio.
 - Preferenze del percorso in Impostazioni › Mappa: più veloce o più breve, ed evita pedaggi, autostrade, traghetti
   (in Altre opzioni anche strade sterrate, pedaggi solo in contanti e confini). Vengono evitati solo dove c'è un'altra
   strada; se le cambi durante un viaggio, il percorso viene ricalcolato.

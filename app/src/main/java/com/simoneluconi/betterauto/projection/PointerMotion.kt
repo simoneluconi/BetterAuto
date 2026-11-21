@@ -15,13 +15,20 @@ data class SwipeTouch(val atMs: Long, val phase: Phase, val x: Float, val y: Flo
  */
 object PointerMotion {
     /** One nudge, pressed and let go. */
-    const val NUDGE_STEP = 0.04f
+    const val NUDGE_STEP = 0.05f
 
-    /** Quick nudges the same way (a car that sends presses only, no hold) grow by half a step each, up to this. */
-    const val MAX_STREAK_STEPS = 3f
+    /**
+     * Quick nudges the same way grow by this share of a step each, up to [MAX_STREAK_STEPS] steps: an Audi MMX2 sends
+     * every nudge as a press of 130-300 ms, never held, so streaks are how the cursor crosses the app there.
+     */
+    const val STREAK_GROWTH = 0.75f
+    const val MAX_STREAK_STEPS = 4f
 
     /** A nudge this close behind the last one the same way is part of a streak. */
-    const val STREAK_GAP_MS = 400L
+    const val STREAK_GAP_MS = 500L
+
+    /** The drawn cursor slides to where a nudge puts it in this long, rather than jumping (taps use the target). */
+    const val SLIDE_MS = 110
 
     /** A nudge held this long starts gliding, moved every [REPEAT_MS]. */
     const val HOLD_DELAY_MS = 300L
@@ -49,7 +56,7 @@ object PointerMotion {
     const val SWIPE_REST_MS = 60L
 
     /** How far one nudge moves, as a share of the shorter side, the [streak]-th quick one in a row (0: the first). */
-    fun nudgeStep(streak: Int): Float = NUDGE_STEP * minOf(1f + 0.5f * streak.coerceAtLeast(0), MAX_STREAK_STEPS)
+    fun nudgeStep(streak: Int): Float = NUDGE_STEP * minOf(1f + STREAK_GROWTH * streak.coerceAtLeast(0), MAX_STREAK_STEPS)
 
     /** How far one glide repeat moves, as a share of the shorter side, [heldMs] after the nudge was pressed. */
     fun heldStep(heldMs: Long): Float {

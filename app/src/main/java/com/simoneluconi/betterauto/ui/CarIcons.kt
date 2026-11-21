@@ -144,6 +144,12 @@ object CarIcons {
     val Pointer = icon("M6 3v15l4-3.5 3 6.5 2.6-1.2-3-6.3H18z")
     /** A phone app driven by moving between its controls: two buttons, the knob on the first. */
     val Controls = icon(roundRect(3f, 4f, 18f, 7f, 3.5f), roundRect(5f, 15f, 14f, 5f, 2.5f), "M8 7.5h8")
+    /** A phone app on the whole screen: four corners pointing out. */
+    val FullScreen = icon("M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5")
+    /** Back from the whole screen: the corners pointing in. */
+    val ExitFullScreen = icon("M9 4v5H4", "M15 4v5h5", "M20 15h-5v5", "M4 15h5v5")
+    /** More choices: three dots. */
+    val More = icon("M5 12h.01", "M12 12h.01", "M19 12h.01")
 
     private fun roundRect(x: Float, y: Float, w: Float, h: Float, r: Float) =
         "M${x + r} ${y}h${w - 2 * r}a$r $r 0 0 1 $r ${r}v${h - 2 * r}a$r $r 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a$r $r 0 0 1 ${-r} ${-r}v${-(h - 2 * r)}a$r $r 0 0 1 $r ${-r}z"

@@ -536,6 +536,15 @@ object SettingsCatalog {
             ),
             { it.phoneAppSize }, LauncherSettings::setPhoneAppSize,
         ),
+        ChoiceSetting(
+            "phone_app_fullscreen", SettingsCategory.APPS, R.string.settings_phone_app_fullscreen, R.string.settings_phone_app_fullscreen_desc,
+            listOf(
+                SettingOption(AppFullscreenMode.WHEN_CHOSEN, R.string.option_fullscreen_when_chosen),
+                SettingOption(AppFullscreenMode.PER_APP, R.string.option_fullscreen_per_app),
+                SettingOption(AppFullscreenMode.ALWAYS, R.string.option_always),
+            ),
+            { it.phoneAppFullscreen }, LauncherSettings::setPhoneAppFullscreen,
+        ),
 
         // Advanced
         ChoiceSetting(

@@ -8,6 +8,10 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.TextureView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -101,6 +105,7 @@ import com.simoneluconi.betterauto.ui.launcher.contentFocus
 import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /** Holding the knob's center this long opens the panel over the app, as a long press elsewhere (CarFocus). */
@@ -112,6 +117,15 @@ private const val HOLD_MS = 600L
  */
 object PhoneAppOpening {
     var takeKnob = false
+}
+
+/**
+ * The open phone app on the car's whole screen, without the bar and the status bar: chosen in its panel, left with
+ * Back (before the app gets it) or the panel again. Set by the launcher as each app opens, from
+ * [LauncherSettings.phoneAppFullscreen].
+ */
+object PhoneAppFullscreen {
+    val on = MutableStateFlow(false)
 }
 
 /**
@@ -170,6 +184,7 @@ fun PhoneAppScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val pointerApps by settings.phonePointerApps.collectAsStateWithLifecycle()
     // The pointer is for cars driven by the knob alone: with a touchscreen the finger does that job
     val touchscreen by CarState.touchscreen.collectAsStateWithLifecycle()
+    val fullscreen by PhoneAppFullscreen.on.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { PhoneAppDisplay.closed.collect { settings.setSection(Section.APPS) } }
     val app = open
     if (app == null) {
@@ -239,8 +254,15 @@ fun PhoneAppScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         settings.setSection(Section.APPS)
     }
 
-    // The app fills the screen edge to edge, with tighter corners than a card: those would cut what apps put there
-    val shape = RoundedCornerShape(if (!blocked && problem == null) PICTURE_CORNER else 24.dp)
+    // The app fills the screen edge to edge, with tighter corners than a card: those would cut what apps put there.
+    // On the whole screen, none: the car's screen has its own
+    val shape = RoundedCornerShape(
+        when {
+            blocked || problem != null -> 24.dp
+            fullscreen -> 0.dp
+            else -> PICTURE_CORNER
+        }
+    )
     Box(modifier.clip(shape).background(colors.surface, shape)) {
         when {
             blocked -> Message(
@@ -279,6 +301,25 @@ fun PhoneAppScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                         )
                     }
                 }
+                // On the whole screen a finger needs a way to the panel too (the knob holds its press): a small
+                // see-through tab at the top middle, where apps rarely put a button (the corners have theirs), tap
+                // only, so the knob stays on the app
+                if (fullscreen && touchscreen && !panel && !secure) {
+                    val label = stringResource(R.string.phone_app_more)
+                    Box(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 6.dp)
+                            .size(width = 72.dp, height = 34.dp)
+                            .clip(CircleShape)
+                            .background(colors.surface.copy(alpha = 0.7f))
+                            .semantics { contentDescription = label }
+                            .pointerInput(Unit) { detectTapGestures { showPanel(byKey = false) } },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CarIcon(CarIcons.More, colors.text, Modifier.size(24.dp))
+                    }
+                }
                 // Behind the panel: the app dims, nothing reaches it, and a tap there closes the panel
                 if (panel) {
                     Box(
@@ -297,12 +338,20 @@ fun PhoneAppScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                     val context = LocalContext.current
                     val name = remember(app) { MediaApps.info(context, app)?.label ?: app }
                     HoldPanel(
-                        name, pointer, offerPointer = !touchscreen, opened = panelOpens,
+                        name, pointer, offerPointer = !touchscreen, fullscreen = fullscreen, opened = panelOpens,
                         onMode = {
                             settings.togglePhonePointer(app)
                             closePanel(refocus = true)
                         },
+                        onFullscreen = {
+                            PhoneAppFullscreen.on.value = !fullscreen
+                            // Kept for the next opening when the setting remembers it per app
+                            settings.choosePhoneAppFullscreen(app, !fullscreen)
+                            closePanel(refocus = true)
+                        },
                         onBar = {
+                            // The bar shows again to take the knob
+                            PhoneAppFullscreen.on.value = false
                             closePanel(refocus = false)
                             leave?.invoke()
                         },
@@ -360,6 +409,10 @@ private fun AppPicture(
     // Pointer mode: our cursor in the picture's pixels, which are the display's
     var pictureSize by remember { mutableStateOf(IntSize.Zero) }
     var cursor by remember { mutableStateOf<PointerPosition?>(null) }
+    // Drawn where the cursor slides to, so a nudge reads as a move and not a jump; taps and swipes use [cursor]
+    val shownCursor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    var cursorPlaced by remember { mutableStateOf(false) }
+    var slide by remember { mutableStateOf(false) }
     val streak = remember { NudgeStreak() }
     var glide by remember { mutableStateOf<Job?>(null) }
     var glideKey by remember { mutableStateOf<Key?>(null) }
@@ -404,7 +457,19 @@ private fun AppPicture(
 
     fun moveCursor(dx: Int, dy: Int, share: Float) {
         val from = cursorNow() ?: return
+        slide = true
         cursor = PointerMotion.move(from, dx, dy, share, pictureSize.width, pictureSize.height)
+    }
+
+    // Retargeted on every move: a glide's steps (every 40 ms) blend into one motion, keeping its speed
+    LaunchedEffect(cursor, pictureSize) {
+        val target = cursorNow()?.let { Offset(it.x, it.y) } ?: return@LaunchedEffect
+        if (slide && cursorPlaced) {
+            shownCursor.animateTo(target, tween(PointerMotion.SLIDE_MS, easing = LinearOutSlowInEasing))
+        } else {
+            shownCursor.snapTo(target)
+            cursorPlaced = true
+        }
     }
 
     // A nudge moves the cursor one step at once (quick ones in a row a bit more), held it glides faster and faster
@@ -448,6 +513,8 @@ private fun AppPicture(
             // Under the picture: a frame that comes partly transparent (a display waking) shows dark, not the card
             .background(colors.appBackdrop)
             .onSizeChanged { new ->
+                // A new size moves the cursor with the picture: no slide across it
+                slide = false
                 cursor = cursor?.let { PointerMotion.rescale(it, pictureSize.width, pictureSize.height, new.width, new.height) }
                 pictureSize = new
             }
@@ -465,8 +532,7 @@ private fun AppPicture(
                 )
                 if (!pointer || !inputOn) return@drawWithContent
                 // Our pointer: a focus-colored ring outlined in the surface color, seen over light and dark apps alike
-                val at = cursor ?: PointerPosition(size.width / 2, size.height / 2)
-                val center = Offset(at.x, at.y)
+                val center = if (cursorPlaced) shownCursor.value else Offset(size.width / 2, size.height / 2)
                 val radius = CURSOR_RADIUS.toPx()
                 drawCircle(colors.surface, radius, center, style = Stroke(7.dp.toPx()))
                 drawCircle(colors.focus, radius, center, style = Stroke(3.5.dp.toPx()))
@@ -561,8 +627,10 @@ private fun HoldPanel(
     appName: String,
     pointer: Boolean,
     offerPointer: Boolean,
+    fullscreen: Boolean,
     opened: Int,
     onMode: () -> Unit,
+    onFullscreen: () -> Unit,
     onBar: () -> Unit,
     onCloseApp: () -> Unit,
 ) {
@@ -582,8 +650,13 @@ private fun HoldPanel(
         runCatching { first.requestFocus() }
     }
     BoxWithConstraints {
-        // Three buttons side by side need a wide picture; on a narrow one they stack
-        val wide = maxWidth >= 900.dp
+        val count = if (offerPointer) 4 else 3
+        // Side by side on a wide picture, two by two on a smaller one, stacked on a narrow one
+        val columns = when {
+            maxWidth >= (300 * count).dp -> count
+            maxWidth >= 600.dp -> 2
+            else -> 1
+        }
         Column(
             Modifier
                 .shadow(28.dp, shape)
@@ -605,24 +678,36 @@ private fun HoldPanel(
                     18.sp, colors.text2, maxLines = 2,
                 )
             }
-            val buttons = @Composable { buttonModifier: Modifier ->
+            val buttons = buildList<@Composable (Modifier) -> Unit> {
                 if (offerPointer) {
+                    add { m ->
+                        PanelButton(
+                            if (pointer) CarIcons.Controls else CarIcons.Pointer,
+                            stringResource(if (pointer) R.string.phone_app_use_focus else R.string.phone_app_use_pointer),
+                            m, onMode,
+                        )
+                    }
+                }
+                add { m ->
                     PanelButton(
-                        if (pointer) CarIcons.Controls else CarIcons.Pointer,
-                        stringResource(if (pointer) R.string.phone_app_use_focus else R.string.phone_app_use_pointer),
-                        buttonModifier.focusRequester(first), onMode,
+                        if (fullscreen) CarIcons.ExitFullScreen else CarIcons.FullScreen,
+                        stringResource(if (fullscreen) R.string.phone_app_fullscreen_exit else R.string.phone_app_fullscreen),
+                        m, onFullscreen,
                     )
                 }
-                PanelButton(
-                    CarIcons.Back, stringResource(R.string.phone_app_to_bar),
-                    if (offerPointer) buttonModifier else buttonModifier.focusRequester(first), onBar,
-                )
-                PanelButton(CarIcons.Close, stringResource(R.string.phone_app_close), buttonModifier, onCloseApp)
+                add { m -> PanelButton(CarIcons.Back, stringResource(R.string.phone_app_to_bar), m, onBar) }
+                add { m -> PanelButton(CarIcons.Close, stringResource(R.string.phone_app_close), m, onCloseApp) }
             }
-            if (wide) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { buttons(Modifier) }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { buttons(Modifier.fillMaxWidth()) }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                buttons.chunked(columns).forEachIndexed { row, inRow ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        inRow.forEachIndexed { i, button ->
+                            // The first button takes the knob as the panel opens
+                            val focusFirst = if (row == 0 && i == 0) Modifier.focusRequester(first) else Modifier
+                            button(if (columns == count) focusFirst else Modifier.weight(1f).then(focusFirst))
+                        }
+                    }
+                }
             }
         }
     }
