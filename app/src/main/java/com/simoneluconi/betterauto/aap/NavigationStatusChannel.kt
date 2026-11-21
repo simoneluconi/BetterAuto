@@ -7,6 +7,7 @@ import aap_protobuf.service.navigationstatus.message.NavigationCurrentPositionOu
 import aap_protobuf.service.navigationstatus.message.NavigationDestinationDistanceOuterClass.NavigationDestinationDistance
 import aap_protobuf.service.navigationstatus.message.NavigationDestinationOuterClass.NavigationDestination
 import aap_protobuf.service.navigationstatus.message.NavigationDistanceOuterClass.NavigationDistance
+import aap_protobuf.service.navigationstatus.message.NavigationLaneOuterClass.NavigationLane
 import aap_protobuf.service.navigationstatus.message.NavigationManeuverOuterClass.NavigationManeuver
 import aap_protobuf.service.navigationstatus.message.NavigationNextTurnDistanceEventOuterClass.NavigationNextTurnDistanceEvent
 import aap_protobuf.service.navigationstatus.message.NavigationNextTurnEventOuterClass.NavigationNextTurnEvent
@@ -28,6 +29,8 @@ import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import com.google.protobuf.ByteString
 import com.simoneluconi.betterauto.EventLog
+import com.simoneluconi.betterauto.map.nav.Lane
+import com.simoneluconi.betterauto.map.nav.LaneTurn
 import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import com.simoneluconi.betterauto.map.nav.NavState
 import com.simoneluconi.betterauto.map.nav.Navigation
@@ -110,7 +113,9 @@ class NavigationStatusChannel(
     private var latest: NavState? = null
 
     /** What makes a new maneuver for the cluster. */
-    private data class TurnKey(val kind: ManeuverKind, val road: String?, val exit: Int?, val at: Int, val clockwise: Boolean)
+    private data class TurnKey(
+        val kind: ManeuverKind, val road: String?, val exit: Int?, val at: Int, val clockwise: Boolean, val lanes: List<Lane>,
+    )
 
     override fun onOpened() {
         val image = if (service.hasImageOptions()) service.imageOptions.let { ", picture ${it.width}x${it.height} ${it.colourDepthBits}-bit" } else ""
@@ -171,7 +176,7 @@ class NavigationStatusChannel(
         if (state == null || state.rerouting) return
         val next = state.next ?: return
         // The road only: the server's whole sentence does not fit a cluster, read at a glance
-        val key = TurnKey(next.kind, next.street, next.roundaboutExit, next.beginIndex, clockwise())
+        val key = TurnKey(next.kind, next.street, next.roundaboutExit, next.beginIndex, clockwise(), next.lanes)
         if (key != turn) {
             turn = key
             sendTurn(key)
@@ -211,11 +216,13 @@ class NavigationStatusChannel(
         val event = NavigationNextTurnEvent.newBuilder()
             .setRoad(key.road.orEmpty())
             .setEvent(turnEvent(key.kind))
-            .setTurnSide(turnSide(key.kind))
+            .setTurnSide(turnSide(key.kind, key.clockwise))
         key.exit?.let { event.setTurnNumber(it) }
         if (service.type == NavigationStatusService.InstrumentClusterType.IMAGE && service.hasImageOptions()) {
             val options = service.imageOptions
-            val mirrored = key.kind == ManeuverKind.ROUNDABOUT && key.clockwise
+            // As on the car screen: roundabouts clockwise where traffic keeps left, the U-turn (drawn turning right)
+            // to the left where it keeps right
+            val mirrored = (key.kind == ManeuverKind.ROUNDABOUT && key.clockwise) || (key.kind == ManeuverKind.U_TURN && !key.clockwise)
             runCatching { event.setImage(ByteString.copyFrom(iconOf(key.kind).toPng(options.width, options.height, mirrored))) }
                 .onFailure { EventLog.log("Navigation status: no arrow picture ($it)") }
         }
@@ -225,6 +232,8 @@ class NavigationStatusChannel(
         val maneuver = NavigationManeuver.newBuilder().setType(maneuverType(key.kind, key.clockwise))
         key.exit?.let { maneuver.setRoundaboutExitNumber(it) }
         val step = NavigationStep.newBuilder().setManeuver(maneuver)
+        // The lanes left to right, the way to go lit on those to take, as the car screen shows them
+        key.lanes.forEach { lane -> step.addLanes(laneOf(lane, key.clockwise)) }
         key.road?.let {
             step.setRoad(NavigationRoad.newBuilder().setName(it))
             step.setCue(NavigationCue.newBuilder().addAlternateText(it))
@@ -347,8 +356,10 @@ class NavigationStatusChannel(
         }
 
         @Suppress("DEPRECATION")
-        internal fun turnSide(kind: ManeuverKind): NavigationNextTurnEvent.TurnSide = when (kind) {
-            ManeuverKind.SLIGHT_LEFT, ManeuverKind.LEFT, ManeuverKind.SHARP_LEFT, ManeuverKind.U_TURN -> NavigationNextTurnEvent.TurnSide.LEFT
+        internal fun turnSide(kind: ManeuverKind, keepLeft: Boolean = false): NavigationNextTurnEvent.TurnSide = when (kind) {
+            // A U-turn goes round towards the middle of the road
+            ManeuverKind.U_TURN -> if (keepLeft) NavigationNextTurnEvent.TurnSide.RIGHT else NavigationNextTurnEvent.TurnSide.LEFT
+            ManeuverKind.SLIGHT_LEFT, ManeuverKind.LEFT, ManeuverKind.SHARP_LEFT -> NavigationNextTurnEvent.TurnSide.LEFT
             ManeuverKind.SLIGHT_RIGHT, ManeuverKind.RIGHT, ManeuverKind.SHARP_RIGHT -> NavigationNextTurnEvent.TurnSide.RIGHT
             else -> NavigationNextTurnEvent.TurnSide.UNSPECIFIED
         }
@@ -362,10 +373,35 @@ class NavigationStatusChannel(
             ManeuverKind.RIGHT -> NavigationManeuver.NavigationType.TURN_NORMAL_RIGHT
             ManeuverKind.SHARP_LEFT -> NavigationManeuver.NavigationType.TURN_SHARP_LEFT
             ManeuverKind.SHARP_RIGHT -> NavigationManeuver.NavigationType.TURN_SHARP_RIGHT
-            ManeuverKind.U_TURN -> NavigationManeuver.NavigationType.U_TURN_LEFT
+            ManeuverKind.U_TURN -> if (clockwise) NavigationManeuver.NavigationType.U_TURN_RIGHT else NavigationManeuver.NavigationType.U_TURN_LEFT
             ManeuverKind.ROUNDABOUT ->
                 if (clockwise) NavigationManeuver.NavigationType.ROUNDABOUT_ENTER_AND_EXIT_CW else NavigationManeuver.NavigationType.ROUNDABOUT_ENTER_AND_EXIT_CCW
             ManeuverKind.ARRIVE -> NavigationManeuver.NavigationType.DESTINATION
+        }
+
+        /**
+         * A lane in the newer steps' words: every way it goes, the one the route takes lit when it is a lane to take;
+         * a U-turn to the right where traffic keeps left ([keepLeft]).
+         */
+        internal fun laneOf(lane: Lane, keepLeft: Boolean = false): NavigationLane = NavigationLane.newBuilder().apply {
+            for (turn in lane.turns.ifEmpty { listOf(lane.shown) }) {
+                addLaneDirections(
+                    NavigationLane.LaneDirection.newBuilder()
+                        .setShape(laneShape(turn, keepLeft))
+                        .setIsHighlighted(lane.use && turn == lane.shown),
+                )
+            }
+        }.build()
+
+        internal fun laneShape(turn: LaneTurn, keepLeft: Boolean = false): NavigationLane.LaneDirection.Shape = when (turn) {
+            LaneTurn.STRAIGHT -> NavigationLane.LaneDirection.Shape.STRAIGHT
+            LaneTurn.SLIGHT_LEFT -> NavigationLane.LaneDirection.Shape.SLIGHT_LEFT
+            LaneTurn.LEFT -> NavigationLane.LaneDirection.Shape.NORMAL_LEFT
+            LaneTurn.SHARP_LEFT -> NavigationLane.LaneDirection.Shape.SHARP_LEFT
+            LaneTurn.SLIGHT_RIGHT -> NavigationLane.LaneDirection.Shape.SLIGHT_RIGHT
+            LaneTurn.RIGHT -> NavigationLane.LaneDirection.Shape.NORMAL_RIGHT
+            LaneTurn.SHARP_RIGHT -> NavigationLane.LaneDirection.Shape.SHARP_RIGHT
+            LaneTurn.U_TURN -> if (keepLeft) NavigationLane.LaneDirection.Shape.U_TURN_RIGHT else NavigationLane.LaneDirection.Shape.U_TURN_LEFT
         }
 
         /** The arrow as the cluster's picture: white lines on a transparent ground, centred at its size; [mirrored] left to right. */

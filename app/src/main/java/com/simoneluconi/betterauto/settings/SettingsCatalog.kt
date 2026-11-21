@@ -459,6 +459,27 @@ object SettingsCatalog {
             ),
             { it.guidanceVoice }, LauncherSettings::setGuidanceVoice,
         ),
+        // The route: a change during a trip routes it again
+        ChoiceSetting(
+            "route_kind", SettingsCategory.MAP, R.string.settings_route_kind, R.string.settings_route_kind_desc,
+            listOf(SettingOption(false, R.string.option_route_fastest), SettingOption(true, R.string.option_route_shortest)),
+            { it.routeShortest }, LauncherSettings::setRouteShortest,
+        ),
+        ChoiceSetting("avoid_tolls", SettingsCategory.MAP, R.string.settings_avoid_tolls, R.string.settings_avoid_tolls_desc, onOff, { it.avoidTolls }, LauncherSettings::setAvoidTolls),
+        ChoiceSetting("avoid_highways", SettingsCategory.MAP, R.string.settings_avoid_highways, R.string.settings_avoid_highways_desc, onOff, { it.avoidHighways }, LauncherSettings::setAvoidHighways),
+        ChoiceSetting("avoid_ferries", SettingsCategory.MAP, R.string.settings_avoid_ferries, R.string.settings_avoid_ferries_desc, onOff, { it.avoidFerries }, LauncherSettings::setAvoidFerries),
+        ChoiceSetting(
+            "avoid_unpaved", SettingsCategory.MAP, R.string.settings_avoid_unpaved, R.string.settings_avoid_unpaved_desc, onOff,
+            { it.avoidUnpaved }, LauncherSettings::setAvoidUnpaved, more = true,
+        ),
+        ChoiceSetting(
+            "avoid_cash_tolls", SettingsCategory.MAP, R.string.settings_avoid_cash_tolls, R.string.settings_avoid_cash_tolls_desc, onOff,
+            { it.avoidCashTolls }, LauncherSettings::setAvoidCashTolls, more = true,
+        ),
+        ChoiceSetting(
+            "avoid_borders", SettingsCategory.MAP, R.string.settings_avoid_borders, R.string.settings_avoid_borders_desc, onOff,
+            { it.avoidBorders }, LauncherSettings::setAvoidBorders, more = true,
+        ),
 
         // Vehicle and units
         ChoiceSetting(

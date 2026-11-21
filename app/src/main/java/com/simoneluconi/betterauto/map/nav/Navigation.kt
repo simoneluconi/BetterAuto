@@ -15,6 +15,7 @@ import com.simoneluconi.betterauto.map.turnDeg
 import com.simoneluconi.betterauto.settings.AppLocales
 import com.simoneluconi.betterauto.settings.GuidanceVoice
 import com.simoneluconi.betterauto.settings.LauncherSettings
+import com.simoneluconi.betterauto.settings.RoutePreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,9 +26,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -65,6 +70,13 @@ data class NavState(
     val toStopM: Double = 0.0,
 )
 
+/**
+ * A new trip's routes before the guidance starts: the best first, then the other ways; [chosen] is the one that will
+ * be followed, from [startsAt] ([SystemClock.elapsedRealtime]) unless the driver presses Go or drives off before.
+ * [updating]: being asked again (the route's preferences changed on it, the trip changed): these stay on screen meanwhile.
+ */
+data class RoutePreview(val routes: List<NavRoute>, val chosen: Int, val startsAt: Long, val updating: Boolean = false)
+
 /** Why there is a trip but no route to follow: being calculated, none exists, or the server can't be reached. */
 enum class RoutePlanning { CALCULATING, NO_ROUTE, OFFLINE }
 
@@ -90,6 +102,17 @@ object Navigation {
 
     /** Set while a trip waits for its route (null once one is followed, or with no trip). */
     val planning: StateFlow<RoutePlanning?> = _planning
+
+    private val _preview = MutableStateFlow<RoutePreview?>(null)
+
+    /** A new trip's routes, shown to choose from before the guidance starts; null otherwise. */
+    val preview: StateFlow<RoutePreview?> = _preview
+
+    /**
+     * Go was pressed on the preview: a state, not an event, so a press while the routes are asked again (or before the
+     * wait has started listening) is not lost. Cleared for every new trip.
+     */
+    private val previewGo = MutableStateFlow(false)
 
     private val retrySignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -207,13 +230,21 @@ object Navigation {
                 if (dropped > 0) EventLog.log("Navigation: $dropped place(s) reached during the break")
             }
             var firstTrip = true
-            // A new route whenever the trip changes; until then, the way along this one
-            Trip.places.collectLatest { places ->
+            // The trip being guided (Trip.tripNumber when it was set): a new one is shown first to choose its route
+            // from. A trip resumed is already on its way
+            var guided = if (resumed) Trip.tripNumber.value else NOT_GUIDED
+            var routed: List<Destination>? = null
+            // A new route whenever the trip or the route's preferences change; until then, the way along this one
+            combine(Trip.places, LauncherSettings.get(context).routePreferencesFlow) { places, _ -> places }.collectLatest { places ->
                 if (places.isEmpty()) return@collectLatest
-                // A trip being edited (a stop dragged place by place) is routed once, when it settles
-                if (!firstTrip) delay(TRIP_SETTLE_MS)
+                // A trip being edited (a stop dragged place by place) is routed once, when it settles; a preference
+                // (switched on the routes to choose from) at once, after a moment for the next one
+                if (!firstTrip) delay(if (places == routed) PREFERENCES_SETTLE_MS else TRIP_SETTLE_MS)
                 firstTrip = false
-                routeUntilFound(places, speakFirst = !quiet)
+                routed = places
+                val trip = Trip.tripNumber.value
+                routeUntilFound(places, speakFirst = !quiet, preview = trip != guided)
+                guided = trip
                 quiet = false
                 MapLocation.fix.filterNotNull().conflate().collect { onFix(it, places) }
             }
@@ -224,6 +255,8 @@ object Navigation {
         arrivalJob?.cancel()
         arrivalJob = null
         _planning.value = null
+        _preview.value = null
+        previewGo.value = false
         if (job == null && _state.value == null) return
         job?.cancel()
         job = null
@@ -241,12 +274,14 @@ object Navigation {
 
     /**
      * Routes until a route is found: with no route at all, waits for the driver to ask again ([retry]); with the
-     * server out of reach, tries again later and later (or at once when asked).
+     * server out of reach, tries again later and later (or at once when asked). [preview]: a new trip, its routes
+     * shown first to choose from ([previewAndBegin]).
      */
-    private suspend fun routeUntilFound(places: List<Destination>, speakFirst: Boolean) {
+    private suspend fun routeUntilFound(places: List<Destination>, speakFirst: Boolean, preview: Boolean = false) {
         var wait = RETRY_MS
         while (true) {
-            when (route(waitForFix(), places, speakFirst)) {
+            val from = waitForFix()
+            when (if (preview) previewAndBegin(from, places, speakFirst) else route(from, places, speakFirst)) {
                 RouteResult.FOUND -> return
                 RouteResult.NO_ROUTE -> {
                     // Nothing to follow: the old route would lead to the old trip
@@ -269,27 +304,141 @@ object Navigation {
 
     /** A new route from [from] through [places]; why not when none could be had (logged). */
     private suspend fun route(from: MapFix, places: List<Destination>, speakFirst: Boolean = true): RouteResult {
-        val context = appContext ?: return RouteResult.FAILED
+        val got = fetch(from, places, alternates = 0)
+        if (got.result == RouteResult.FOUND) begin(got.routes.first(), places, speakFirst)
+        return got.result
+    }
+
+    /**
+     * A new trip: its routes (the best and, with no stops, up to [ALTERNATES] other ways) shown on the map to choose
+     * from ([preview]), then the one chosen followed: on Go ([startNow]), as the car moves off, or once the driver
+     * has left the choice alone for [PREVIEW_MS]. A change of the trip meanwhile cancels it (a new preview comes).
+     */
+    private suspend fun previewAndBegin(from: MapFix, places: List<Destination>, speakFirst: Boolean): RouteResult {
+        val again = _preview.value != null
+        if (again) {
+            // Asked again (a preference switched on it): the routes there were stay meanwhile, and Go pressed stays
+            _preview.value = _preview.value?.copy(updating = true)
+        } else {
+            previewGo.value = false
+            // A trip replacing the one being guided: its turn arrow, card and cluster are over
+            _state.value = null
+        }
+        val got = fetch(from, places, alternates = if (places.size == 1) ALTERNATES else 0)
+        if (got.result != RouteResult.FOUND) {
+            _preview.value = null
+            return got.result
+        }
+        _planning.value = null
+        val routes = got.routes
+        // Already on its way (a passenger set the trip on the phone while driving), or Go already pressed: no choice
+        // to show, the best route at once
+        val now = MapLocation.fix.value
+        val moving = now != null && movedOff(now, from) || (from.speedMs ?: 0f) > MOVING_OFF_MS
+        if (moving || previewGo.value) {
+            EventLog.log("Navigation: route 1 of ${routes.size} taken (${if (moving) "already moving" else "go"})")
+            begin(routes.first(), places, speakFirst)
+            _preview.value = null
+            previewGo.value = false
+            return RouteResult.FOUND
+        }
+        _preview.value = RoutePreview(routes, 0, SystemClock.elapsedRealtime() + PREVIEW_MS)
+        EventLog.log("Navigation: ${routes.size} route(s) to choose from")
+        val chosen = try {
+            var why: String? = null
+            while (why == null) {
+                val wait = (_preview.value?.startsAt ?: 0L) - SystemClock.elapsedRealtime()
+                why = if (wait <= 0) "time" else withTimeoutOrNull(wait) {
+                    merge(
+                        previewGo.filter { it }.map { "go" },
+                        MapLocation.fix.filterNotNull().filter { movedOff(it, from) }.map { "moving" },
+                    ).first()
+                }
+                // A timeout with a later start (another route chosen meanwhile) goes on waiting
+            }
+            val index = _preview.value?.chosen ?: 0
+            EventLog.log("Navigation: route ${index + 1} of ${routes.size} taken ($why)")
+            routes[index.coerceIn(routes.indices)]
+        } catch (e: CancellationException) {
+            // The trip or a preference changed: new routes come, these stay until then (no trip: pause clears them)
+            _preview.value = _preview.value?.copy(updating = true)
+            throw e
+        }
+        // The route on the map before the choice goes, so the map never draws a frame with neither
+        begin(chosen, places, speakFirst)
+        _preview.value = null
+        previewGo.value = false
+        return RouteResult.FOUND
+    }
+
+    /** The car is on its way: driving, or already well away from where the routes were asked. */
+    private fun movedOff(fix: MapFix, from: MapFix) =
+        (fix.speedMs ?: 0f) > MOVING_OFF_MS || distanceM(fix.latitude, fix.longitude, from.latitude, from.longitude) > MOVED_OFF_M
+
+    /** The driver picks another route of the preview: the start waits [PREVIEW_MS] again. Main thread. */
+    fun choosePreview(index: Int) {
+        val current = _preview.value ?: return
+        if (index == current.chosen || index !in current.routes.indices) return
+        _preview.value = current.copy(chosen = index, startsAt = SystemClock.elapsedRealtime() + PREVIEW_MS)
+    }
+
+    /** The driver presses Go on the preview. */
+    fun startNow() {
+        if (_preview.value != null) previewGo.value = true
+    }
+
+    private class Routes(val result: RouteResult, val routes: List<NavRoute> = emptyList())
+
+    /**
+     * Routes from [from] through [places] (with up to [alternates] other ways), from the driver's preferences; why
+     * none when none could be had (logged).
+     */
+    private suspend fun fetch(from: MapFix, places: List<Destination>, alternates: Int): Routes {
+        val context = appContext ?: return Routes(RouteResult.FAILED)
         _state.value = _state.value?.copy(rerouting = true)
-        val server = LauncherSettings.get(context).routeServer.value
-        val route = try {
-            val text = requestRoute(server, from, places, AppLocales.voice(context).toLanguageTag())
-            val raw = withContext(Dispatchers.Default) { NavRoute.fromValhalla(text) }
-            if (raw.size < 2) throw RouteRefused("an empty route")
-            withStopNames(context, raw, places)
+        val settings = LauncherSettings.get(context)
+        val server = settings.routeServer.value
+        val preferences = settings.routePreferences()
+        val routes = try {
+            val language = AppLocales.voice(context).toLanguageTag()
+            val text = try {
+                requestRoute(server, from, places, language, preferences, alternates)
+            } catch (e: RouteRefused) {
+                // Kept off where possible, never "no route" because of them: the two exclusions are dropped (the rest
+                // are only preferences, Valhalla never refuses for them)
+                if (!preferences.avoidUnpaved && !preferences.avoidCashTolls) throw e
+                val softer = preferences.copy(avoidUnpaved = false, avoidCashTolls = false)
+                EventLog.log("Navigation: no route with ${preferences.describe()} (${e.message}), asked again without the exclusions")
+                requestRoute(server, from, places, language, softer, alternates)
+            }
+            val raw = withContext(Dispatchers.Default) { NavRoute.allFromValhalla(text) }.filter { it.size >= 2 }
+            if (raw.isEmpty()) throw RouteRefused("an empty route")
+            raw.map { withStopNames(context, it, places) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: RouteRefused) {
             EventLog.log("Navigation: no route (${e.message})")
             _state.value = _state.value?.copy(rerouting = false)
-            return RouteResult.NO_ROUTE
+            return Routes(RouteResult.NO_ROUTE)
         } catch (e: Exception) {
             // Which one, not its address: the log may be shared
             EventLog.log("Navigation: ${if (server == null) "demo" else "own"} route server not reached (${e.message})")
             _state.value = _state.value?.copy(rerouting = false)
-            return RouteResult.FAILED
+            return Routes(RouteResult.FAILED)
         }
-        EventLog.log("Navigation: route of ${(route.lengthM / 1000).format1()} km, ${route.maneuvers.size} maneuvers, ${places.size - 1} stop(s)")
+        val asked = preferences.describe().let { if (it.isEmpty()) "" else ", $it" }
+        val route = routes.first()
+        val others = if (routes.size > 1) ", ${routes.size - 1} other way(s)" else ""
+        val lanes = route.maneuvers.count { it.lanes.isNotEmpty() }
+        EventLog.log(
+            "Navigation: route of ${(route.lengthM / 1000).format1()} km, ${route.maneuvers.size} maneuvers ($lanes with lanes), " +
+                "${places.size - 1} stop(s)$asked$others",
+        )
+        return Routes(RouteResult.FOUND, routes)
+    }
+
+    /** [route] followed from its start. */
+    private fun begin(route: NavRoute, places: List<Destination>, speakFirst: Boolean) {
         lastIndex = 0
         lastAlong = 0.0
         offRouteFixes = 0
@@ -305,13 +454,14 @@ object Navigation {
         )
         // After what was being said (a stop reached), not over it
         if (speakFirst) first?.let { say(it.spokenNow, alert = false, queue = true) }
-        return RouteResult.FOUND
     }
 
     /** The server answered that there is no such route (a 4xx): asking again the same won't help. */
     private class RouteRefused(message: String) : IOException(message)
 
-    private suspend fun requestRoute(server: String?, from: MapFix, places: List<Destination>, language: String): String {
+    private suspend fun requestRoute(
+        server: String?, from: MapFix, places: List<Destination>, language: String, preferences: RoutePreferences, alternates: Int,
+    ): String {
         val start = JSONObject().put("lat", from.latitude).put("lon", from.longitude)
         // Leave the way the car points, not behind it
         from.bearing?.let { start.put("heading", it.toInt()).put("heading_tolerance", 45) }
@@ -322,10 +472,15 @@ object Navigation {
             .put("locations", locations)
             .put("costing", "auto")
             .put("directions_options", JSONObject().put("language", language).put("units", "kilometers"))
-            .toString()
+            // Which lanes to take before a maneuver, where the map data says
+            .put("turn_lanes", true)
+        RouteServer.costingOptions(preferences)?.let { body.put("costing_options", JSONObject().put("auto", it)) }
+        // Other ways only from one place to another: Valhalla has none through stops
+        if (alternates > 0 && places.size == 1) body.put("alternates", alternates)
+        val text = body.toString()
         val request = Request.Builder().url(RouteServer.routeUrl(server))
             .header("User-Agent", "BetterAuto (https://github.com/simoneluconi/BetterAuto)")
-            .post(body.toRequestBody("application/json".toMediaType()))
+            .post(text.toRequestBody("application/json".toMediaType()))
             .build()
         return client.newCall(request).await()
     }
@@ -524,6 +679,22 @@ object Navigation {
     private const val RETRY_MS = 10_000L
     private const val MAX_RETRY_MS = 120_000L
     private const val TRIP_SETTLE_MS = 1_000L
+
+    /** A route preference switched: asked again this soon, a second switch in a row waited for. */
+    private const val PREFERENCES_SETTLE_MS = 300L
+
+    /** No trip guided yet in this run of the guidance: the first one is previewed. */
+    private const val NOT_GUIDED = -1
+
+    /** The other ways asked for a new trip: three routes at most to choose from, a glance each. */
+    private const val ALTERNATES = 2
+
+    /** The preview left alone this long: the chosen route is followed. */
+    const val PREVIEW_MS = 10_000L
+
+    /** Faster than this (about 11 km/h), or this far from where the routes were asked: the car is on its way. */
+    private const val MOVING_OFF_MS = 3.0f
+    private const val MOVED_OFF_M = 40.0
     private const val FRESH_FIX_MS = 10_000L
     private const val GONE_GRACE_MS = 8_000L
     private const val ARRIVED_M = 30.0

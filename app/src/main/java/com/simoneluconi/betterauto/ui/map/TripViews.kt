@@ -384,7 +384,7 @@ fun TripChoice(
  * "selected" where the focus is not; on the phone (touch) the main answer is.
  */
 @Composable
-private fun ChoicePill(label: String, primary: Boolean, knob: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun ChoicePill(label: String, primary: Boolean, knob: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val colors = LocalCarColors.current
     val shape = RoundedCornerShape(50)
     var focused by remember { mutableStateOf(false) }

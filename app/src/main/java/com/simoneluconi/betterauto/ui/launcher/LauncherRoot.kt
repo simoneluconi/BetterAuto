@@ -92,6 +92,7 @@ import com.simoneluconi.betterauto.ui.widgets.WidgetArea
 import com.simoneluconi.betterauto.ui.widgets.LocalProjected
 import com.simoneluconi.betterauto.ui.widgets.HomeEdit
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlin.math.min
@@ -197,6 +198,10 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     }
     LaunchedEffect(Unit) {
         Trip.offer.filterNotNull().collect { settings.setSection(Section.MAP) }
+    }
+    // A new trip's routes to choose from, also one that replaces the trip there was: shown on the map
+    LaunchedEffect(Unit) {
+        Navigation.preview.map { it != null }.distinctUntilChanged().filter { it }.collect { settings.setSection(Section.MAP) }
     }
     // After a group closes, the focus goes back to the bar once it shows the new section
     var refocusRail by remember { mutableIntStateOf(0) }

@@ -31,7 +31,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -56,6 +60,7 @@ import com.simoneluconi.betterauto.map.nav.Trip
 import com.simoneluconi.betterauto.map.roads.RoadInfo
 import com.simoneluconi.betterauto.car.VehicleData
 import com.simoneluconi.betterauto.ui.vehicle.WarningAmber
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import com.simoneluconi.betterauto.settings.LauncherSettings
@@ -70,7 +75,8 @@ import com.simoneluconi.betterauto.ui.theme.LocalCarColors
 /**
  * The Map section: the map following the car. The knob goes from the map to its buttons as on any screen (zoom by
  * pressing + or −; turning to zoom kept it on the map, a road test); a press on the map comes back to the car or
- * opens the destinations. Touch moves and pinches it, with "recenter" while it is moved away.
+ * opens the destinations. Touch moves and pinches it, with "recenter" while it is moved away. A new trip's routes are
+ * first shown whole, to choose from ([RoutePreviewPanel]).
  */
 @Composable
 fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
@@ -85,7 +91,25 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     val offer by Trip.offer.collectAsStateWithLifecycle()
     val guidance by settings.guidanceVoice.collectAsStateWithLifecycle()
     val planning by Navigation.planning.collectAsStateWithLifecycle()
+    val preview by Navigation.preview.collectAsStateWithLifecycle()
     val state = remember { CarMapState(zoom.level, tilt = SECTION_TILT) }
+    // What covers the map while a new trip's routes are framed: the routes' panel (on the left, or on top when it
+    // takes most of the width) and the buttons on the right
+    var mapBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var mapSize by remember { mutableStateOf(IntSize.Zero) }
+    var previewRect by remember { mutableStateOf<Rect?>(null) }
+    var buttonsRect by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(previewRect, buttonsRect, mapSize) {
+        val size = mapSize.takeIf { it != IntSize.Zero } ?: return@LaunchedEffect
+        val panel = previewRect ?: Rect.Zero
+        val beside = panel.right < size.width * PANEL_BESIDE_SHARE
+        state.overviewInsets = listOf(
+            if (beside) panel.right.toInt() else 0,
+            if (beside) 0 else panel.bottom.toInt(),
+            buttonsRect?.let { (size.width - it.left).toInt() } ?: 0,
+            0,
+        )
+    }
     LaunchedEffect(zoom) { state.setDefaultZoom(zoom.level) }
     var focused by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
@@ -96,6 +120,19 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
     LaunchedEffect(newTrips) {
         if (panelOpen) {
             panelOpen = false
+            runCatching { mapFocus.requestFocus() }
+        }
+    }
+    // The routes' panel had the knob: once the guidance starts (or the trip is cancelled) it goes back to the map, not
+    // to wherever the focus would fall (the bar)
+    var choosing by remember { mutableStateOf(false) }
+    LaunchedEffect(preview != null) {
+        if (preview != null) {
+            choosing = true
+        } else if (choosing) {
+            choosing = false
+            // The next preview frames its routes by its own panel, not this one's
+            previewRect = null
             runCatching { mapFocus.requestFocus() }
         }
     }
@@ -113,6 +150,10 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
         modifier
             .clip(shape)
             .background(colors.map.land)
+            .onGloballyPositioned {
+                mapBox = it
+                mapSize = it.size
+            }
             .carZone()
             .contentFocus()
             .focusRequester(mapFocus)
@@ -125,7 +166,7 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
             .onPreviewKeyEvent { event ->
                 // The destinations panel and the stop-or-destination choice have the knob while they are open; the
                 // buttons over the map take their own presses
-                if (panelOpen || offer != null || !focused) return@onPreviewKeyEvent false
+                if (panelOpen || offer != null || preview != null || !focused) return@onPreviewKeyEvent false
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
                     // A press: back to the car if the map was moved away, else where to go
@@ -147,13 +188,20 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
             }
             .focusable(),
     ) {
-        CarMap(state, orientation, interactive = true, Modifier.fillMaxSize(), autoZoom = autoZoom)
+        CarMap(state, orientation, interactive = true, Modifier.fillMaxSize(), autoZoom = autoZoom, overview = true)
 
         // The next maneuver while a route is on, the word on the position under it
         Column(Modifier.align(Alignment.TopStart).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // A trip waiting for its route says why where the maneuver goes
             val waiting = planning
-            if (waiting != null && places.isNotEmpty()) {
+            val choosing = preview
+            if (choosing != null && places.isNotEmpty()) {
+                // A new trip's routes to choose from, framed on the map beside it
+                RoutePreviewPanel(
+                    choosing, places,
+                    Modifier.onGloballyPositioned { c -> mapBox?.takeIf { it.isAttached }?.let { previewRect = it.localBoundingBoxOf(c) } },
+                )
+            } else if (waiting != null && places.isNotEmpty()) {
                 PlanningCard(waiting, places, onRetry = { Navigation.retry() }, onEnd = { Navigation.end() })
             } else {
                 nav?.let { ManeuverCard(it, onEnd = { Navigation.end() }) }
@@ -187,12 +235,16 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
 
         // Zoom always in the same place; recenter comes and goes to its left, so nothing moves under the finger
         Row(
-            Modifier.align(Alignment.BottomEnd).padding(18.dp),
+            Modifier
+                .align(Alignment.BottomEnd)
+                .onGloballyPositioned { c -> mapBox?.takeIf { it.isAttached }?.let { buttonsRect = it.localBoundingBoxOf(c) } }
+                .padding(18.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             AnimatedVisibility(
-                visible = !state.following,
+                // Not while a new trip's routes are framed: the map comes back to the car by itself after
+                visible = !state.following && !state.overviewing,
                 enter = fadeIn() + scaleIn(initialScale = 0.8f),
                 exit = fadeOut() + scaleOut(targetScale = 0.8f),
             ) {
@@ -205,7 +257,12 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                         settings.setGuidanceVoice(guidance.next())
                     }
                 }
-                MapButton(CarIcons.Search, stringResource(R.string.nav_destinations), BUTTON_SIZE, CircleShape) { panelOpen = true }
+                // The same panel, but during a trip it is the navigation's menu, not a search: said by the icon
+                // (one button that changes, so the knob stays on it as a trip starts or ends)
+                MapButton(
+                    if (places.isEmpty()) CarIcons.Search else CarIcons.Route,
+                    stringResource(if (places.isEmpty()) R.string.nav_destinations else R.string.nav_card_title), BUTTON_SIZE, CircleShape,
+                ) { panelOpen = true }
                 // Not clipped: the focus ring of either button is drawn just outside the pill
                 Column(
                     Modifier.background(colors.surface, RoundedCornerShape(BUTTON_SIZE / 2)),
@@ -293,7 +350,9 @@ internal fun MapStatus(modifier: Modifier = Modifier, compact: Boolean = false) 
 internal fun MapAttribution(modifier: Modifier = Modifier) {
     val colors = LocalCarColors.current
     // With a route on the map, its source too
-    val routed by remember { Navigation.state.map { it != null }.distinctUntilChanged() }.collectAsStateWithLifecycle(Navigation.state.value != null)
+    val routed by remember {
+        combine(Navigation.state, Navigation.preview) { s, p -> s != null || p != null }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(Navigation.state.value != null || Navigation.preview.value != null)
     CarLabel(
         stringResource(if (routed) R.string.map_attribution_route else R.string.map_attribution), 11.sp, colors.text2, maxLines = 1,
         modifier = modifier
@@ -331,3 +390,6 @@ private var mapKnobUsedAt = 0L
 private const val HINT_MS = 3_000L
 private const val HINT_AGAIN_MS = 2 * 60_000L
 private const val SECTION_TILT = 45.0
+
+/** The routes' panel ending before this share of the map's width sits beside the routes, else above them. */
+private const val PANEL_BESIDE_SHARE = 0.6f

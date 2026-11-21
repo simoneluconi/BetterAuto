@@ -25,6 +25,17 @@ version and date.
 - Holding the knob's press on a phone app opens a panel: go back to the bar, close the app, and, on cars without a
   touchscreen, use a pointer for apps that don't answer the knob (push the knob to move it, turn to scroll, press to
   tap; remembered per app).
+- Route preferences in Settings › Map: fastest or shortest, and avoid tolls, motorways, ferries (under More options
+  also unpaved roads, cash-only tolls and borders). They are kept off only where there is another way; changed during
+  a trip, the route is worked out again.
+- A new destination first shows the whole route on the map, with up to two other ways (only without stops): their
+  time, length, tolls and arrival. Turn the knob or tap to choose, press or Go to start; it starts by itself as the
+  car drives off, or after 10 seconds. Avoid tolls, motorways or ferries right there: the routes are worked out again
+  at once.
+- Lanes: before a junction or an exit the maneuver card shows the lanes, the ones to take lit, where the map data
+  says which (mostly motorways and big junctions); the car's cluster gets them too.
+- During a trip the map's search button shows a route icon: it opens the navigation's menu (voice, edit trip, skip
+  stop, end), not just a search.
 
 ### Italiano
 
@@ -47,6 +58,17 @@ version and date.
 - Tenendo premuta la manopola su un'app del telefono si apre un pannello: torna alla barra, chiudi l'app e, sulle auto
   senza touchscreen, usa un puntatore per le app che non rispondono alla manopola (spingi la manopola per muoverlo,
   girala per scorrere, premi per toccare; ricordato per ogni app).
+- Preferenze del percorso in Impostazioni › Mappa: più veloce o più breve, ed evita pedaggi, autostrade, traghetti
+  (in Altre opzioni anche strade sterrate, pedaggi solo in contanti e confini). Vengono evitati solo dove c'è un'altra
+  strada; se le cambi durante un viaggio, il percorso viene ricalcolato.
+- Una nuova destinazione mostra prima il percorso intero sulla mappa, con fino a due alternative (solo senza tappe):
+  tempo, lunghezza, pedaggi e arrivo di ciascuna. Gira la manopola o tocca per scegliere, premi o Vai per partire;
+  parte da sola quando l'auto si muove, o dopo 10 secondi. Lì stesso puoi evitare pedaggi, autostrade o traghetti:
+  i percorsi vengono ricalcolati subito.
+- Corsie: prima di un incrocio o di un'uscita la scheda della manovra mostra le corsie, evidenziando quelle da prendere,
+  dove i dati della mappa lo dicono (soprattutto autostrade e grandi incroci); le riceve anche il quadro strumenti.
+- Durante un viaggio il pulsante di ricerca della mappa mostra l'icona di un percorso: apre il menu della navigazione
+  (voce, modifica viaggio, salta tappa, termina), non solo la ricerca.
 
 ## 0.3.6 (2026-11-18)
 

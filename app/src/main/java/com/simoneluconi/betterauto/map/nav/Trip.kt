@@ -34,6 +34,14 @@ object Trip {
      */
     val newTrips: StateFlow<Int> = _newTrips
 
+    private val _tripNumber = MutableStateFlow(0)
+
+    /**
+     * Counts the new trips that changed the places (the same destination set again is the same trip): the guidance
+     * shows a new one's routes to choose from, once.
+     */
+    val tripNumber: StateFlow<Int> = _tripNumber
+
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
@@ -65,6 +73,8 @@ object Trip {
     /** A new trip to [place], instead of the one there was. */
     fun newDestination(place: Destination) {
         Destinations.add(place)
+        // Before the places change: the guidance reads it as it sees them change
+        if (_places.value != listOf(place)) _tripNumber.value++
         change { listOf(place) }
         prefs?.edit()?.putBoolean(KEY_INTERRUPTED, false)?.apply()
         _newTrips.value++

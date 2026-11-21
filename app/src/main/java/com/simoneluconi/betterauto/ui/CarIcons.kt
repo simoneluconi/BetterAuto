@@ -125,6 +125,8 @@ object CarIcons {
     val Roundabout = icon(circle(12f, 9f, 4.5f), "M12 13.5V21", "M16.5 4.5L20 1", "M15 1h5v5")
     val Arrive = icon("M6 21V4", "M6 4h11l-2.5 4 2.5 4H6")
     val Search = icon(circle(10.5f, 10.5f, 6.5f), "M15.5 15.5L21 21")
+    /** The trip's own menu on the map: a winding way from a start to an end. */
+    val Route = icon(circle(6f, 18f, 2f), circle(18f, 6f, 2f), "M8 18h7.5a3 3 0 0 0 0-6h-7a3 3 0 0 1 0-6H16")
     /** The handle a row is dragged by. */
     val DragHandle = icon("M5 9h14", "M5 15h14")
     /** A row picked up with the knob: it moves up or down. */

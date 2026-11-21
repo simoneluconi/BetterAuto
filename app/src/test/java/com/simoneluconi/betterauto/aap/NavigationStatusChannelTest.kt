@@ -1,8 +1,11 @@
 package com.simoneluconi.betterauto.aap
 
 import aap_protobuf.service.navigationstatus.message.NavigationDistanceOuterClass.NavigationDistance.DistanceUnits
+import aap_protobuf.service.navigationstatus.message.NavigationLaneOuterClass.NavigationLane.LaneDirection.Shape
 import aap_protobuf.service.navigationstatus.message.NavigationManeuverOuterClass.NavigationManeuver.NavigationType
 import aap_protobuf.service.navigationstatus.message.NavigationNextTurnEventOuterClass.NavigationNextTurnEvent
+import com.simoneluconi.betterauto.map.nav.Lane
+import com.simoneluconi.betterauto.map.nav.LaneTurn
 import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -23,6 +26,17 @@ class NavigationStatusChannelTest {
     }
 
     @Test
+    fun lanesForTheCluster() {
+        // A lane straight on or right, the route going right from it: both ways, the right one lit
+        val lane = NavigationStatusChannel.laneOf(Lane(listOf(LaneTurn.STRAIGHT, LaneTurn.RIGHT), use = true, shown = LaneTurn.RIGHT))
+        assertEquals(listOf(Shape.STRAIGHT, Shape.NORMAL_RIGHT), lane.laneDirectionsList.map { it.shape })
+        assertEquals(listOf(false, true), lane.laneDirectionsList.map { it.isHighlighted })
+        // A lane not to take: nothing lit
+        val other = NavigationStatusChannel.laneOf(Lane(listOf(LaneTurn.STRAIGHT), use = false, shown = LaneTurn.STRAIGHT))
+        assertEquals(listOf(false), other.laneDirectionsList.map { it.isHighlighted })
+    }
+
+    @Test
     fun imperialDistances() {
         assertEquals(DistanceUnits.FEET, NavigationStatusChannel.distance(100.0, true, Locale.US).unit)
         assertEquals(NavigationStatusChannel.Shown("1.2", 1200, DistanceUnits.MILES_P1), NavigationStatusChannel.distance(1931.0, true, Locale.US))
@@ -39,6 +53,11 @@ class NavigationStatusChannelTest {
         // Where traffic keeps left (the steering wheel on the right), roundabouts turn clockwise
         assertEquals(NavigationType.ROUNDABOUT_ENTER_AND_EXIT_CW, NavigationStatusChannel.maneuverType(ManeuverKind.ROUNDABOUT, clockwise = true))
         assertEquals(NavigationType.TURN_NORMAL_LEFT, NavigationStatusChannel.maneuverType(ManeuverKind.LEFT, clockwise = true))
+        // A U-turn goes round towards the middle of the road: left where traffic keeps right, right where it keeps left
+        assertEquals(NavigationType.U_TURN_LEFT, NavigationStatusChannel.maneuverType(ManeuverKind.U_TURN))
+        assertEquals(NavigationType.U_TURN_RIGHT, NavigationStatusChannel.maneuverType(ManeuverKind.U_TURN, clockwise = true))
+        assertEquals(NavigationNextTurnEvent.TurnSide.RIGHT, NavigationStatusChannel.turnSide(ManeuverKind.U_TURN, keepLeft = true))
+        assertEquals(Shape.U_TURN_RIGHT, NavigationStatusChannel.laneShape(LaneTurn.U_TURN, keepLeft = true))
     }
 
     @Test

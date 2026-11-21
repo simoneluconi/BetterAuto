@@ -40,6 +40,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simoneluconi.betterauto.car.CarState
 import com.simoneluconi.betterauto.map.nav.Destination
+import com.simoneluconi.betterauto.map.nav.Lane
+import com.simoneluconi.betterauto.map.nav.LaneTurn
 import com.simoneluconi.betterauto.map.nav.Maneuver
 import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import com.simoneluconi.betterauto.map.nav.NavState
@@ -58,8 +60,8 @@ import java.time.LocalTime
 import kotlin.math.roundToInt
 
 /**
- * The next maneuver, as a factory navigation shows it: its arrow, how far it is, the street it leads onto,
- * and under it the arrival time with what is left, and the way to end the navigation ([onEnd]).
+ * The next maneuver, as a factory navigation shows it: its arrow, how far it is, the street it leads onto, the lanes
+ * to take as it comes near, and under it the arrival time with what is left, and the way to end the navigation ([onEnd]).
  */
 @Composable
 fun ManeuverCard(nav: NavState, modifier: Modifier = Modifier, onEnd: (() -> Unit)? = null) {
@@ -86,8 +88,10 @@ fun ManeuverCard(nav: NavState, modifier: Modifier = Modifier, onEnd: (() -> Uni
                 contentAlignment = Alignment.Center,
             ) {
                 val kind = next?.kind ?: ManeuverKind.ARRIVE
-                // Clockwise where traffic keeps left: the arrow drawn for the right, mirrored
-                val mirrored = kind == ManeuverKind.ROUNDABOUT && roundaboutsClockwise()
+                // Clockwise where traffic keeps left: the arrow drawn for the right, mirrored. The U-turn is drawn
+                // turning right (as where traffic keeps left): mirrored where it keeps right
+                val keepLeft = roundaboutsClockwise()
+                val mirrored = (kind == ManeuverKind.ROUNDABOUT && keepLeft) || (kind == ManeuverKind.U_TURN && !keepLeft)
                 CarIcon(iconOf(kind), SignWhite, Modifier.size(52.dp).graphicsLayer { scaleX = if (mirrored) -1f else 1f })
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -95,6 +99,10 @@ fun ManeuverCard(nav: NavState, modifier: Modifier = Modifier, onEnd: (() -> Uni
                 CarLabel(distance ?: "…", 34.sp, colors.text, weight = FontWeight.ExtraBold, tabularNumbers = true)
                 if (next != null) CarLabel(maneuverLabel(next), 20.sp, colors.text2, weight = FontWeight.Bold, maxLines = 1, shrinkToFit = true)
             }
+        }
+        // The lanes to take, as the maneuver comes near (where the map data says which)
+        if (next != null && next.lanes.isNotEmpty() && !nav.rerouting && nav.toNextM < LANES_SHOWN_M) {
+            LaneStrip(next.lanes, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
         }
         Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(1.dp).background(colors.line))
         Row(
@@ -133,6 +141,63 @@ fun ManeuverCard(nav: NavState, modifier: Modifier = Modifier, onEnd: (() -> Uni
         }
     }
 }
+
+/**
+ * The lanes before the next maneuver, left to right as on the road, with the lines between them: the ones to take in
+ * the route's colour, the others faded, each with the arrow painted on it (the way the route goes, on those to take).
+ */
+@Composable
+private fun LaneStrip(lanes: List<Lane>, modifier: Modifier = Modifier) {
+    val colors = LocalCarColors.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.surface2)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Many lanes (a motorway's toll plaza, a big junction) narrower, so they stay inside the card
+        val many = lanes.size > MANY_LANES
+        val box = if (many) 34.dp else 44.dp
+        val arrow = if (many) 26.dp else 32.dp
+        val keepLeft = roundaboutsClockwise()
+        lanes.forEachIndexed { i, lane ->
+            if (i > 0) Box(Modifier.width(2.dp).height(28.dp).background(colors.line))
+            Box(Modifier.size(box), contentAlignment = Alignment.Center) {
+                // A U-turn lane turns towards the middle of the road: the arrow (drawn turning right) mirrored where
+                // traffic keeps right
+                val flip = !keepLeft && lane.shown == LaneTurn.U_TURN
+                CarIcon(
+                    laneIcon(lane.shown), if (lane.use) colors.focus else colors.text2.copy(alpha = LANE_FADED),
+                    Modifier.size(arrow).graphicsLayer { scaleX = if (flip) -1f else 1f },
+                )
+            }
+        }
+    }
+}
+
+/** A lane's painted arrow, drawn with the maneuvers' own. */
+internal fun laneIcon(turn: LaneTurn): ImageVector = when (turn) {
+    LaneTurn.STRAIGHT -> CarIcons.TurnStraight
+    LaneTurn.SLIGHT_LEFT -> CarIcons.TurnSlightLeft
+    LaneTurn.LEFT -> CarIcons.TurnLeft
+    LaneTurn.SHARP_LEFT -> CarIcons.TurnSharpLeft
+    LaneTurn.SLIGHT_RIGHT -> CarIcons.TurnSlightRight
+    LaneTurn.RIGHT -> CarIcons.TurnRight
+    LaneTurn.SHARP_RIGHT -> CarIcons.TurnSharpRight
+    LaneTurn.U_TURN -> CarIcons.UTurn
+}
+
+/** The lanes show from this far before the maneuver: nearer, a lane change is still possible, and it matters. */
+private const val LANES_SHOWN_M = 2_000.0
+
+/** Lanes not to take, still seen as lanes. */
+private const val LANE_FADED = 0.4f
+
+/** More lanes than this are drawn narrower. */
+private const val MANY_LANES = 6
 
 /** Where traffic keeps left roundabouts turn clockwise: told by the steering wheel's side (the setting, else the car). */
 @Composable
@@ -274,7 +339,7 @@ internal fun distanceText(metres: Double, units: Units): String {
 
 /** "8 min", "1 h 20". */
 @Composable
-private fun durationText(seconds: Double): String {
+internal fun durationText(seconds: Double): String {
     val minutes = (seconds / 60).roundToInt().coerceAtLeast(1)
     return if (minutes < 60) stringResource(R.string.nav_duration_min, minutes)
     else stringResource(R.string.nav_duration_hours, minutes / 60, minutes % 60)

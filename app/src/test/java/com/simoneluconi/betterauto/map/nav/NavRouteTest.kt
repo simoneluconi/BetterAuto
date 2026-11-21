@@ -45,6 +45,40 @@ class NavRouteTest {
     }
 
     @Test
+    fun lanesBeforeAManeuver() {
+        // Valhalla's answer before a motorway exit on the right (Milan, 2026): three lanes on, two out, the first marked
+        val lanes = NavRoute.lanesOf(
+            org.json.JSONArray("""[{"directions":2},{"directions":2},{"directions":2},{"directions":32,"active":32},{"directions":32,"valid":32}]"""),
+        )
+        assertEquals(listOf(false, false, false, true, true), lanes.map { it.use })
+        assertEquals(LaneTurn.SLIGHT_RIGHT, lanes[3].shown)
+        assertEquals(listOf(LaneTurn.STRAIGHT), lanes[0].turns)
+        // A lane two ways (straight on, right), the route going right
+        val both = NavRoute.lanesOf(org.json.JSONArray("""[{"directions":66,"active":64},{"directions":8}]"""))
+        assertEquals(listOf(LaneTurn.STRAIGHT, LaneTurn.RIGHT), both[0].turns)
+        assertEquals(LaneTurn.RIGHT, both[0].shown)
+        assertEquals(LaneTurn.LEFT, both[1].shown)
+        // Lanes with none marked to take say nothing useful: none
+        assertTrue(NavRoute.lanesOf(org.json.JSONArray("""[{"directions":2},{"directions":64}]""")).isEmpty())
+        assertTrue(NavRoute.lanesOf(null).isEmpty())
+    }
+
+    @Test
+    fun theOtherWaysComeAfterTheBest() {
+        val shape = "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
+        fun trip(km: Double, s: Int, toll: Boolean) = """{"summary":{"length":$km,"time":$s,"has_toll":$toll},"legs":[
+            {"shape":"$shape","maneuvers":[{"type":1,"instruction":"Go","begin_shape_index":0},{"type":4,"instruction":"Arrived","begin_shape_index":2}]}]}"""
+        val json = """{"trip":${trip(157.5, 7553, true)},"alternates":[{"trip":${trip(175.9, 8034, false)}},{"trip":${trip(212.9, 9315, true)}}]}"""
+        val routes = NavRoute.allFromValhalla(json)
+        assertEquals(listOf(157_500.0, 175_900.0, 212_900.0), routes.map { it.lengthM })
+        assertEquals(listOf(true, false, true), routes.map { it.hasToll })
+        // The words for the car changed, the tolls stay
+        assertTrue(routes[0].withManeuvers(emptyList()).hasToll)
+        // With stops Valhalla sends none: just the route
+        assertEquals(1, NavRoute.allFromValhalla("""{"trip":${trip(10.0, 600, false)}}""").size)
+    }
+
+    @Test
     fun valhallasTimeByStretch() {
         val shape = "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
         // The first stretch slow (a town), the second quick for its length

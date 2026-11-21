@@ -6,8 +6,11 @@ import androidx.core.content.edit
 import com.simoneluconi.betterauto.car.TemperatureUnit
 import com.simoneluconi.betterauto.car.UnitSystem
 import com.simoneluconi.betterauto.projection.PhoneAppChoices
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.abs
 
 enum class ThemeMode { AUTO, DAY, NIGHT }
@@ -51,6 +54,29 @@ enum class MapZoom(val level: Double) { CLOSE(19.0), MEDIUM(17.0), FAR(16.0) }
 
 /** What the navigation says: every instruction, only the arrivals (stops, destination), or nothing. */
 enum class GuidanceVoice { FULL, ALERTS, MUTE }
+
+/**
+ * How the driver wants the route: the fastest or the shortest, and the kinds of road to keep off where there is
+ * another way (never "no route" because of them).
+ */
+data class RoutePreferences(
+    val shortest: Boolean = false,
+    val avoidTolls: Boolean = false,
+    val avoidHighways: Boolean = false,
+    val avoidFerries: Boolean = false,
+    val avoidUnpaved: Boolean = false,
+    val avoidCashTolls: Boolean = false,
+    val avoidBorders: Boolean = false,
+) {
+    val isDefault: Boolean get() = this == RoutePreferences()
+
+    /** For the log: "shortest, no tolls, no ferries" (empty when nothing is asked). */
+    fun describe(): String = listOfNotNull(
+        "shortest".takeIf { shortest }, "no tolls".takeIf { avoidTolls }, "no motorways".takeIf { avoidHighways },
+        "no ferries".takeIf { avoidFerries }, "no unpaved".takeIf { avoidUnpaved },
+        "no cash-only tolls".takeIf { avoidCashTolls }, "no borders".takeIf { avoidBorders },
+    ).joinToString(", ")
+}
 
 /** How big the car screen is drawn: [scale] times the density the car states (Auto: as it states). */
 enum class UiSize(val scale: Double) { SMALLER(0.9), AUTO(1.0), LARGER(1.1), LARGEST(1.2) }
@@ -136,6 +162,48 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
     /** The navigation's voice, kept as the driver last left it (on the map or here). */
     private val _guidanceVoice = MutableStateFlow(enumOf(KEY_GUIDANCE_VOICE, GuidanceVoice.FULL))
     val guidanceVoice: StateFlow<GuidanceVoice> = _guidanceVoice
+
+    // The route's preferences, one setting each
+    private val _routeShortest = boolFlow(KEY_ROUTE_SHORTEST, false)
+    val routeShortest: StateFlow<Boolean> = _routeShortest
+    private val _avoidTolls = boolFlow(KEY_AVOID_TOLLS, false)
+    val avoidTolls: StateFlow<Boolean> = _avoidTolls
+    private val _avoidHighways = boolFlow(KEY_AVOID_HIGHWAYS, false)
+    val avoidHighways: StateFlow<Boolean> = _avoidHighways
+    private val _avoidFerries = boolFlow(KEY_AVOID_FERRIES, false)
+    val avoidFerries: StateFlow<Boolean> = _avoidFerries
+    private val _avoidUnpaved = boolFlow(KEY_AVOID_UNPAVED, false)
+    val avoidUnpaved: StateFlow<Boolean> = _avoidUnpaved
+    private val _avoidCashTolls = boolFlow(KEY_AVOID_CASH_TOLLS, false)
+    val avoidCashTolls: StateFlow<Boolean> = _avoidCashTolls
+    private val _avoidBorders = boolFlow(KEY_AVOID_BORDERS, false)
+    val avoidBorders: StateFlow<Boolean> = _avoidBorders
+
+    /** The route's preferences as they are now. */
+    fun routePreferences() = RoutePreferences(
+        _routeShortest.value, _avoidTolls.value, _avoidHighways.value, _avoidFerries.value,
+        _avoidUnpaved.value, _avoidCashTolls.value, _avoidBorders.value,
+    )
+
+    /** The route's preferences, again at every change. */
+    val routePreferencesFlow: Flow<RoutePreferences> =
+        combine(listOf(_routeShortest, _avoidTolls, _avoidHighways, _avoidFerries, _avoidUnpaved, _avoidCashTolls, _avoidBorders)) {
+            routePreferences()
+        }.distinctUntilChanged()
+
+    fun setRouteShortest(value: Boolean) = saveBool(KEY_ROUTE_SHORTEST, value, _routeShortest)
+
+    fun setAvoidTolls(value: Boolean) = saveBool(KEY_AVOID_TOLLS, value, _avoidTolls)
+
+    fun setAvoidHighways(value: Boolean) = saveBool(KEY_AVOID_HIGHWAYS, value, _avoidHighways)
+
+    fun setAvoidFerries(value: Boolean) = saveBool(KEY_AVOID_FERRIES, value, _avoidFerries)
+
+    fun setAvoidUnpaved(value: Boolean) = saveBool(KEY_AVOID_UNPAVED, value, _avoidUnpaved)
+
+    fun setAvoidCashTolls(value: Boolean) = saveBool(KEY_AVOID_CASH_TOLLS, value, _avoidCashTolls)
+
+    fun setAvoidBorders(value: Boolean) = saveBool(KEY_AVOID_BORDERS, value, _avoidBorders)
 
     private val _routeServer = MutableStateFlow(prefs.getString(KEY_ROUTE_SERVER, null))
     /** The driver's own Valhalla server (a base URL); null for the public demonstration one. */
@@ -562,6 +630,13 @@ class LauncherSettings private constructor(private val prefs: SharedPreferences)
         private const val KEY_SHOW_SPEED_LIMIT = "show_speed_limit"
         private const val KEY_GUIDANCE_VOICE = "guidance_voice"
         private const val KEY_ROUTE_SERVER = "route_server"
+        private const val KEY_ROUTE_SHORTEST = "route_shortest"
+        private const val KEY_AVOID_TOLLS = "avoid_tolls"
+        private const val KEY_AVOID_HIGHWAYS = "avoid_highways"
+        private const val KEY_AVOID_FERRIES = "avoid_ferries"
+        private const val KEY_AVOID_UNPAVED = "avoid_unpaved"
+        private const val KEY_AVOID_CASH_TOLLS = "avoid_cash_tolls"
+        private const val KEY_AVOID_BORDERS = "avoid_borders"
         private const val KEY_UNITS = "unit_system"
         private const val KEY_TEMPERATURE = "temperature_unit"
         private const val KEY_VOICE_LANGUAGE = "voice_language"

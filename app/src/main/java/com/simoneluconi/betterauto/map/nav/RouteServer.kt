@@ -1,5 +1,6 @@
 package com.simoneluconi.betterauto.map.nav
 
+import com.simoneluconi.betterauto.settings.RoutePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -58,6 +59,29 @@ object RouteServer {
             }
         }.getOrNull()
     }
+
+    /**
+     * The driver's [preferences] as Valhalla's options for the "auto" costing, or null with none to give. Mostly
+     * preferences (a road kind is used where there is no other way); the two exclusions can leave no route, and
+     * the route is then asked again without them. Shortest is `use_distance`: Valhalla's own `shortest` drops
+     * every other option.
+     */
+    internal fun costingOptions(preferences: RoutePreferences): JSONObject? {
+        if (preferences.isDefault) return null
+        return JSONObject().apply {
+            if (preferences.shortest) put("use_distance", 1.0)
+            if (preferences.avoidTolls) put("use_tolls", 0.0)
+            if (preferences.avoidHighways) put("use_highways", 0.0)
+            if (preferences.avoidFerries) put("use_ferry", 0.0)
+            if (preferences.avoidUnpaved) put("exclude_unpaved", true)
+            if (preferences.avoidCashTolls) put("exclude_cash_only_tolls", true)
+            // Time on the route's cost only, not on the arrival time: another country only when far quicker
+            if (preferences.avoidBorders) put("country_crossing_penalty", BORDER_PENALTY_S)
+        }
+    }
+
+    /** An hour: a border is crossed only to save more than that. */
+    private const val BORDER_PENALTY_S = 3600
 
     /** The version in Valhalla's /status answer, or null if it is not one. */
     internal fun versionOf(json: String): String? =

@@ -1,10 +1,20 @@
 package com.simoneluconi.betterauto.map.nav
 
 import com.simoneluconi.betterauto.map.distanceM
+import org.json.JSONArray
 import org.json.JSONObject
 
 /** What a maneuver looks like on its sign: the arrow shown in the next-turn card. */
 enum class ManeuverKind { STRAIGHT, SLIGHT_RIGHT, RIGHT, SHARP_RIGHT, SLIGHT_LEFT, LEFT, SHARP_LEFT, U_TURN, ROUNDABOUT, ARRIVE }
+
+/** Where a lane goes, as the arrow painted on it shows. */
+enum class LaneTurn { STRAIGHT, SLIGHT_LEFT, LEFT, SHARP_LEFT, SLIGHT_RIGHT, RIGHT, SHARP_RIGHT, U_TURN }
+
+/**
+ * One lane before a maneuver (the lanes go left to right): the ways it goes ([turns]), whether it is one to take
+ * ([use]), and the way its arrow is drawn ([shown]: the one the route takes from it, when it is used).
+ */
+data class Lane(val turns: List<LaneTurn>, val use: Boolean, val shown: LaneTurn)
 
 /** One step of the route: where it starts along the shape and what to say about it. */
 data class Maneuver(
@@ -25,6 +35,8 @@ data class Maneuver(
     val stop: Int? = null,
     /** Where a roundabout is left (index into the route's points), for the arrow drawn on the map. */
     val exitIndex: Int? = null,
+    /** The lanes before it, left to right, when the map data says which to take (most junctions say nothing). */
+    val lanes: List<Lane> = emptyList(),
 )
 
 /**
@@ -39,6 +51,8 @@ class NavRoute(
     val legEnds: IntArray = intArrayOf(points.size / 2 - 1),
     /** Valhalla's seconds from the start to each point (each maneuver's time over its stretch); null without them. */
     private val secondsToPoint: DoubleArray? = null,
+    /** Some of it is a toll road: said when the routes are shown to choose from. */
+    val hasToll: Boolean = false,
 ) {
     val size: Int get() = points.size / 2
     fun lat(i: Int) = points[2 * i]
@@ -52,7 +66,7 @@ class NavRoute(
     }
 
     /** The same route with other words for its maneuvers. */
-    fun withManeuvers(maneuvers: List<Maneuver>) = NavRoute(points, maneuvers, lengthM, durationS, legEnds, secondsToPoint)
+    fun withManeuvers(maneuvers: List<Maneuver>) = NavRoute(points, maneuvers, lengthM, durationS, legEnds, secondsToPoint, hasToll)
 
     /**
      * Valhalla's time from the start to [alongM] metres along: a town stretch weighs more than as many metres of
@@ -103,8 +117,19 @@ class NavRoute(
          * A route from Valhalla's `/route` answer (https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/):
          * every leg's shape (polyline, 6 decimals) and maneuvers, joined, already in the language asked for.
          */
-        fun fromValhalla(json: String): NavRoute {
-            val trip = JSONObject(json).getJSONObject("trip")
+        fun fromValhalla(json: String): NavRoute = fromTrip(JSONObject(json).getJSONObject("trip"))
+
+        /** The best route first, then the other ways Valhalla offers (asked with `alternates`; none with stops). */
+        fun allFromValhalla(json: String): List<NavRoute> {
+            val answer = JSONObject(json)
+            val alternates = answer.optJSONArray("alternates")
+            val others = (0 until (alternates?.length() ?: 0)).mapNotNull { i ->
+                alternates?.optJSONObject(i)?.optJSONObject("trip")?.let { runCatching { fromTrip(it) }.getOrNull() }
+            }
+            return listOf(fromTrip(answer.getJSONObject("trip"))) + others
+        }
+
+        private fun fromTrip(trip: JSONObject): NavRoute {
             val legs = trip.getJSONArray("legs")
             val points = ArrayList<Double>()
             val maneuvers = ArrayList<Maneuver>()
@@ -146,13 +171,15 @@ class NavRoute(
                         beginIndex = offset + m.optInt("begin_shape_index"),
                         roundaboutExit = m.optInt("roundabout_exit_count").takeIf { it > 0 },
                         stop = l.takeIf { kind == ManeuverKind.ARRIVE && l < legs.length() - 1 },
+                        lanes = lanesOf(m.optJSONArray("lanes")),
                     )
                 }
             }
             val summary = trip.getJSONObject("summary")
-            val route = NavRoute(points.toDoubleArray(), maneuvers, summary.optDouble("length") * 1000, summary.optDouble("time"), legEnds)
+            val toll = summary.optBoolean("has_toll")
+            val route = NavRoute(points.toDoubleArray(), maneuvers, summary.optDouble("length") * 1000, summary.optDouble("time"), legEnds, hasToll = toll)
             if (!timed || stretches.isEmpty()) return route
-            return NavRoute(route.points, maneuvers, route.lengthM, route.durationS, legEnds, secondsToPoints(route.cumulative, stretches))
+            return NavRoute(route.points, maneuvers, route.lengthM, route.durationS, legEnds, secondsToPoints(route.cumulative, stretches), toll)
         }
 
         /** Each stretch's time spread over its points by distance, added up from the start. */
@@ -188,6 +215,46 @@ class NavRoute(
 
         /** Valhalla's "exit the roundabout" maneuver. */
         private const val ROUNDABOUT_EXIT = 27
+
+        /**
+         * A maneuver's lanes (asked with `turn_lanes`): each one's `directions`, and `active` (the one to take) or
+         * `valid` (one that also does), as bits of Valhalla's turn lanes (baldr/turnlanes.h). None when no lane is
+         * marked to take: lanes alone, without which to take, would only puzzle the driver.
+         */
+        internal fun lanesOf(list: JSONArray?): List<Lane> {
+            list ?: return emptyList()
+            val lanes = (0 until list.length()).mapNotNull { i ->
+                val lane = list.optJSONObject(i) ?: return@mapNotNull null
+                val turns = turnsOf(lane.optInt("directions"))
+                val taken = turnsOf(lane.optInt("active")).ifEmpty { turnsOf(lane.optInt("valid")) }
+                Lane(turns, use = taken.isNotEmpty(), shown = taken.firstOrNull() ?: turns.firstOrNull() ?: LaneTurn.STRAIGHT)
+            }
+            return lanes.takeIf { all -> all.any { it.use } }.orEmpty()
+        }
+
+        /** The ways in Valhalla's turn lane bits; "none" (no marking) counts as straight on. */
+        private fun turnsOf(bits: Int): List<LaneTurn> = buildList {
+            if (bits and (LANE_NONE or LANE_THROUGH) != 0) add(LaneTurn.STRAIGHT)
+            if (bits and LANE_SLIGHT_LEFT != 0 || bits and LANE_MERGE_LEFT != 0) add(LaneTurn.SLIGHT_LEFT)
+            if (bits and LANE_LEFT != 0) add(LaneTurn.LEFT)
+            if (bits and LANE_SHARP_LEFT != 0) add(LaneTurn.SHARP_LEFT)
+            if (bits and LANE_SLIGHT_RIGHT != 0 || bits and LANE_MERGE_RIGHT != 0) add(LaneTurn.SLIGHT_RIGHT)
+            if (bits and LANE_RIGHT != 0) add(LaneTurn.RIGHT)
+            if (bits and LANE_SHARP_RIGHT != 0) add(LaneTurn.SHARP_RIGHT)
+            if (bits and LANE_REVERSE != 0) add(LaneTurn.U_TURN)
+        }.distinct()
+
+        private const val LANE_NONE = 1
+        private const val LANE_THROUGH = 1 shl 1
+        private const val LANE_SHARP_LEFT = 1 shl 2
+        private const val LANE_LEFT = 1 shl 3
+        private const val LANE_SLIGHT_LEFT = 1 shl 4
+        private const val LANE_SLIGHT_RIGHT = 1 shl 5
+        private const val LANE_RIGHT = 1 shl 6
+        private const val LANE_SHARP_RIGHT = 1 shl 7
+        private const val LANE_REVERSE = 1 shl 8
+        private const val LANE_MERGE_LEFT = 1 shl 9
+        private const val LANE_MERGE_RIGHT = 1 shl 10
 
         /** An encoded polyline with 6 decimals (Valhalla's) into latitude, longitude pairs. */
         internal fun decodePolyline6(encoded: String): DoubleArray {

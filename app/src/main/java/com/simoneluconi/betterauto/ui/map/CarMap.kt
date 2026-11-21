@@ -46,8 +46,12 @@ import com.simoneluconi.betterauto.map.nav.ManeuverKind
 import com.simoneluconi.betterauto.map.nav.NavRoute
 import com.simoneluconi.betterauto.map.nav.Navigation
 import com.simoneluconi.betterauto.map.roads.RoadInfo
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -97,6 +101,7 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
     internal var map: MapLibreMap? = null
     internal var orientation = MapOrientation.HEADING
     internal var heightPx = 0
+    internal var widthPx = 0
 
     /** How far out the speed takes the map: 0 in town, 1 on faster roads, 2 on motorways. */
     private var speedBand = 0
@@ -156,6 +161,59 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         following = false
     }
 
+    /** Showing a new trip's routes whole, north up, instead of following the car. */
+    var overviewing by mutableStateOf(false)
+        private set
+
+    /** What covers the map from each side (left, top, right, bottom, px): the routes are framed in the rest. */
+    var overviewInsets by mutableStateOf(listOf(0, 0, 0, 0))
+
+    /**
+     * The whole of [routes] (and the car) in view, flat and north up, between the [overviewInsets] and a margin;
+     * returns where the camera goes (null if the routes can't be framed). Another move under way can cancel it (on a
+     * map just opened, as the Map section opens with a new trip, the animation of the room ahead of the car did):
+     * check with [reached].
+     */
+    internal fun showOverview(map: MapLibreMap, routes: List<NavRoute>, marginPx: Int): CameraPosition? {
+        overviewing = true
+        val component = map.locationComponent
+        if (component.isLocationComponentActivated) component.cameraMode = CameraMode.NONE
+        val bounds = LatLngBounds.Builder()
+        for (route in routes) {
+            // A few hundred points are enough for the frame; the last one always
+            val step = (route.size / OVERVIEW_POINTS).coerceAtLeast(1)
+            for (i in 0 until route.size step step) bounds.include(LatLng(route.lat(i), route.lon(i)))
+            bounds.include(LatLng(route.lat(route.size - 1), route.lon(route.size - 1)))
+        }
+        MapLocation.fix.value?.let { bounds.include(LatLng(it.latitude, it.longitude)) }
+        val padding = overviewPadding(overviewInsets, marginPx, widthPx, heightPx)
+        val position = runCatching { map.getCameraForLatLngBounds(bounds.build(), padding, 0.0, 0.0) }
+            .onFailure { EventLog.log("Map: the routes could not be framed (${it.message})") }.getOrNull()
+            ?.takeIf { it.zoom.isFinite() && it.target != null }
+        if (position == null) {
+            EventLog.log("Map: no frame for the routes (padding ${padding.joinToString()})")
+            return null
+        }
+        map.animateCamera(CameraUpdateFactory.newCameraPosition(position), CAMERA_MS.toInt())
+        return position
+    }
+
+    /** The camera is where the overview sent it ([target]), not stopped on the way. */
+    internal fun reached(map: MapLibreMap, target: CameraPosition): Boolean {
+        val now = map.cameraPosition
+        return kotlin.math.abs(now.zoom - target.zoom) < REACHED_ZOOM && now.tilt < REACHED_TILT
+    }
+
+    /** The routes' overview is over: back to the car, as it was followed before. */
+    internal fun endOverview(map: MapLibreMap) {
+        if (!overviewing) return
+        overviewing = false
+        following = true
+        zoomChosen = false
+        zoom = speedZoom()
+        camera(map, animate = true)
+    }
+
     /** The camera went to the car once: until then it waits far out for the first position. */
     internal var placed = false
 
@@ -192,7 +250,7 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
     /** Follows the car: turning with it and looking ahead, or north up with the car in the middle. */
     internal fun camera(map: MapLibreMap, animate: Boolean) {
         val component = map.locationComponent
-        if (!component.isLocationComponentActivated || !following || MapLocation.fix.value == null) return
+        if (!component.isLocationComponentActivated || !following || overviewing || MapLocation.fix.value == null) return
         placed = true
         if (transitioning()) return
         val heading = orientation == MapOrientation.HEADING
@@ -227,7 +285,7 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
      */
     internal fun keepTracking(map: MapLibreMap, fix: MapFix) {
         val component = map.locationComponent
-        if (!following || !component.isLocationComponentActivated) return
+        if (!following || overviewing || !component.isLocationComponentActivated) return
         val target = map.cameraPosition.target
         val away = target?.let { distanceM(it.latitude, it.longitude, fix.latitude, fix.longitude) } ?: 0.0
         val allowed = maxOf(LOST_MIN_M, (fix.speedMs ?: 0f).toDouble() * LOST_SECONDS)
@@ -265,8 +323,41 @@ class CarMapState(private var defaultZoom: Double, private val tilt: Double) {
         private const val LOST_SECONDS = 3.0
         private const val LOST_FIXES = 2
         private const val AHEAD_SHARE = 0.35
+
+        /** About this many points of each route frame the overview. */
+        private const val OVERVIEW_POINTS = 300
+
+        /** The overview's camera this close to its zoom, and about flat: it got there. */
+        private const val REACHED_ZOOM = 0.3
+        private const val REACHED_TILT = 5.0
+
+        /** After its animation, the overview is checked; moved again a few times at most. */
+        internal const val OVERVIEW_CHECK_MS = CAMERA_MS + 250L
+        internal const val OVERVIEW_TRIES = 3
         /** A zoom change for speed is slow, the eye barely notices it. */
         private const val SPEED_ZOOM_MS = 2_500L
+
+        /**
+         * The overview's padding (left, top, right, bottom px): what the panels cover ([insets]) plus [marginPx], cut
+         * down so at least [OVERVIEW_FREE_SHARE] of the map's width and height stays to frame the routes in (on a small
+         * screen the panel can cover most of the map; padding past the view gave no frame). Unknown size: as asked.
+         */
+        internal fun overviewPadding(insets: List<Int>, marginPx: Int, widthPx: Int, heightPx: Int): IntArray {
+            val padding = insets.map { it.coerceAtLeast(0) + marginPx }.toMutableList()
+            fun fit(a: Int, b: Int, size: Int) {
+                if (size <= 0) return
+                val room = (size * (1 - OVERVIEW_FREE_SHARE)).toInt()
+                val sum = padding[a] + padding[b]
+                if (sum <= room) return
+                padding[a] = padding[a] * room / sum
+                padding[b] = padding[b] * room / sum
+            }
+            fit(0, 2, widthPx)
+            fit(1, 3, heightPx)
+            return padding.toIntArray()
+        }
+
+        private const val OVERVIEW_FREE_SHARE = 0.3
 
         /** The speed band for [kmh], coming from [current]: up at 65 and 105 km/h, back down at 55 and 95. */
         internal fun speedBand(kmh: Double, current: Int): Int = when {
@@ -297,6 +388,8 @@ fun CarMap(
     arrow: Dp = 70.dp,
     /** Farther out as the car goes faster (a setting). */
     autoZoom: Boolean = false,
+    /** A new trip's routes shown whole while the driver chooses ([Navigation.preview]); the map section only. */
+    overview: Boolean = false,
 ) {
     val context = LocalContext.current
     val cornerPx = with(LocalDensity.current) { corner.toPx() }
@@ -389,10 +482,39 @@ fun CarMap(
         style?.let { MapStyle.apply(context, it, palette.map) }
     }
 
-    // The route being followed, under the street names and the car
+    // The route being followed, under the street names and the car; while a new trip's routes are shown, the one
+    // chosen there and the other ways under it
     LaunchedEffect(style) {
         val loaded = style ?: return@LaunchedEffect
-        Navigation.state.map { it?.route }.distinctUntilChanged().collect { showRoute(loaded, it) }
+        // The lines made at once, before the colours below are set on them (combine's first value comes a moment later)
+        showRoute(loaded, Navigation.state.value?.route)
+        combine(Navigation.state.map { it?.route }.distinctUntilChanged(), Navigation.preview) { route, preview ->
+            if (preview == null) Triple(route, emptyList(), false)
+            else Triple(preview.routes[preview.chosen], preview.routes.filterIndexed { i, _ -> i != preview.chosen }, true)
+        }.distinctUntilChanged().collect { (route, others, choosing) -> showRoute(loaded, route, others, wide = choosing) }
+    }
+
+    // The new trip's routes whole while the driver chooses, then back to the car
+    val overviewMarginPx = with(LocalDensity.current) { OVERVIEW_MARGIN.roundToPx() }
+    LaunchedEffect(style, overview) {
+        val map = state.map
+        if (!overview || style == null) return@LaunchedEffect
+        if (map == null) return@LaunchedEffect EventLog.log("Map: no map yet for the routes' overview")
+        // Latest only: the preview's end (or new routes) stops the checks below at once
+        combine(Navigation.preview.map { it?.routes }.distinctUntilChanged(), snapshotFlow { state.overviewInsets }) { routes, _ -> routes }
+            .collectLatest { routes ->
+                if (routes == null) return@collectLatest state.endOverview(map)
+                // Moved again when another move cancelled it on the way (see showOverview)
+                for (attempt in 1..CarMapState.OVERVIEW_TRIES) {
+                    val target = state.showOverview(map, routes, overviewMarginPx) ?: break
+                    delay(CarMapState.OVERVIEW_CHECK_MS)
+                    if (!state.overviewing || Navigation.preview.value == null || state.reached(map, target)) {
+                        EventLog.log("Map: ${routes.size} route(s) shown whole, zoom ${"%.1f".format(target.zoom)}${if (attempt > 1) " (try $attempt)" else ""}")
+                        break
+                    }
+                    if (attempt == CarMapState.OVERVIEW_TRIES) EventLog.log("Map: the routes' overview kept being cancelled")
+                }
+            }
     }
 
     // The next maneuver drawn on the road, as a factory navigation does: redrawn only when it changes
@@ -401,10 +523,11 @@ fun CarMap(
         Navigation.state.map { s -> s?.next?.let { s.route to it } }.distinctUntilChanged().collect { showManeuver(loaded, it?.first, it?.second) }
     }
 
-    // The route in the focus colour; the car's arrow on it keeps a wide edge to stand apart
-    LaunchedEffect(style, palette.focus, palette.map.halo) {
+    // The route in the focus colour, the other ways in the labels' grey; the car's arrow on it keeps a wide edge to
+    // stand apart
+    LaunchedEffect(style, palette.focus, palette.text2, palette.map.halo) {
         style?.let {
-            colorRoute(it, palette.focus, palette.map.halo)
+            colorRoute(it, palette.focus, palette.text2, palette.map.halo)
             it.addImage(MANEUVER_HEAD, arrowHeadBitmap(context, palette.focus))
         }
     }
@@ -418,8 +541,8 @@ fun CarMap(
         state.map?.takeIf { style != null }?.let { state.camera(it, animate = true) }
     }
 
-    LaunchedEffect(style, orientation, state.following) {
-        style?.let { alignArrow(it, state.following && orientation == MapOrientation.HEADING) }
+    LaunchedEffect(style, orientation, state.following, state.overviewing) {
+        style?.let { alignArrow(it, state.following && !state.overviewing && orientation == MapOrientation.HEADING) }
     }
 
     // A map moved by hand comes back to the car once the driver leaves it alone
@@ -432,6 +555,7 @@ fun CarMap(
     AndroidView(
         factory = { mapView },
         modifier = modifier.onSizeChanged {
+            state.widthPx = it.width
             if (it.height == state.heightPx) return@onSizeChanged
             state.heightPx = it.height
             state.map?.let { map -> state.camera(map, animate = false) }
@@ -509,33 +633,52 @@ private fun setUp(
     }
 }
 
-/** Draws [route] (or nothing), adding its source and lines the first time: below the road names, so they stay readable. */
-private fun showRoute(style: Style, route: NavRoute?) {
+/**
+ * Draws [route] (or nothing) and the [others] ways under it (a new trip's choice), adding their sources and lines the
+ * first time: below the road names, so they stay readable. [wide]: the routes to choose from, seen whole from far out,
+ * drawn thicker there (thin as while driving, they were hard to see on a region's map).
+ */
+private fun showRoute(style: Style, route: NavRoute?, others: List<NavRoute> = emptyList(), wide: Boolean = false) {
     val source = style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE) ?: GeoJsonSource(ROUTE_SOURCE).also { s ->
         style.addSource(s)
-        val width = { near: Float, far: Float ->
-            Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(), Expression.stop(10, far), Expression.stop(18, near))
-        }
-        val casing = LineLayer(ROUTE_CASING, ROUTE_SOURCE).withProperties(
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineWidth(width(30f, 7f)),
+        style.addSource(GeoJsonSource(ROUTE_OTHERS_SOURCE))
+        fun line(id: String, source: String) = LineLayer(id, source).withProperties(
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         )
-        val line = LineLayer(ROUTE_LINE, ROUTE_SOURCE).withProperties(
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND), PropertyFactory.lineWidth(width(22f, 4f)),
+        // Bottom to top: the other ways, then the route over them
+        val layers = listOf(
+            line(ROUTE_OTHERS_CASING, ROUTE_OTHERS_SOURCE), line(ROUTE_OTHERS_LINE, ROUTE_OTHERS_SOURCE),
+            line(ROUTE_CASING, ROUTE_SOURCE), line(ROUTE_LINE, ROUTE_SOURCE),
         )
-        if (style.getLayer(FIRST_LABEL) != null) {
-            style.addLayerBelow(casing, FIRST_LABEL)
-            style.addLayerBelow(line, FIRST_LABEL)
-        } else {
-            style.addLayer(casing)
-            style.addLayer(line)
-        }
+        for (layer in layers) if (style.getLayer(FIRST_LABEL) != null) style.addLayerBelow(layer, FIRST_LABEL) else style.addLayer(layer)
     }
+    // Width at zoom 18 and far out (zoom 10 while driving; 6 and a little more by 12 for the choice)
+    fun width(near: Float, far: Float) = if (wide) {
+        Expression.interpolate(
+            Expression.exponential(1.5f), Expression.zoom(),
+            Expression.stop(6, far), Expression.stop(12, far * WIDE_AT_12), Expression.stop(18, near),
+        )
+    } else {
+        Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(), Expression.stop(10, far), Expression.stop(18, near))
+    }
+    val widths = if (wide) {
+        listOf(ROUTE_OTHERS_CASING to width(26f, 12f), ROUTE_OTHERS_LINE to width(18f, 7f), ROUTE_CASING to width(30f, 15f), ROUTE_LINE to width(22f, 10f))
+    } else {
+        listOf(ROUTE_OTHERS_CASING to width(26f, 6f), ROUTE_OTHERS_LINE to width(18f, 3f), ROUTE_CASING to width(30f, 7f), ROUTE_LINE to width(22f, 4f))
+    }
+    for ((id, w) in widths) style.getLayer(id)?.setProperties(PropertyFactory.lineWidth(w))
     source.setGeoJson(route?.let { lineGeoJson(it.points) } ?: EMPTY_FEATURES)
+    style.getSourceAs<GeoJsonSource>(ROUTE_OTHERS_SOURCE)?.setGeoJson(featureCollection(others.map { lineGeoJson(it.points) }))
 }
 
-private fun colorRoute(style: Style, line: Color, casing: Color) {
+/** The routes to choose from a little thicker at zoom 12 than far out, as a town comes closer. */
+private const val WIDE_AT_12 = 1.3f
+
+private fun colorRoute(style: Style, line: Color, others: Color, casing: Color) {
     style.getLayer(ROUTE_LINE)?.setProperties(PropertyFactory.lineColor(line.toArgb()))
     style.getLayer(ROUTE_CASING)?.setProperties(PropertyFactory.lineColor(casing.toArgb()))
+    style.getLayer(ROUTE_OTHERS_LINE)?.setProperties(PropertyFactory.lineColor(others.toArgb()))
+    style.getLayer(ROUTE_OTHERS_CASING)?.setProperties(PropertyFactory.lineColor(casing.toArgb()))
 }
 
 /**
@@ -657,6 +800,12 @@ private const val EMPTY_FEATURES = """{"type":"FeatureCollection","features":[]}
 private const val ROUTE_SOURCE = "betterauto-route"
 private const val ROUTE_LINE = "betterauto-route-line"
 private const val ROUTE_CASING = "betterauto-route-casing"
+private const val ROUTE_OTHERS_SOURCE = "betterauto-route-others"
+private const val ROUTE_OTHERS_LINE = "betterauto-route-others-line"
+private const val ROUTE_OTHERS_CASING = "betterauto-route-others-casing"
+
+/** Room left around the routes in their overview, inside what the panels cover. */
+private val OVERVIEW_MARGIN = 48.dp
 private const val MANEUVER_SOURCE = "betterauto-maneuver"
 private const val MANEUVER_LINE = "betterauto-maneuver-line"
 private const val MANEUVER_HEAD_SOURCE = "betterauto-maneuver-head"
