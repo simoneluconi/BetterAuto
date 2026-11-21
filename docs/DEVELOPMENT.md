@@ -96,6 +96,32 @@ Crankshaft needed fixes on the bench:
 
 Each file explains itself and can be deleted to go back to the packaged behaviour.
 
+### Desktop Head Unit (a car on the PC)
+
+Google's Desktop Head Unit (DHU, SDK Manager > SDK Tools > "Android Auto Desktop Head Unit Emulator",
+installed in `<sdk>\extras\google\auto`) is a head unit on the PC, with no Pi: Google's own implementation,
+so it behaves closer to a factory car than aasdk, and it accepts our self-signed certificate. The phone only
+needs USB debugging (cable or wireless ADB).
+
+```bat
+scripts\dhu.cmd                          :: 1920x1080 touch screen
+scripts\dhu.cmd -Config default_720p     :: another configuration from <sdk>\extras\google\auto\config
+scripts\dhu.cmd -InputMode rotary        :: knob only, like a car without a touchscreen
+```
+
+The DHU connects to the phone (Android Auto's "head unit server" way): the script forwards the port with
+`adb forward tcp:5277 tcp:5277`, the debug broadcast `--es listen 5277` makes BetterAuto wait 60 s on the
+phone's loopback (`AapService.ACTION_LISTEN_TCP`), then the DHU starts in the console. Its window is the car
+screen (mouse = touch); its console takes commands, `help` lists them: `day`/`night`, `dpad rotate left`/`right`
+and `dpad click`/`back` (the knob; with the touch configuration they send nothing, use `-InputMode rotary` or
+`hybrid`), `keycode media_next`, `focus video` (the car takes the screen back), `restrict all`, `location`,
+`speed`, `mic begin`, `screenshot C:/full/path/shot.png` (forward slashes; without a name it refuses). Closing
+the window or `quit` ends the session. The car screen in a screenshot shows the phone's real notifications and
+music: keep such pictures out of the repository.
+
+The DHU quits as soon as its console reads the end of its input: started from a tool with no terminal, keep
+its stdin open (`tail -f cmd.txt | desktop-head-unit.exe ...`, commands appended to `cmd.txt`).
+
 ## Disabling Android Auto
 
 The official app must be disabled, or it opens the USB accessory before BetterAuto:
@@ -315,7 +341,7 @@ the repository, and since an APK may carry only one pair the build leaves ours o
 yours are missing.
 
 The files in the repository are a throwaway self-signed development certificate. aasdk-based head units
-do not verify the phone's certificate; factory head units expect one issued by Google, so BetterAuto only
+and Google's Desktop Head Unit do not verify the phone's certificate; factory head units expect one issued by Google, so BetterAuto only
 works with head units that skip the check (see the README). When a car refuses the connection, the phone shows a
 notification explaining the reason (`ConnectionProblem`); `--es problem <name>` on the debug broadcast
 shows any of them without a car.

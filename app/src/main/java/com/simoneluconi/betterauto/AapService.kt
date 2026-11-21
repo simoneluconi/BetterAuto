@@ -42,6 +42,7 @@ import com.simoneluconi.betterauto.transport.wireless.WirelessState
 import com.simoneluconi.betterauto.transport.wireless.WirelessStep
 import com.simoneluconi.betterauto.voice.Speech
 import java.io.IOException
+import java.net.ServerSocket
 import kotlin.concurrent.thread
 
 /**
@@ -59,6 +60,8 @@ class AapService : Service() {
     /** A wireless connection on its way (Bluetooth, WiFi, TCP); a USB attach wins over it. */
     private var connecting: WirelessConnector? = null
     private var connectingTo: String? = null
+    /** Waiting for a head unit that connects to the phone ([ACTION_LISTEN_TCP]). */
+    private var listener: ServerSocket? = null
 
     /** The links under the wireless session now running, to know how it ended. */
     private var wirelessLink: WirelessConnector? = null
@@ -152,6 +155,10 @@ class AapService : Service() {
             connectTcp(intent.getStringExtra(EXTRA_HOST), intent.getIntExtra(EXTRA_PORT, DEFAULT_TCP_PORT))
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_LISTEN_TCP) {
+            listenTcp(intent.getIntExtra(EXTRA_PORT, DEFAULT_TCP_PORT))
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_CONNECT_WIRELESS) {
             val address = intent.getStringExtra(EXTRA_DEVICE)
             if (intent.getBooleanExtra(EXTRA_AUTO, false) && (session != null || connecting != null || pendingRetry != null)) {
@@ -209,6 +216,42 @@ class AapService : Service() {
                 return@thread
             }
             main.post { startSession(transport, Link.NETWORK, "$host:$port") }
+        }
+    }
+
+    /**
+     * A head unit that connects to the phone (the Desktop Head Unit through `adb forward`): wait for it on
+     * the loopback, then the same session as over USB. A second request replaces a wait still open.
+     */
+    private fun listenTcp(port: Int) {
+        listener?.let { runCatching { it.close() } }
+        val server = try {
+            TcpTransport.listen(port)
+        } catch (e: IOException) {
+            EventLog.log("TCP: cannot listen on port $port: $e")
+            if (session == null) stopSelf()
+            return
+        }
+        listener = server
+        EventLog.log("TCP: waiting for a head unit on 127.0.0.1:$port")
+        thread(name = "aap-tcp-listen") {
+            val transport = try {
+                TcpTransport.accept(server, TCP_LISTEN_TIMEOUT_MS)
+            } catch (e: IOException) {
+                main.post {
+                    // A wait replaced by a newer one (or the service stopping) ends quietly
+                    if (listener === server) {
+                        listener = null
+                        EventLog.log("TCP: no head unit on port $port: $e")
+                    }
+                    if (session == null && listener == null) stopSelf()
+                }
+                return@thread
+            }
+            main.post {
+                if (listener === server) listener = null
+                startSession(transport, Link.NETWORK, "127.0.0.1:$port")
+            }
         }
     }
 
@@ -425,6 +468,8 @@ class AapService : Service() {
     }
 
     override fun onDestroy() {
+        listener?.let { runCatching { it.close() } }
+        listener = null
         cancelRetry()
         cancelWireless("the service stopped")
         if (WirelessConnector.status.value == WirelessState.Connected) WirelessConnector.report(WirelessState.Idle)
@@ -481,6 +526,8 @@ class AapService : Service() {
         const val ACTION_CONNECT_TCP = "com.simoneluconi.betterauto.CONNECT_TCP"
         const val EXTRA_HOST = "host"
         const val EXTRA_PORT = "port"
+        /** Wait on the phone's loopback ([EXTRA_PORT]) for a head unit that connects to us: the Desktop Head Unit. */
+        const val ACTION_LISTEN_TCP = "com.simoneluconi.betterauto.LISTEN_TCP"
 
         /** Wireless Android Auto to the paired head unit or dongle with this Bluetooth address ([EXTRA_DEVICE]). */
         const val ACTION_CONNECT_WIRELESS = "com.simoneluconi.betterauto.CONNECT_WIRELESS"
@@ -500,6 +547,8 @@ class AapService : Service() {
         /** The port head units in wireless mode listen on. */
         const val DEFAULT_TCP_PORT = 5277
         private const val TCP_CONNECT_TIMEOUT_MS = 10_000
+        /** Long enough to start the Desktop Head Unit by hand after the broadcast. */
+        private const val TCP_LISTEN_TIMEOUT_MS = 60_000
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         private const val CHANNEL_ID = "aap"

@@ -103,6 +103,33 @@ class TcpTransportTest {
         assertTrue(socket.isClosed)
     }
 
+    @Test
+    fun aHeadUnitConnectingToThePhoneIsAccepted() {
+        val listening = TcpTransport.listen(0)
+        val port = listening.localPort
+        var transport: TcpTransport? = null
+        val acceptor = thread { transport = TcpTransport.accept(listening, 2000) }
+        peer = Socket("127.0.0.1", port)
+        acceptor.join(2000)
+        // One head unit only: the listening socket is closed once it came
+        assertTrue(listening.isClosed)
+        peer.getOutputStream().apply { write(byteArrayOf(0, 3, 0, 6)); flush() }
+        val received = ByteArray(4)
+        transport!!.readFully(received)
+        assertArrayEquals(byteArrayOf(0, 3, 0, 6), received)
+        transport!!.close()
+    }
+
+    @Test
+    fun theListenerIsOnTheLoopbackOnly() {
+        TcpTransport.listen(0).use { assertTrue(it.inetAddress.isLoopbackAddress) }
+    }
+
+    @Test(expected = IOException::class)
+    fun nobodyComingEndsTheWait() {
+        TcpTransport.accept(TcpTransport.listen(0), 200)
+    }
+
     @Test(expected = IOException::class)
     fun nobodyListeningFailsFast() {
         val port = ServerSocket(0).use { it.localPort }

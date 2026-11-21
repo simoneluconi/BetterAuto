@@ -135,6 +135,9 @@ appears both in the car's settings screen and in the phone app.
 - `scripts\deploy.cmd [-Tests] [-NoLaunch] [-Serial <id>]`: finds Java and adb, builds the debug APK,
   installs it, pre-approves audio capture, opens the app. `scripts\toggle-aa.cmd [-Show|-To BetterAuto|-To AndroidAuto]`
   switches between BetterAuto and the official Android Auto (both answer the head unit).
+- `scripts\dhu.cmd [-Config default_720p] [-InputMode rotary]`: a car on this PC, Google's Desktop Head Unit
+  connected to the phone over adb (no Pi needed; its console takes `day`/`night`, `dpad rotate left`, `screenshot`…,
+  see `docs/DEVELOPMENT.md`, "Desktop Head Unit"). Usually the quickest bench; the Pi stays for aasdk and USB.
 - Installing kills the running session: the head unit must reconnect (re-plug, or restart the bench head
   unit's core service; see `docs/DEVELOPMENT.md`).
 - The log: `adb logcat -s BetterAuto` (also shown in the phone app). Logcat keeps only a few minutes: the same

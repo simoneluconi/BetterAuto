@@ -3,12 +3,15 @@ package com.simoneluconi.betterauto.transport
 import com.simoneluconi.betterauto.EventLog
 import java.io.EOFException
 import java.io.IOException
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.Socket
 
 /**
  * The same byte pipe over TCP: a head unit listening on the network (a bench head unit in wireless
- * mode, later a wireless dongle). Unlike the USB accessory, short reads lose nothing here.
+ * mode, a wireless dongle), or one connecting to the phone (the Desktop Head Unit, [listen]). Unlike the
+ * USB accessory, short reads lose nothing here.
  */
 class TcpTransport(private val socket: Socket, private val onClose: () -> Unit = {}) : Transport {
     override val kind = "TCP"
@@ -63,6 +66,20 @@ class TcpTransport(private val socket: Socket, private val onClose: () -> Unit =
                 throw e
             }
             return TcpTransport(socket)
+        }
+
+        /**
+         * Listens on the phone's loopback only, for a head unit that connects to the phone (Google's Desktop
+         * Head Unit through `adb forward`, as Android Auto's "head unit server" does). Close the socket to stop.
+         */
+        fun listen(port: Int): ServerSocket = ServerSocket(port, 1, InetAddress.getLoopbackAddress())
+
+        /** Waits for one head unit on [server], then closes it; throws [IOException] if none came within [timeoutMs]. */
+        fun accept(server: ServerSocket, timeoutMs: Int): TcpTransport = server.use {
+            it.soTimeout = timeoutMs
+            val socket = it.accept()
+            socket.tcpNoDelay = true
+            TcpTransport(socket)
         }
     }
 }

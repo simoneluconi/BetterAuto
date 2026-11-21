@@ -75,6 +75,8 @@ import kotlin.concurrent.thread
  *   ... --es theme night     force the theme: day, night or auto
  *   ... --es touch 960,540   a tap from the car's touchscreen (video pixels); "x1,y1,x2,y2" drags
  *   ... --es tcp 192.0.2.10:5277  start a session with a head unit listening on the network (port 5277 if left out)
+ *   ... --es listen 5277     wait 60 s on the phone's loopback for a head unit that connects to us (the Desktop
+ *                            Head Unit through adb forward, see scripts\dhu.cmd); "" for port 5277
  *   ... --es shizuku probe   move media audio through Shizuku for 3 s and log what arrives ("allow" asks permission)
  *   ... --es apps start,com.spotify.music  a phone app on the app display, without a car (AppDisplayProbe: keys,
  *                            taps, a frame saved, its power; the log counts the frames)
@@ -190,6 +192,16 @@ class DebugInputReceiver : BroadcastReceiver() {
                         .putExtra(AapService.EXTRA_HOST, host).putExtra(AapService.EXTRA_PORT, port)
                 )
             }.onFailure { EventLog.log("TCP connect: cannot start the service ($it); open the app first") }
+        }
+        // A head unit that connects to the phone: the Desktop Head Unit through adb forward (scripts\dhu.cmd)
+        intent.getStringExtra("listen")?.let { value ->
+            val port = value.toIntOrNull() ?: AapService.DEFAULT_TCP_PORT
+            runCatching {
+                context.startForegroundService(
+                    Intent(context, AapService::class.java).setAction(AapService.ACTION_LISTEN_TCP)
+                        .putExtra(AapService.EXTRA_PORT, port)
+                )
+            }.onFailure { EventLog.log("TCP listen: cannot start the service ($it); open the app first") }
         }
         when (intent.getStringExtra("shizuku")) {
             "allow" -> ShizukuAudio.requestPermission()
