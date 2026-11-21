@@ -26,7 +26,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
+import android.view.View
+import com.simoneluconi.betterauto.ui.launcher.CarZones
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
@@ -79,6 +87,49 @@ object FocusMemory {
     fun restore(requester: FocusRequester?): Boolean = requester != null && runCatching { requester.requestFocus() }.getOrDefault(false)
 }
 
+/**
+ * Every control on show with where it is, for the touchpad's steps: the nearest one toward a direction gets the focus
+ * straight away, not through a zone's restorer (which would land on the control used last there, not the one beside).
+ * Main thread only.
+ */
+object CarTargets {
+    class Target internal constructor(internal val requester: FocusRequester, internal val view: View) {
+        internal var bounds = Rect.Zero
+    }
+
+    private val targets = mutableListOf<Target>()
+
+    /** The control with the focus now, if it is one of ours. */
+    private var focused: Target? = null
+
+    internal fun add(target: Target) {
+        targets += target
+    }
+
+    internal fun remove(target: Target) {
+        targets -= target
+        if (focused === target) focused = null
+    }
+
+    internal fun focusChanged(target: Target, isFocused: Boolean) {
+        if (isFocused) focused = target else if (focused === target) focused = null
+    }
+
+    /**
+     * Moves the focus from the focused control to the nearest one on show toward [direction] in [view]'s screen
+     * ([CarZones.order]: closest along the way, then best lined up); false with none that way or no control focused.
+     */
+    fun step(direction: FocusDirection, view: View): Boolean {
+        val from = focused?.takeIf { it.view === view } ?: return false
+        // Scrolled away or hidden: no size left on screen
+        val others = targets.filter { it !== from && it.view === view && it.bounds.width > 1f && it.bounds.height > 1f }
+        val next = CarZones.order(from.bounds, others.map { it.bounds }, direction).firstOrNull() ?: return false
+        // The zone being left keeps its control for the knob's nudges back
+        CarZones.leaving()
+        return runCatching { others[next].requester.requestFocus() }.isSuccess
+    }
+}
+
 /** Press-in and focus zoom: this many dp on the longest side, at most these fractions on small controls. */
 private const val PRESS_SHRINK_DP = 8
 private const val MAX_PRESS_SHRINK = 0.08f
@@ -115,6 +166,12 @@ fun Modifier.carClickable(
     var heldLong by remember { mutableStateOf(false) }
     // A release whose press went to another control (a hold that opened this one) is not a click
     var keyDown by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val target = remember(view) { CarTargets.Target(self, view) }
+    DisposableEffect(target) {
+        CarTargets.add(target)
+        onDispose { CarTargets.remove(target) }
+    }
 
     // Once per hold, from the timer or from the car's own long-press flag, whichever comes first
     fun keyLongPress(keyCode: Int) {
@@ -141,6 +198,8 @@ fun Modifier.carClickable(
     }
 
     this
+        // Where it is on screen, as laid out (before the zoom below) and cut by the lists it scrolls in
+        .onGloballyPositioned { target.bounds = it.boundsInRoot() }
         .graphicsLayer {
             // The same few dp for a small button and a long card: a percentage would make big cards jump
             val longest = maxOf(size.width, size.height).coerceAtLeast(1f)
@@ -205,7 +264,10 @@ fun Modifier.carClickable(
             true
         }
         .focusRequester(self)
-        .onFocusChanged { if (it.isFocused) FocusMemory.focused(self) }
+        .onFocusChanged {
+            if (it.isFocused) FocusMemory.focused(self)
+            CarTargets.focusChanged(target, it.isFocused)
+        }
         .focusable(interactionSource = interaction)
         .pointerInput(Unit) {
             detectTapGestures(

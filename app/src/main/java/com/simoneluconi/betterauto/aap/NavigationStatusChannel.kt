@@ -85,8 +85,8 @@ internal class DistancePacer(private val intervalMs: Long) {
 /**
  * Turn-by-turn for the car's own displays (instrument cluster, head-up display), as navigation apps do through
  * Android Auto: whether a navigation is on, the next maneuver with its road, how far it is, and the time and way
- * left to the destination. The car asks for it ([NavigationStatusMessageId.INSTRUMENT_CLUSTER_START]) when its
- * cluster can show it, and stops it again. Each car takes what it knows: the turn and distance events of older
+ * left to the destination. It goes out while the car gives us the navigation focus ([onNavFocus]), and whenever the
+ * car asks for it ([NavigationStatusMessageId.INSTRUMENT_CLUSTER_START], until STOP): most never ask. Each car takes what it knows: the turn and distance events of older
  * head units, and the steps and position of newer ones, so both go out. A cluster that wants a picture
  * ([NavigationStatusService.InstrumentClusterType.IMAGE]) gets the maneuver's arrow drawn at its size.
  * The distance goes at most as often as the car allows.
@@ -119,7 +119,7 @@ class NavigationStatusChannel(
 
     override fun onOpened() {
         val image = if (service.hasImageOptions()) service.imageOptions.let { ", picture ${it.width}x${it.height} ${it.colourDepthBits}-bit" } else ""
-        EventLog.log("Navigation status: cluster ${service.type.name.lowercase()}$image, every ${service.minimumIntervalMs} ms at most; waiting for the car")
+        EventLog.log("Navigation status: cluster ${service.type.name.lowercase()}$image, every ${service.minimumIntervalMs} ms at most; waiting for the navigation focus")
         // The car starts its cluster for the navigation that has the focus: asked each time a guidance starts
         scope.launch {
             Navigation.state.map { it != null }.distinctUntilChanged().collect { guiding -> if (guiding) requestNavFocus() }
@@ -299,6 +299,26 @@ class NavigationStatusChannel(
     }
 
     override fun close() = scope.cancel()
+
+    /**
+     * The car gave us the navigation focus (or took it back for its own navigation). Granted, the turn-by-turn goes
+     * out without waiting for INSTRUMENT_CLUSTER_START: the user's Audi and Google's Desktop Head Unit grant it and
+     * never send START, yet show what comes. Taken back, it stops: the car's own navigation fills the cluster.
+     */
+    fun onNavFocus(projected: Boolean) {
+        scope.launch {
+            when {
+                projected && job == null -> {
+                    EventLog.log("Navigation status: the car gave us the navigation, sending to its cluster")
+                    start()
+                }
+                !projected && job != null -> {
+                    EventLog.log("Navigation status: the car's own navigation took over, stopped")
+                    stop()
+                }
+            }
+        }
+    }
 
     /** A distance as the cluster shows it: the words, the thousandths for the old events, and the unit. */
     internal data class Shown(val text: String, val e3: Int, val unit: NavigationDistance.DistanceUnits)

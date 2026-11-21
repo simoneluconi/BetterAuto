@@ -41,7 +41,9 @@ anything copied from closed-source apps.
 | `aap/` | The protocol: `AapSession` (control channel: version, TLS, auth, service discovery, opens channels), `FrameCodec`, `AapTls`, one class per service channel (`VideoChannel`, `AudioSinkChannel`, `InputChannel`, `SensorChannel`, `MicrophoneChannel`, `MediaStatusChannel`, `PhoneStatusChannel` (calls and signal for the cluster), `NavigationStatusChannel` (turn-by-turn for the cluster/head-up display once the car sends START: old turn/distance events and new steps/position both, the arrow as a picture for IMAGE clusters), `VendorExtensionChannel`, `BluetoothChannel` (pairs the phone with the car for calls; confirmed through Shizuku when there)), `ConnectionProblem` (why a car refused us) |
 | `AapService` | Foreground service owning the session: USB attach → session, teardown, notifications (including connection-problem explanations) |
 | `video/` | `VideoEncoder` (MediaCodec H.264 from a Surface); a stall watchdog in `VideoChannel` rebuilds the pipeline |
-| `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI. Phone apps in the car: `PhoneAppDisplay` (app side: the display, opening apps, keys and touches through one worker) over `AppDisplayHost` (in the Shizuku shell process: a VirtualDeviceManager device of the shell, association made with `cmd companiondevice`, its display has its own power so it runs with the phone locked; the shell identity needs a wrapped context, see its KDoc), `AppDensity` (the app's dpi for any car screen), `PointerMotion` (pointer mode's steps, acceleration and scroll swipe, pure), `PhoneAppChoices`. Shown by `ui/apps/` (`AppsScreen`: every app, ours and the phone's; `PhoneAppScreen`: the picture in a TextureView, the knob per app as keys (focus mode) or as our own drawn pointer (taps and swipes on the virtual touchscreen); holding the press opens a panel: mode, back to the bar, close the app) |
+| `projection/` | `Projection` (virtual display + `LauncherPresentation`), touch/key/rotary injection into the UI. Phone apps in the car: `PhoneAppDisplay` (app side: the display, opening apps, keys and touches through one worker) over `AppDisplayHost` (in the Shizuku shell process: a VirtualDeviceManager device of the shell, association made with `cmd companiondevice`, its display has its own power so it runs with the phone locked; the shell identity needs a wrapped context, see its KDoc), `AppDensity` (the app's dpi for any car screen), `PointerMotion` (pointer mode's steps, acceleration and scroll swipe, pure), `TouchpadGestures` (a car's
+touchpad: every 7 mm one way a step to the next control that way, sent as an arrow key with source TOUCHPAD that
+`LauncherRoot` takes as a Tab with a direction; tap = press, hold = long press; pure, fed by `InputChannel`), `PhoneAppChoices`. Shown by `ui/apps/` (`AppsScreen`: every app, ours and the phone's; `PhoneAppScreen`: the picture in a TextureView, the knob per app as keys (focus mode) or as our own drawn pointer (taps and swipes on the virtual touchscreen); holding the press opens a panel: mode, back to the bar, close the app) |
 | `audio/` | Phone audio to the car: `CarAudio` picks the way. With Shizuku ready, `ShizukuCapture` + `AudioRouterService` (an AIDL user service running as the shell user, audio policy loopback mix, system APIs by reflection) *move* it; otherwise `AudioCapture` *copies* it (MediaProjection) and `PhoneSpeakerMute` mutes the phone. Navigation prompts: with Shizuku a second route feeds the car's guidance stream (`AudioSinkChannel` for both streams, `CarAudioFocus` shares the one audio focus); capture cannot take them, so otherwise `NavPrompts` notices them playing on the phone, lifts its speaker and ducks the music in the car. `PcmQuantizer` (float → dithered PCM, gain ramp) is shared. Also the car microphone |
 | `media/` | `NowPlaying` (follows the active media session), media apps, library browsing |
 | `phone/` | Calls (InCallService companion), contacts/call log, phone status (signal, battery; `PhoneSignal` shares the telephony listeners) |
@@ -138,6 +140,7 @@ appears both in the car's settings screen and in the phone app.
 - `scripts\dhu.cmd [-Config default_720p] [-InputMode rotary]`: a car on this PC, Google's Desktop Head Unit
   connected to the phone over adb (no Pi needed; its console takes `day`/`night`, `dpad rotate left`, `screenshot`…,
   see `docs/DEVELOPMENT.md`, "Desktop Head Unit"). Usually the quickest bench; the Pi stays for aasdk and USB.
+  `-Add status,cluster`: the cluster's turn-by-turn, phone and playback windows, and a second screen (DHU 2.1).
 - Installing kills the running session: the head unit must reconnect (re-plug, or restart the bench head
   unit's core service; see `docs/DEVELOPMENT.md`).
 - The log: `adb logcat -s BetterAuto` (also shown in the phone app). Logcat keeps only a few minutes: the same
@@ -173,9 +176,10 @@ appears both in the car's settings screen and in the phone app.
   VOICE_SESSION_NOTIFICATION START/END.
 - Channels the cars offer that are not implemented yet: system audio,
   notifications, media browser, radio. Navigation status: the user's Audi offered it (cluster "enum") but never
-  sent INSTRUMENT_CLUSTER_START; we now ask for the navigation focus (NAV_FOCUS_REQUEST PROJECTED) when a
-  guidance starts, as navigation apps do. The Audi grants it (NAV_FOCUS_PROJECTED) but has sent no START yet; the
-  cluster itself still to be looked at (the bench Crankshaft has no such channel).
+  sent INSTRUMENT_CLUSTER_START; we ask for the navigation focus (NAV_FOCUS_REQUEST PROJECTED) when a
+  guidance starts, as navigation apps do. The Audi grants it (NAV_FOCUS_PROJECTED) and sends no START, and so does
+  Google's Desktop Head Unit, which shows the turn-by-turn sent without START: it now goes out once the focus is
+  granted. Still to be seen on the Audi's cluster.
 - A car GPS may send a second fix a tenth of a second after the last: the map draws at most one every 0.5 s,
   or MapLibre's glide (timed on the last gap) lurched. Out of a garage the Audi sent the old position, 3 km
   off, for a minute with satellites in use: `CarGpsGate` waits for the position to change. The guidance (navigation prompts) stream is tried on the bench

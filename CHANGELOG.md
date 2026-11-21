@@ -37,6 +37,13 @@ version and date.
   says which (mostly motorways and big junctions); the car's cluster gets them too.
 - During a trip the map's search button shows a route icon: it opens the navigation's menu (voice, edit trip, skip
   stop, end), not just a search.
+- Cars that offer a second screen (an instrument cluster or a navigation-only display) get BetterAuto on the main
+  screen: one listing the cluster first got the launcher drawn there.
+- During a trip the next turn, its distance and road go to the car's instrument cluster as soon as the car lets
+  BetterAuto be the navigation: cars that never asked for them got nothing before.
+- Cars with a touchpad instead of a touchscreen can drive BetterAuto with it: slide one way and the focus goes to
+  the next control that way, one after the other (also into the bar and down long lists), tap to press, hold to
+  press long. The pad's own buttons select and go back.
 
 ### Italiano
 
@@ -71,6 +78,14 @@ version and date.
   dove i dati della mappa lo dicono (soprattutto autostrade e grandi incroci); le riceve anche il quadro strumenti.
 - Durante un viaggio il pulsante di ricerca della mappa mostra l'icona di un percorso: apre il menu della navigazione
   (voce, modifica viaggio, salta tappa, termina), non solo la ricerca.
+- Le auto che offrono un secondo schermo (quadro strumenti o display solo per la navigazione) hanno BetterAuto sullo
+  schermo principale: in una che elencava prima il quadro, il launcher veniva disegnato lì.
+- Durante un viaggio la prossima svolta, la sua distanza e la strada arrivano al quadro strumenti dell'auto appena
+  l'auto lascia la navigazione a BetterAuto: le auto che non le chiedevano prima non ricevevano nulla.
+- Le auto con un touchpad al posto del touchscreen possono usarlo per BetterAuto: striscia in una direzione e il
+  focus passa al controllo successivo in quella direzione, uno dopo l'altro (anche verso la barra e lungo le liste
+  lunghe), tocca per premere, tieni premuto per la pressione lunga. I pulsanti del touchpad selezionano e tornano
+  indietro.
 
 ## 0.3.6 (2026-11-18)
 

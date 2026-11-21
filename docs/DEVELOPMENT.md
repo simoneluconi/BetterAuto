@@ -122,6 +122,34 @@ music: keep such pictures out of the repository.
 The DHU quits as soon as its console reads the end of its input: started from a tool with no terminal, keep
 its stdin open (`tail -f cmd.txt | desktop-head-unit.exe ...`, commands appended to `cmd.txt`).
 
+A car with a touchpad: `-Config touchpad` (no touch, a 240x240 pad of 55 mm that navigates and taps to select)
+opens a "TouchPad" window next to the screen; drag the mouse in it. The car sends the bare finger, BetterAuto reads
+the gestures (`TouchpadGestures`); the log shows the pad at service discovery ("touchpad: …").
+
+The car's other displays: `-Add` layers more configurations after the main one.
+
+```bat
+scripts\dhu.cmd -Add status              :: the cluster's status channels, each in a window of the DHU
+scripts\dhu.cmd -Add status,cluster      :: plus a second screen for the cluster (DHU 2.1)
+```
+
+- `status` (ours, `scripts\dhu\status.ini`): navigation status (turn-by-turn, the "Instrument cluster" window:
+  arrow, distance, road, plus phone status), and media playback status (title, artist, source, position).
+- `cluster` and `auxillary_nav` (DHU 2.1, spelled so): a second video screen, a cluster or a navigation-only
+  display, each with its own input. BetterAuto draws only the main screen; the others are logged and left closed
+  (the DHU lists the cluster screen before the main one).
+
+DHU 2.1 is on the SDK's beta channel only: either switch Android Studio's SDK updates to beta, or put the zip
+listed for `extras;google;auto` 2.1 in `https://dl.google.com/android/repository/repository2-3.xml` in
+`<sdk>\extras\google\auto-2.1` (check its SHA-1 there). The script takes the newest DHU it finds.
+
+Like the user's Audi, the DHU offers the navigation status channel and grants the navigation focus, but never
+sends INSTRUMENT_CLUSTER_START: the turn-by-turn goes out once the focus is granted (`NavigationStatusChannel.onNavFocus`),
+and the DHU shows our turn, distance and road. For a guidance without a car on the road: `--es mapDrive
+43.3105,11.3265,0`, then `--es navigate 43.3188,11.3316`, then `--es mapDrive route,40`. `scripts\dhu-shots.ps1 -OutDir
+<folder>` saves every DHU window (main screen, cluster, status) as a picture, also when covered; the console's
+`screenshot` takes only the main screen.
+
 ## Disabling Android Auto
 
 The official app must be disabled, or it opens the USB accessory before BetterAuto:

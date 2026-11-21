@@ -20,6 +20,7 @@ import aap_protobuf.service.control.message.ServiceDiscoveryResponseOuterClass.S
 import aap_protobuf.service.control.message.VoiceSessionNotificationOuterClass.VoiceSessionNotification
 import aap_protobuf.service.control.message.VoiceSessionStatusOuterClass.VoiceSessionStatus
 import aap_protobuf.service.media.sink.message.AudioStreamTypeOuterClass.AudioStreamType
+import aap_protobuf.service.media.sink.message.DisplayTypeOuterClass.DisplayType
 import aap_protobuf.shared.MessageStatusOuterClass.MessageStatus
 import android.os.Build
 import com.google.protobuf.ByteString
@@ -63,6 +64,8 @@ class AapSession(
     private var guidanceSink: AudioSinkChannel? = null
     private var mediaCarrier: Int? = null
     private var guidanceCarrier: Int? = null
+    /** The car's main screen: only its video and input are used (a cluster or auxiliary screen is not drawn yet). */
+    private var mainDisplayId = 0
     private val audioFocus = CarAudioFocus(::requestAudioFocus)
 
     @Volatile
@@ -124,8 +127,13 @@ class AapSession(
                     sink?.onFocus(focus.focusState)
                 }
             }
-            ControlMessageType.MESSAGE_NAV_FOCUS_NOTIFICATION_VALUE ->
-                EventLog.log("Navigation focus from car: ${NavFocusNotification.parseFrom(msg.payload).focusType}")
+            ControlMessageType.MESSAGE_NAV_FOCUS_NOTIFICATION_VALUE -> {
+                val focus = NavFocusNotification.parseFrom(msg.payload).focusType
+                EventLog.log("Navigation focus from car: $focus")
+                // The cluster follows the focus: cars (the DHU too) grant it and never send INSTRUMENT_CLUSTER_START
+                channels.values.filterIsInstance<NavigationStatusChannel>()
+                    .forEach { it.onNavFocus(focus == NavFocusType.NAV_FOCUS_PROJECTED) }
+            }
             // Flags too: a wireless dongle sends an empty message 0 right before it hangs up, not yet understood
             else -> EventLog.log(
                 "Control: unhandled message ${describeId(msg.id)} (${msg.payload.size} bytes, " +
@@ -211,6 +219,7 @@ class AapSession(
         }.map { it.id }
         mediaCarrier = audioSinks(AudioStreamType.AUDIO_STREAM_MEDIA).firstOrNull()
         guidanceCarrier = audioSinks(AudioStreamType.AUDIO_STREAM_GUIDANCE).lastOrNull()
+        mainDisplayId = services.firstOrNull { it.isVideoSink() && it.isMainDisplay() }?.mediaSinkService?.displayId ?: 0
         for (service in services) {
             EventLog.log("  channel ${service.id}: ${service.kind()}")
             // Car makers' own channels (e.g. VW's Exlap): logged to find out what a car offers
@@ -231,8 +240,26 @@ class AapSession(
         }
     }
 
+    private fun Service.isVideoSink() = hasMediaSinkService() && mediaSinkService.videoConfigsCount > 0
+
+    private fun Service.isMainDisplay() =
+        !mediaSinkService.hasDisplayType() || mediaSinkService.displayType == DisplayType.DISPLAY_TYPE_MAIN
+
     private fun createChannel(service: Service): ServiceChannel? = when {
-        service.hasMediaSinkService() && service.mediaSinkService.videoConfigsCount > 0 -> {
+        // A second screen (instrument cluster, auxiliary): one projection only draws the main one, left closed
+        service.isVideoSink() && !service.isMainDisplay() -> {
+            val sink = service.mediaSinkService
+            sink.videoConfigsList.forEachIndexed { i, cfg -> EventLog.log("    video config $i: ${cfg.describe()}") }
+            EventLog.log("    ${sink.displayType.name} screen, display ${sink.displayId}: not drawn yet, left closed")
+            null
+        }
+        service.hasInputSourceService() && service.inputSourceService.hasDisplayId() &&
+            service.inputSourceService.displayId != mainDisplayId -> {
+            val input = service.inputSourceService
+            EventLog.log("    input for display ${input.displayId} (not the main screen), keys: ${input.keycodesSupportedList.joinToString()}: left closed")
+            null
+        }
+        service.isVideoSink() -> {
             service.mediaSinkService.videoConfigsList.forEachIndexed { i, cfg ->
                 EventLog.log("    video config $i: ${cfg.describe()}")
             }
@@ -267,9 +294,21 @@ class AapSession(
             EventLog.log("    touchscreen: ${touchscreen?.width}x${touchscreen?.height}")
             // Units without one report none, or one with no size ("nullxnull" on Harman MMX2)
             CarState.touchscreen.value = touchscreen != null && touchscreen.width > 0 && touchscreen.height > 0
+            // A touchpad instead of (or beside) a touchscreen: its events are not handled yet, logged to learn them
+            service.inputSourceService.touchpadList.forEach { pad ->
+                EventLog.log(
+                    "    touchpad: ${pad.width}x${pad.height}" +
+                        (if (pad.hasPhysicalWidth()) ", ${pad.physicalWidth}x${pad.physicalHeight} physical" else "") +
+                        ", navigation ${pad.uiNavigation}, absolute ${pad.uiAbsolute}, tap as select ${pad.tapAsSelect}" +
+                        if (pad.hasSensitivity()) ", sensitivity ${pad.sensitivity}" else ""
+                )
+            }
             val keys = service.inputSourceService.keycodesSupportedList
             EventLog.log("    keys: ${keys.joinToString()}")
-            InputChannel(this, service.id, touchscreen?.width ?: 0, touchscreen?.height ?: 0, keys, projection)
+            InputChannel(
+                this, service.id, touchscreen?.width ?: 0, touchscreen?.height ?: 0, keys, projection,
+                touchpad = service.inputSourceService.touchpadList.firstOrNull(),
+            )
         }
         service.hasMediaPlaybackService() -> MediaStatusChannel(this, service.id)
         service.hasMediaSourceService() -> {

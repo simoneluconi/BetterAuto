@@ -189,6 +189,19 @@ class Projection(val context: Context) {
             private set
     }
 
+    /**
+     * A touchpad's step: an arrow key marked as the touchpad's, which the launcher takes as a Tab with a direction (the
+     * next control that way) rather than the knob's nudge between zones. Through the same path as keys, so the first
+     * move only reveals the focus and a panel waiting for the driver takes it.
+     */
+    fun dispatchStep(keyCode: Int) = main.post {
+        val target = presentation ?: return@post
+        val now = SystemClock.uptimeMillis()
+        for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+            target.dispatchKey(KeyEvent(now, now, action, keyCode, 0, 0, -1, 0, 0, InputDevice.SOURCE_TOUCHPAD))
+        }
+    }
+
     /** Rotary knob: each detent moves focus to the next (clockwise) or previous control, like Tab / Shift+Tab. */
     fun dispatchRotary(delta: Int) = main.post {
         val target = presentation ?: return@post

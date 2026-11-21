@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import android.view.InputDevice
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
@@ -47,6 +48,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
+import com.simoneluconi.betterauto.ui.CarTargets
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -212,6 +215,7 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
     }
     var hasFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val view = LocalView.current
     // Read by the bridge below long after composition: always the latest value
     val callShown by rememberUpdatedState(shownCall != null)
     DisposableEffect(focus) {
@@ -338,6 +342,27 @@ private fun LauncherContent(focus: LauncherFocus?, insets: PaddingValues) {
                     }
                     val panelOpen = ArrivalPanelShown.value || NavOverlayShown.value || VoiceAssistant.isBusy || BarEditor.open.value ||
                         HomeEdit.active.value || PhoneAppPanelShown.value
+                    // A touchpad's step is a Tab with a direction: the next control that way, across zones and into the
+                    // bar. Where nothing lies that way (the bar keeps its focus, the screen's edge) the zone beside or the
+                    // bar, as the knob's nudge. In panels and phone apps the arrows' own handling below and in them
+                    val touchpadStep = event.nativeKeyEvent.source == InputDevice.SOURCE_TOUCHPAD
+                    if (touchpadStep && shownCall == null && hasFocus && !panelOpen && nudge != null && !PhoneAppDisplay.hasKnob) {
+                        if (down) {
+                            when {
+                                // The control beside on show; else Compose's search, which scrolls a list to its next row
+                                CarTargets.step(nudge, view) -> Unit
+                                focusManager.moveFocus(nudge) -> Unit
+                                CarZones.moveBeside(nudge) -> Unit
+                                railHasFocus && event.key == toScreen ->
+                                    if (!CarZones.returnToLast()) runCatching { contentFocus.requestFocus() }
+                                !railHasFocus && event.key == toBar -> {
+                                    CarZones.leaving()
+                                    railFocus.requestFocus()
+                                }
+                            }
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                     // On a phone app's picture the arrows are the app's (or its pointer's): holding the knob's press
                     // opens its panel, with the way back to the bar
                     if (shownCall == null && hasFocus && !panelOpen && nudge != null && !PhoneAppDisplay.hasKnob) {
