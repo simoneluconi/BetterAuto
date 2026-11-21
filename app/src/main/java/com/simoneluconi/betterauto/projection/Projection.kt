@@ -55,6 +55,9 @@ class Projection(val context: Context) {
         }
     }
 
+    /** The launcher's window on the car screen, for debug builds' redraw checks. Main thread. */
+    internal val window get() = presentation?.window
+
     /** Draws the screen again although nothing changed: a live pipeline then hands out a frame. */
     fun redraw() = main.post {
         presentation?.window?.decorView?.invalidate()

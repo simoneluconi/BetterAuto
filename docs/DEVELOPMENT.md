@@ -323,7 +323,12 @@ the first time, the shell makes one for itself (`cmd companiondevice associate <
 also after BetterAuto is uninstalled; `adb shell cmd companiondevice list <user>` shows it and
 `adb shell cmd companiondevice disassociate <user> com.android.shell 02:42:41:55:54:4f` removes it.
 The system finds the association by the caller's package name: the shell's context must carry
-`com.android.shell` (see `AppDisplayHost.shellIdentity`). Debug: `--es apps start,<package>` (keys, taps, power,
+`com.android.shell` (see `AppDisplayHost.shellIdentity`).
+The display is public (still its own content only): on a private one the phone's keyboard, another app, may not add
+its window ("does not have access" in the log) and typing was impossible. Its keyboard policy is local
+(`setDisplayImePolicy`), so the keyboard shows in the car. The device has a d-pad and a touchscreen but no virtual
+keyboard: with one attached a Samsung counts a physical keyboard (`isAccessoryKeyboard 1`) and hides the on-screen
+one, so Tab and Shift+Tab are injected on the display instead. Debug: `--es apps start,<package>` (keys, taps, power,
 see `AppDisplayProbe`; not with a car session's phone app open: they share the one display), `--es phoneApps
 <packages>` sets the chosen apps, `--es screen 800x480` tries the density on other screens.
 

@@ -842,7 +842,6 @@
     <string name="apps_phone_none">Scegli le app del telefono da aprire in auto in Impostazioni › App.</string>
     <string name="apps_phone_needs_shizuku">Le app del telefono si aprono in auto con Shizuku avviato sul telefono (Android 14 o successivo).</string>
     <string name="app_from_phone">%1$s, dal telefono</string>
-    <string name="app_chip_from_phone">%1$s · dal telefono</string>
     <string name="phone_app_parked_title">Disponibile a veicolo fermo</string>
     <string name="phone_app_parked_desc">Le app del telefono si fermano durante la guida e riprendono quando ti fermi. Puoi cambiarlo in Impostazioni › App.</string>
     <string name="phone_app_secure_title">Questa app non può essere mostrata in auto</string>
@@ -859,6 +858,8 @@
     <string name="phone_app_use_focus">Spostati tra i comandi</string>
     <string name="phone_app_to_bar">Torna alla barra</string>
     <string name="phone_app_close">Chiudi l\'app</string>
+    <string name="phone_app_close_named">Chiudi %1$s</string>
+    <string name="phone_app_back_to">Torna a %1$s</string>
     <string name="phone_app_back_in_app">Indietro nell\'app</string>
     <string name="settings_cat_apps">App</string>
     <string name="settings_phone_apps">App dal telefono</string>

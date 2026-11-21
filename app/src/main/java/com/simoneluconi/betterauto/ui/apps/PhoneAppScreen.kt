@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -722,25 +724,55 @@ private fun forwardTouch(event: MotionEvent) {
 }
 
 /**
- * In the status bar while a phone app is on screen: its name and that it comes from the phone, so that it is never
- * taken for a screen of BetterAuto. Not a control: the knob does not stop on it.
+ * In the status bar while a phone app is open, on every screen: its icon with the phone badge and its name, so that
+ * it is never taken for a screen of BetterAuto. Away from the app it takes the driver back there in one press; its X,
+ * always there, closes the app (from inside it, the apps come instead).
  */
 @Composable
-fun PhoneAppChip() {
+fun PhoneAppChip(settings: LauncherSettings, section: Section) {
     val colors = LocalCarColors.current
     val context = LocalContext.current
     val open by PhoneAppDisplay.open.collectAsStateWithLifecycle()
     val app = remember(open) { open?.let { MediaApps.info(context, it) } } ?: return
+    val leave = LocalLeaveToBar.current
+    val inApp = section == Section.PHONE_APP
     val pill = RoundedCornerShape(50)
     Row(
-        Modifier
-            .background(colors.surface, pill)
-            .padding(start = 8.dp, end = 18.dp, top = 6.dp, bottom = 6.dp),
+        Modifier.background(colors.surface, pill).height(52.dp).padding(start = 6.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AppIcon(app.icon, phone = true, size = 34)
-        CarLabel(stringResource(R.string.app_chip_from_phone, app.label), 19.sp, colors.text, weight = FontWeight.Bold)
+        // The name alone: the phone badge on the icon already says where it comes from
+        val name = app.label
+        // Inside the app it says only which app this is; elsewhere it is the way back to it
+        val body = if (inApp) Modifier else Modifier.carClickable(pill, stringResource(R.string.phone_app_back_to, app.label)) {
+            settings.setSection(Section.PHONE_APP)
+        }
+        Row(
+            body.widthIn(max = 380.dp).padding(start = 2.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AppIcon(app.icon, phone = true, size = 34)
+            CarLabel(name, 19.sp, colors.text, weight = FontWeight.Bold, shrinkToFit = true)
+        }
+        var closeHasKnob by remember { mutableStateOf(false) }
+        Box(
+            Modifier
+                .onFocusChanged { closeHasKnob = it.hasFocus }
+                .carClickable(CircleShape, stringResource(R.string.phone_app_close_named, app.label)) {
+                    // The knob waits on the bar, not lost with the chip (a touch drops the focus first)
+                    if (closeHasKnob) leave?.invoke()
+                    PhoneAppPanelShown.close?.invoke()
+                    PhoneAppDisplay.closeApp()
+                    if (inApp) settings.setSection(Section.APPS)
+                }
+                .background(colors.surface2, CircleShape)
+                .size(40.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CarIcon(CarIcons.Close, colors.text, Modifier.size(20.dp))
+        }
     }
 }
 

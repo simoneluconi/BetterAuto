@@ -844,7 +844,6 @@
     <string name="apps_phone_none">Choose the phone apps to open in the car in Settings › Apps.</string>
     <string name="apps_phone_needs_shizuku">Phone apps open in the car with Shizuku running on the phone (Android 14 or later).</string>
     <string name="app_from_phone">%1$s, from the phone</string>
-    <string name="app_chip_from_phone">%1$s · from the phone</string>
     <string name="phone_app_parked_title">Available when the car stands</string>
     <string name="phone_app_parked_desc">Phone apps pause while driving and go on when you stop. You can change this in Settings › Apps.</string>
     <string name="phone_app_secure_title">This app can\'t be shown in the car</string>
@@ -861,6 +860,8 @@
     <string name="phone_app_use_focus">Move between controls</string>
     <string name="phone_app_to_bar">Back to the bar</string>
     <string name="phone_app_close">Close the app</string>
+    <string name="phone_app_close_named">Close %1$s</string>
+    <string name="phone_app_back_to">Back to %1$s</string>
     <string name="phone_app_back_in_app">Back in the app</string>
     <string name="settings_cat_apps">Apps</string>
     <string name="settings_phone_apps">Phone apps</string>

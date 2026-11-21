@@ -85,6 +85,8 @@ import kotlin.concurrent.thread
  *   ... --es shizuku own     use BetterAuto's own shell process instead of Shizuku's user service, as on phones
  *                            where that cannot start ("userService" goes back), from the next connection on
  *   ... --ez restartVideo true  rebuild the car screen pipeline, as the stall watchdog does
+ *   ... --es redraw decor    draw the car screen again at one level: decor, views (every view), texture (the
+ *                            phone app's picture), layout: to find where a stale picture lives
  *   ... --es units imperial  distances and pressures: metric, imperial or auto;
  *                            --es temperature fahrenheit: celsius, fahrenheit or auto;
  *                            --es formats uk: dates and numbers as in italy, us, uk or auto
@@ -182,6 +184,30 @@ class DebugInputReceiver : BroadcastReceiver() {
         }
         // What the stall watchdog does: new encoder, virtual display and launcher (off the main thread, it waits for the encoder)
         if (intent.getBooleanExtra("restartVideo", false)) thread(name = "debug-video-restart") { VideoChannel.active?.restartStreaming() }
+        // A redraw of the car screen at one level, to find where a stale picture lives (receivers run on the main thread)
+        intent.getStringExtra("redraw")?.let { level ->
+            val decor = Projection.active?.window?.decorView ?: return@let EventLog.log("Debug: no car screen to redraw")
+            fun each(view: android.view.View, action: (android.view.View) -> Unit) {
+                action(view)
+                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) each(view.getChildAt(i), action)
+            }
+            var count = 0
+            when (level) {
+                "decor" -> { decor.invalidate(); count = 1 }
+                "views" -> each(decor) { it.invalidate(); count++ }
+                "texture" -> each(decor) { if (it is android.view.TextureView) { it.invalidate(); count++ } }
+                "layout" -> each(decor) { it.requestLayout(); count++ }
+                "dump" -> each(decor) { v ->
+                    count++
+                    val texture = (v as? android.view.TextureView)?.let { " opaque=${it.isOpaque} available=${it.isAvailable}" }.orEmpty()
+                    EventLog.log(
+                        "Debug: view ${v.javaClass.simpleName} alpha=${v.alpha} pressed=${v.isPressed} focused=${v.isFocused} " +
+                            "layer=${v.layerType} touchMode=${v.isInTouchMode} fg=${v.foreground != null} bg=${v.background != null}$texture",
+                    )
+                }
+            }
+            EventLog.log("Debug: redraw $level, $count views")
+        }
         // A head unit listening on the network, e.g. the bench Pi in wireless mode: "host" or "host:port"
         intent.getStringExtra("tcp")?.let { target ->
             val host = target.substringBefore(':')

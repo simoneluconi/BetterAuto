@@ -11,6 +11,9 @@ import android.hardware.display.VirtualDisplayConfig
 import android.os.Build
 import android.os.IBinder
 import android.os.Process
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -26,7 +29,8 @@ import java.util.concurrent.Executor
  * run for the car. It belongs to a virtual device of ours (VirtualDeviceManager, system APIs by reflection), and a
  * device's displays have a display group of their own, so their own power: they keep running with the phone locked
  * or asleep (a plain virtual display sleeps with the phone), and LOCK_STATE_ALWAYS_UNLOCKED keeps the keyguard off
- * them. Keys and touches reach the app through the device's own input devices, aimed at that display.
+ * them. Arrows and touches reach the app through the device's own d-pad and touchscreen, other keys are injected on
+ * the display (no virtual keyboard: the phone's on-screen one shows there, see [key]).
  *
  * A device needs a companion association of the caller's package with an app-streaming profile: the shell user
  * makes one for itself the first time (`cmd companiondevice associate`), and the device is asked for under the
@@ -38,7 +42,6 @@ class AppDisplayHost(context: Context) {
     private var device: Any? = null
     private var display: VirtualDisplay? = null
     private var dpad: Any? = null
-    private var keyboard: Any? = null
     private var touchscreen: Any? = null
     private var listener: IAppDisplayListener? = null
     private var width = 0
@@ -59,23 +62,28 @@ class AppDisplayHost(context: Context) {
             device = newDevice
             this.listener = listener
             watchActivities(newDevice)
-            val config = VirtualDisplayConfig.Builder(DISPLAY_NAME, width, height, densityDpi)
-                .setSurface(surface)
-                // Trusted: apps may start there and the display joins the device's own group
-                .setFlags(displayFlag("VIRTUAL_DISPLAY_FLAG_TRUSTED", 1 shl 10) or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
-                .build()
-            val newDisplay = newDevice.javaClass
+            // Trusted: apps may start there and the display joins the device's own group. Public: the phone's keyboard
+            // (another app) may put its window there, a private display refuses it ("does not have access"); its own
+            // content only, so nothing is mirrored onto it
+            val flags = displayFlag("VIRTUAL_DISPLAY_FLAG_TRUSTED", 1 shl 10) or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
+            val makeDisplay = newDevice.javaClass
                 .getMethod("createVirtualDisplay", VirtualDisplayConfig::class.java, Executor::class.java, VirtualDisplay.Callback::class.java)
-                .invoke(newDevice, config, null, null) as VirtualDisplay? ?: error("the device gave no display")
+            fun displayWith(flags: Int): VirtualDisplay? = makeDisplay.invoke(
+                newDevice, VirtualDisplayConfig.Builder(DISPLAY_NAME, width, height, densityDpi).setSurface(surface).setFlags(flags).build(), null, null,
+            ) as VirtualDisplay?
+            var public = true
+            val newDisplay = runCatching { displayWith(flags or DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC) }.getOrNull()
+                ?: displayWith(flags).also { public = false }
+                ?: error("the device gave no display")
             display = newDisplay
             this.width = width
             this.height = height
             dpi = densityDpi
             val id = newDisplay.display.displayId
             dpad = inputDevice(newDevice, "VirtualDpadConfig", "createVirtualDpad", id, "BetterAuto knob")
-            keyboard = inputDevice(newDevice, "VirtualKeyboardConfig", "createVirtualKeyboard", id, "BetterAuto keys")
             touchscreen = touchscreen(newDevice, id, width, height)
-            status = "app display $id: ${width}x$height at $densityDpi dpi"
+            val ime = keyboardHere(newDevice, id)
+            status = "app display $id: ${width}x$height at $densityDpi dpi, ${if (public) "public" else "private"}, keyboard $ime"
             id
         } catch (e: Throwable) {
             release()
@@ -121,14 +129,41 @@ class AppDisplayHost(context: Context) {
     }
 
     /**
-     * Arrows, center and back go through the d-pad (all it takes), any other key through the keyboard; a knob turned
-     * back is Shift+Tab, the Shift held on the keyboard around it.
+     * Arrows, center and back go through the d-pad (all it takes); any other key (Tab, a knob turned back as
+     * Shift+Tab) is injected on the display. Not through a virtual keyboard: with one attached the phone takes it for
+     * a physical keyboard and keeps its own on-screen one hidden, and the app could not be typed in.
      */
     @Synchronized
     fun key(keyCode: Int, down: Boolean, shift: Boolean = false) {
-        if (shift && down) sendKey(keyboard, KeyEvent.KEYCODE_SHIFT_LEFT, true)
-        sendKey(if (keyCode in DPAD_KEYS) dpad else keyboard, keyCode, down)
-        if (shift && !down) sendKey(keyboard, KeyEvent.KEYCODE_SHIFT_LEFT, false)
+        if (keyCode in DPAD_KEYS) sendKey(dpad, keyCode, down) else injectKey(keyCode, down, shift)
+    }
+
+    private fun injectKey(keyCode: Int, down: Boolean, shift: Boolean) {
+        val id = display?.display?.displayId ?: return
+        runCatching {
+            val now = SystemClock.uptimeMillis()
+            val meta = if (shift) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
+            val event = KeyEvent(
+                now, now, if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP, keyCode, 0, meta,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD,
+            )
+            injection.getOrThrow().invoke(event, id)
+        }.onFailure { status = "key $keyCode not injected: ${it.cause ?: it}" }
+    }
+
+    /** Puts a key event on a display, through the system's input manager (the shell may inject). Looked up once. */
+    private val injection: Result<(KeyEvent, Int) -> Unit> by lazy {
+        runCatching {
+            val setDisplay = KeyEvent::class.java.getMethod("setDisplayId", INT)
+            val global = Class.forName("android.hardware.input.InputManagerGlobal")
+            val manager = global.getMethod("getInstance").invoke(null)!!
+            val injectMethod = global.getMethod("injectInputEvent", android.view.InputEvent::class.java, INT)
+            val send: (KeyEvent, Int) -> Unit = { event, displayId ->
+                setDisplay.invoke(event, displayId)
+                injectMethod.invoke(manager, event, INJECT_ASYNC)
+            }
+            send
+        }
     }
 
     private fun sendKey(target: Any?, keyCode: Int, down: Boolean) {
@@ -173,7 +208,7 @@ class AppDisplayHost(context: Context) {
         }
     }
 
-    /** An input device's send method, per its class (the d-pad's, the keyboard's, the touchscreen's). */
+    /** An input device's send method, per its class (the d-pad's, the touchscreen's). */
     private val senders = HashMap<Class<*>, Method>()
 
     private fun sender(target: Any, name: String, eventClass: Class<*>): Method =
@@ -208,11 +243,10 @@ class AppDisplayHost(context: Context) {
     fun release() {
         // First: the display emptied by its removal is not the driver closing the app
         listener = null
-        for (input in listOf(dpad, keyboard, touchscreen)) input?.let { close(it) }
+        for (input in listOf(dpad, touchscreen)) input?.let { close(it) }
         display?.let { runCatching { it.release() } }
         device?.let { close(it) }
         dpad = null
-        keyboard = null
         touchscreen = null
         display = null
         device = null
@@ -294,6 +328,27 @@ class AppDisplayHost(context: Context) {
         return device.javaClass.getMethod(create, built.javaClass).invoke(device, built) ?: error("no $config device")
     }
 
+    /**
+     * The phone's on-screen keyboard shows on this display, inside the app's picture in the car, instead of on the
+     * phone (where it would be no use, or not shown at all with the phone locked). Through the device where the
+     * system has it, else the window manager; says which, or why neither.
+     */
+    private fun keyboardHere(device: Any, displayId: Int): String {
+        val viaDevice = runCatching {
+            device.javaClass.getMethod("setDisplayImePolicy", INT, INT).invoke(device, displayId, DISPLAY_IME_POLICY_LOCAL)
+        }
+        if (viaDevice.isSuccess) return "here (device)"
+        val viaWindows = runCatching {
+            val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
+                .invoke(null, "window") as IBinder? ?: error("no window service")
+            val windows = Class.forName("android.view.IWindowManager\$Stub").getMethod("asInterface", IBinder::class.java).invoke(null, binder)!!
+            windows.javaClass.getMethod("setDisplayImePolicy", INT, INT).invoke(windows, displayId, DISPLAY_IME_POLICY_LOCAL)
+        }
+        if (viaWindows.isSuccess) return "here (window manager)"
+        val why = viaWindows.exceptionOrNull()?.let { it.cause ?: it }
+        return "on the phone ($why)"
+    }
+
     private fun run(vararg command: String): Pair<Int, String> {
         val process = ProcessBuilder(*command).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText().trim()
@@ -314,6 +369,12 @@ class AppDisplayHost(context: Context) {
 
         /** VirtualDeviceParams.LOCK_STATE_ALWAYS_UNLOCKED (system API). */
         const val LOCK_STATE_ALWAYS_UNLOCKED = 1
+
+        /** WindowManager.DISPLAY_IME_POLICY_LOCAL (hidden): the keyboard shows on the display that asked for it. */
+        const val DISPLAY_IME_POLICY_LOCAL = 0
+
+        /** InputManager.INJECT_INPUT_EVENT_MODE_ASYNC (hidden): don't wait for the app to take the key. */
+        const val INJECT_ASYNC = 0
 
         val DPAD_KEYS = setOf(
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
