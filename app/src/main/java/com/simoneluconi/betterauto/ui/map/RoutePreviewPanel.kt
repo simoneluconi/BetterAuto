@@ -60,7 +60,7 @@ import kotlin.math.ceil
  * long, how far, tolls, the arrival time; the other ways say how much longer they take), the chosen one marked here
  * and drawn in colour on the map; under them chips to avoid tolls, motorways or ferries (the routes asked again at
  * once, the old ones faded meanwhile); at the bottom, never scrolled away on a small screen, Go (with when the
- * guidance starts by itself) and Cancel. Takes the knob on the
+ * guidance starts by itself, until the driver touches the map or uses the knob on it) and Cancel. Takes the knob on the
  * chosen route: turning goes through the routes (the one the knob is on is chosen) and on to Go and Cancel, a press
  * starts the route. A tap chooses a route, a second tap starts it. Back starts the guidance too, the trip stays: ending
  * it is Cancel.
@@ -78,11 +78,12 @@ fun RoutePreviewPanel(preview: RoutePreview, places: List<Destination>, modifier
         withFrameNanos { }
         runCatching { first.requestFocus() }
     }
-    // When it starts by itself, counted down in whole seconds
-    var secondsLeft by remember { mutableIntStateOf(secondsTo(preview.startsAt)) }
-    LaunchedEffect(preview.startsAt) {
-        while (true) {
-            secondsLeft = secondsTo(preview.startsAt)
+    // When it starts by itself, counted down in whole seconds; touched, it doesn't any more
+    val startsAt = preview.startsAt
+    var secondsLeft by remember { mutableIntStateOf(startsAt?.let(::secondsTo) ?: 0) }
+    LaunchedEffect(startsAt) {
+        while (startsAt != null) {
+            secondsLeft = secondsTo(startsAt)
             delay(TICK_MS)
         }
     }
@@ -127,7 +128,11 @@ fun RoutePreviewPanel(preview: RoutePreview, places: List<Destination>, modifier
             verticalAlignment = Alignment.CenterVertically,
         ) {
             GoButton(
-                if (preview.updating) stringResource(R.string.nav_calculating) else stringResource(R.string.nav_preview_go_in, secondsLeft),
+                when {
+                    preview.updating -> stringResource(R.string.nav_calculating)
+                    startsAt == null -> stringResource(R.string.nav_preview_go)
+                    else -> stringResource(R.string.nav_preview_go_in, secondsLeft)
+                },
                 stringResource(R.string.nav_preview_go), Modifier.weight(1f),
             ) { Navigation.startNow() }
             ChoicePill(stringResource(R.string.voice_call_cancel), primary = false, knob = true, Modifier.weight(0.7f)) { Navigation.end() }

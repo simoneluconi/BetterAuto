@@ -72,10 +72,11 @@ data class NavState(
 
 /**
  * A new trip's routes before the guidance starts: the best first, then the other ways; [chosen] is the one that will
- * be followed, from [startsAt] ([SystemClock.elapsedRealtime]) unless the driver presses Go or drives off before.
+ * be followed, from [startsAt] ([SystemClock.elapsedRealtime]) unless the driver presses Go or drives off before;
+ * null once the driver touched the choice: then only Go or driving off start it.
  * [updating]: being asked again (the route's preferences changed on it, the trip changed): these stay on screen meanwhile.
  */
-data class RoutePreview(val routes: List<NavRoute>, val chosen: Int, val startsAt: Long, val updating: Boolean = false)
+data class RoutePreview(val routes: List<NavRoute>, val chosen: Int, val startsAt: Long?, val updating: Boolean = false)
 
 /** Why there is a trip but no route to follow: being calculated, none exists, or the server can't be reached. */
 enum class RoutePlanning { CALCULATING, NO_ROUTE, OFFLINE }
@@ -311,11 +312,14 @@ object Navigation {
 
     /**
      * A new trip: its routes (the best and, with no stops, up to [ALTERNATES] other ways) shown on the map to choose
-     * from ([preview]), then the one chosen followed: on Go ([startNow]), as the car moves off, or once the driver
-     * has left the choice alone for [PREVIEW_MS]. A change of the trip meanwhile cancels it (a new preview comes).
+     * from ([preview]), then the one chosen followed: on Go ([startNow]), as the car moves off, or after [PREVIEW_MS]
+     * if the driver leaves it alone (touched, [holdPreview], it waits for Go). A change of the trip meanwhile cancels
+     * it (a new preview comes).
      */
     private suspend fun previewAndBegin(from: MapFix, places: List<Destination>, speakFirst: Boolean): RouteResult {
         val again = _preview.value != null
+        // Asked again after the driver touched the choice (an avoid chip): the new routes wait for Go too
+        val held = again && _preview.value?.startsAt == null
         if (again) {
             // Asked again (a preference switched on it): the routes there were stay meanwhile, and Go pressed stays
             _preview.value = _preview.value?.copy(updating = true)
@@ -342,19 +346,21 @@ object Navigation {
             previewGo.value = false
             return RouteResult.FOUND
         }
-        _preview.value = RoutePreview(routes, 0, SystemClock.elapsedRealtime() + PREVIEW_MS)
+        _preview.value = RoutePreview(routes, 0, if (held) null else SystemClock.elapsedRealtime() + PREVIEW_MS)
         EventLog.log("Navigation: ${routes.size} route(s) to choose from")
         val chosen = try {
             var why: String? = null
             while (why == null) {
-                val wait = (_preview.value?.startsAt ?: 0L) - SystemClock.elapsedRealtime()
+                // Held: no start by time, only Go or driving off
+                val startsAt = _preview.value?.let { it.startsAt ?: Long.MAX_VALUE } ?: 0L
+                val wait = startsAt - SystemClock.elapsedRealtime()
                 why = if (wait <= 0) "time" else withTimeoutOrNull(wait) {
                     merge(
                         previewGo.filter { it }.map { "go" },
                         MapLocation.fix.filterNotNull().filter { movedOff(it, from) }.map { "moving" },
                     ).first()
                 }
-                // A timeout with a later start (another route chosen meanwhile) goes on waiting
+                // A timeout with no start any more (the driver touched the choice meanwhile) goes on waiting
             }
             val index = _preview.value?.chosen ?: 0
             EventLog.log("Navigation: route ${index + 1} of ${routes.size} taken ($why)")
@@ -375,11 +381,23 @@ object Navigation {
     private fun movedOff(fix: MapFix, from: MapFix) =
         (fix.speedMs ?: 0f) > MOVING_OFF_MS || distanceM(fix.latitude, fix.longitude, from.latitude, from.longitude) > MOVED_OFF_M
 
-    /** The driver picks another route of the preview: the start waits [PREVIEW_MS] again. Main thread. */
+    /** The driver picks another route of the preview: it waits for Go now ([holdPreview]). Main thread. */
     fun choosePreview(index: Int) {
         val current = _preview.value ?: return
         if (index == current.chosen || index !in current.routes.indices) return
-        _preview.value = current.copy(chosen = index, startsAt = SystemClock.elapsedRealtime() + PREVIEW_MS)
+        holdPreview()
+        _preview.value = _preview.value?.copy(chosen = index)
+    }
+
+    /**
+     * The driver touched the preview (a tap anywhere on the map, the knob on it): no start by time any more, the
+     * guidance waits for Go or for the car to drive off. Main thread.
+     */
+    fun holdPreview() {
+        val current = _preview.value ?: return
+        if (current.startsAt == null) return
+        _preview.value = current.copy(startsAt = null)
+        EventLog.log("Navigation: routes touched, waiting for Go")
     }
 
     /** The driver presses Go on the preview. */

@@ -30,7 +30,8 @@ version and date.
   a trip, the route is worked out again.
 - A new destination first shows the whole route on the map, with up to two other ways (only without stops): their
   time, length, tolls and arrival. Turn the knob or tap to choose, press or Go to start; it starts by itself as the
-  car drives off, or after 10 seconds. Avoid tolls, motorways or ferries right there: the routes are worked out again
+  car drives off, or after 10 seconds if you leave it alone (touch the map or turn the knob and it waits for Go).
+  Avoid tolls, motorways or ferries right there: the routes are worked out again
   at once.
 - Lanes: before a junction or an exit the maneuver card shows the lanes, the ones to take lit, where the map data
   says which (mostly motorways and big junctions); the car's cluster gets them too.
@@ -63,7 +64,8 @@ version and date.
   strada; se le cambi durante un viaggio, il percorso viene ricalcolato.
 - Una nuova destinazione mostra prima il percorso intero sulla mappa, con fino a due alternative (solo senza tappe):
   tempo, lunghezza, pedaggi e arrivo di ciascuna. Gira la manopola o tocca per scegliere, premi o Vai per partire;
-  parte da sola quando l'auto si muove, o dopo 10 secondi. Lì stesso puoi evitare pedaggi, autostrade o traghetti:
+  parte da sola quando l'auto si muove, o dopo 10 secondi se non la tocchi (se tocchi la mappa o giri la manopola
+  aspetta Vai). Lì stesso puoi evitare pedaggi, autostrade o traghetti:
   i percorsi vengono ricalcolati subito.
 - Corsie: prima di un incrocio o di un'uscita la scheda della manovra mostra le corsie, evidenziando quelle da prendere,
   dove i dati della mappa lo dicono (soprattutto autostrade e grandi incroci); le riceve anche il quadro strumenti.

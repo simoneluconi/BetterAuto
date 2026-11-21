@@ -42,6 +42,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -163,7 +167,17 @@ fun MapScreen(settings: LauncherSettings, modifier: Modifier = Modifier) {
                 // Being given the focus is not using it: the map takes it by itself when a trip starts
                 if (it.isFocused && SystemClock.elapsedRealtime() - mapKnobUsedAt > HINT_AGAIN_MS) hint = true
             }
+            // A new trip's routes to choose from: the driver touching the map or using the knob on it is choosing,
+            // so the guidance no longer starts by itself (it waits for Go, or for the car to drive off)
+            .pointerInput(preview != null) {
+                if (preview == null) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    Navigation.holdPreview()
+                }
+            }
             .onPreviewKeyEvent { event ->
+                if (preview != null && event.type == KeyEventType.KeyDown) Navigation.holdPreview()
                 // The destinations panel and the stop-or-destination choice have the knob while they are open; the
                 // buttons over the map take their own presses
                 if (panelOpen || offer != null || preview != null || !focused) return@onPreviewKeyEvent false
