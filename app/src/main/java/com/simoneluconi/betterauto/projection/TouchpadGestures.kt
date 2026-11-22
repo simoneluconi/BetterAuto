@@ -7,7 +7,8 @@ import kotlin.math.hypot
  * A car's touchpad driving the screen, apart from Android so it can be tested. The car sends the bare finger
  * (down, moves, up in the pad's own units) and the phone reads the gestures: the finger moved a step's length one way
  * takes the focus to the next control that way (a Tab with a direction: right, left, up or down, one control after
- * the other, never stopping between them), a tap presses, a still finger held presses long. Distances are in
+ * the other, never stopping between them), a quick double tap presses (a single one does nothing: a finger laid on
+ * the pad by chance), a still finger held presses long. Distances are in
  * millimetres on the pad when the car gives its physical size, so a step feels the same on any pad.
  */
 class TouchpadGestures(
@@ -87,14 +88,36 @@ class TouchpadGestures(
         return steps
     }
 
-    fun up(x: Int, y: Int, @Suppress("UNUSED_PARAMETER") atMs: Long): List<Action> {
+    fun up(x: Int, y: Int, atMs: Long): List<Action> {
         if (!down) return emptyList()
         down = false
         longPressAt = null
-        if (longPressed) return listOf(Action.LongPressEnd)
+        if (longPressed) {
+            lastTapAt = null
+            return listOf(Action.LongPressEnd)
+        }
         val still = !moved && hypot((x - startX) / unitsPerMm, (y - startY) / unitsPerMm) < SLOP_MM
-        return if (still && tapAsSelect) listOf(Action.Press) else emptyList()
+        if (!still || !tapAsSelect) {
+            lastTapAt = null
+            return emptyList()
+        }
+        // One tap is nothing (a finger laid on the pad by chance); the second soon after, near the first, presses
+        val first = lastTapAt
+        val near = first != null && hypot((x - lastTapX) / unitsPerMm, (y - lastTapY) / unitsPerMm) < DOUBLE_TAP_MM
+        if (first != null && near && atMs - first <= DOUBLE_TAP_MS) {
+            lastTapAt = null
+            return listOf(Action.Press)
+        }
+        lastTapAt = atMs
+        lastTapX = x.toFloat()
+        lastTapY = y.toFloat()
+        return emptyList()
     }
+
+    /** The tap before, waiting for its second one. */
+    private var lastTapAt: Long? = null
+    private var lastTapX = 0f
+    private var lastTapY = 0f
 
     /** The finger still down and still at [atMs]: the long press starts once. */
     fun tick(atMs: Long): List<Action> {
@@ -111,6 +134,10 @@ class TouchpadGestures(
 
         /** The finger moved this far one way: the next control that way. */
         const val STEP_MM = 7f
+
+        /** Two taps within this time, this close together, are a press. */
+        const val DOUBLE_TAP_MS = 350L
+        const val DOUBLE_TAP_MM = 10f
 
         /** A still finger held this long presses long (the knob's held press). */
         const val LONG_PRESS_MS = 600L

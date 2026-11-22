@@ -25,19 +25,47 @@ class TouchpadGesturesTest {
 
     private fun steps(actions: List<Action>) = actions.filterIsInstance<Action.Step>().map { it.direction }
 
+    /** A tap at (x, y) from [atMs], 80 ms long. */
+    private fun tap(g: TouchpadGestures, x: Int, y: Int, atMs: Long): List<Action> =
+        g.down(x, y, atMs) + g.move(x + 1, y, atMs + 40) + g.up(x + 1, y, atMs + 80)
+
     @Test
-    fun aTapPresses() {
-        val g = pad()
-        g.down(100, 100, 0)
-        g.move(102, 101, 50)
-        assertEquals(listOf(Action.Press), g.up(102, 101, 120))
+    fun aSingleTapDoesNothing() {
+        assertTrue(tap(pad(), 100, 100, 0).isEmpty())
     }
 
     @Test
-    fun aTapDoesNothingWhenThePadDoesNotSelectByTapping() {
+    fun aQuickDoubleTapPresses() {
+        val g = pad()
+        assertTrue(tap(g, 100, 100, 0).isEmpty())
+        assertEquals(listOf(Action.Press), tap(g, 104, 102, 200))
+        // A third tap starts a new pair
+        assertTrue(tap(g, 104, 102, 400).isEmpty())
+    }
+
+    @Test
+    fun twoSlowOrDistantTapsDoNotPress() {
+        val slow = pad()
+        tap(slow, 100, 100, 0)
+        assertTrue(tap(slow, 100, 100, 600).isEmpty())
+        val far = pad()
+        tap(far, 40, 40, 0)
+        assertTrue(tap(far, 40 + u(20f), 40, 200).isEmpty())
+    }
+
+    @Test
+    fun aSlideBetweenTapsStartsOver() {
+        val g = pad()
+        tap(g, 100, 100, 0)
+        slide(g, 10f, 0f, moves = 5)
+        assertTrue(tap(g, 100, 100, 250).isEmpty())
+    }
+
+    @Test
+    fun tapsDoNothingWhenThePadDoesNotSelectByTapping() {
         val g = pad(tapAsSelect = false)
-        g.down(100, 100, 0)
-        assertTrue(g.up(100, 100, 100).isEmpty())
+        tap(g, 100, 100, 0)
+        assertTrue(tap(g, 100, 100, 200).isEmpty())
     }
 
     @Test
@@ -68,7 +96,9 @@ class TouchpadGesturesTest {
 
     @Test
     fun aSlideIsNotAPress() {
-        assertTrue(slide(pad(), 20f, 0f).none { it is Action.Press })
+        val g = pad()
+        assertTrue(slide(g, 20f, 0f).none { it is Action.Press })
+        assertTrue(slide(g, -20f, 0f).none { it is Action.Press })
     }
 
     @Test
