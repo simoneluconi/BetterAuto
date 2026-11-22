@@ -10,97 +10,63 @@ version and date.
 
 ### English
 
-- Phone apps in the car (with Shizuku, Android 14 or later): pick them in Settings › Apps and they open inside
-  BetterAuto's screen, also with the phone locked, by touch or with the knob (turn, arrows, press). They pause while
-  driving unless you allow them; apps that protect what they show (Netflix, banking) can't be shown. They sit in the
-  bar after the media apps, with a phone badge; when there is no room an Apps button gathers them, and the new Apps
-  screen lists every app. Maps, Waze, YouTube, Chrome, WhatsApp and Telegram are chosen until you change the list.
-  Without Shizuku running (or on Android 13 and earlier) the setting says so, in the car and on the phone.
-  While a phone app is open its chip stays at the top on every screen: press it to go back to the app, or its X to
-  close it. Typing in a phone app brings up the phone's own keyboard inside the app, in the car.
-- Holding the knob's press on a phone app opens a panel: go back to the bar, close the app, and, on cars without a
-  touchscreen, use a pointer for apps that don't answer the knob (push the knob to move it, turn to scroll, press to
-  tap; remembered per app). The pointer slides rather than jumps, and quick pushes the same way carry it further.
-  The panel also puts the app on the whole screen, without the bar and the status bar: Back (or the panel again,
-  from the small tab at the top by touch) brings them back. Settings › Apps says how apps open: only when chosen,
-  as last chosen per app, or always on the whole screen.
-- Route preferences in Settings › Map: fastest or shortest, and avoid tolls, motorways, ferries (under More options
-  also unpaved roads, cash-only tolls and borders). They are kept off only where there is another way; changed during
-  a trip, the route is worked out again.
-- A new destination first shows the whole route on the map, with up to two other ways (only without stops): their
-  time, length, tolls and arrival. Turn the knob or tap to choose, press or Go to start; it starts by itself as the
-  car drives off, or after 10 seconds if you leave it alone (touch the map or turn the knob and it waits for Go).
-  Avoid tolls, motorways or ferries right there: the routes are worked out again
-  at once.
-- Lanes: before a junction or an exit the maneuver card shows the lanes, the ones to take lit, where the map data
-  says which (mostly motorways and big junctions); the car's cluster gets them too.
-- During a trip the map's search button shows a route icon: it opens the navigation's menu (voice, edit trip, skip
-  stop, end), not just a search.
-- Cars that offer a second screen (an instrument cluster or a navigation-only display) get BetterAuto on the main
-  screen: one listing the cluster first got the launcher drawn there.
-- During a trip the next turn, its distance and road go to the car's instrument cluster as soon as the car lets
-  BetterAuto be the navigation: cars that never asked for them got nothing before.
-- Cars with a touchpad instead of a touchscreen can drive BetterAuto with it: slide one way and the focus goes to
-  the next control that way, one after the other (also into the bar and down long lists), tap twice quickly to
-  press (a single tap does nothing, so a finger laid on the pad by chance presses nothing), hold to press long. The
-  pad's own buttons select and go back.
-- The music in the car keeps closer to the phone: after a hiccup of the connection its delay no longer stays
-  higher for the rest of the drive, so a video in a phone app stays with its sound.
-- The arrival buttons no longer close as the car enters the garage: the car's GPS losing the satellites there
-  made them start over.
-- When a panel closes (arrival buttons and the like) the car screen no longer stays halfway through the fade,
-  lighter, until the knob is moved.
-- After a touch, once the knob had been used, the whole car screen no longer turns slightly lighter until the knob
-  moves again (Android's own focus highlight, now off: our rings show the focus).
+- **Phone apps in the car** (with Shizuku, Android 14 or later): pick them in Settings › Apps and they open inside
+  BetterAuto's screen, also with the phone locked, by touch or knob. They pause while driving unless you allow
+  them; apps that protect their content (Netflix, banking) can't be shown. They sit in the bar with a phone badge,
+  or under a new Apps button and screen. Maps, Waze, YouTube, Chrome, WhatsApp and Telegram come chosen. While one
+  is open its chip stays at the top (press to go back, X to close), and typing brings up the phone's keyboard.
+- Holding the knob's press on a phone app opens a panel: back to the bar, close the app, the whole screen (Back
+  undoes it), and on cars without a touchscreen a pointer for apps that don't answer the knob (push to move, turn
+  to scroll, press to tap; kept per app). Settings › Apps says how apps open.
+- **Route choice**: a new destination shows the whole route with up to two others (time, length, tolls, arrival);
+  pick with the knob or a tap and Go, or it starts as you drive off or after 10 s. Route preferences in
+  Settings › Map: fastest or shortest, avoid tolls, motorways, ferries and more, also right on the route choice.
+- **Lanes** before junctions and exits, the ones to take lit, where the map data has them; the cluster gets them
+  too.
+- During a trip the map's search button opens the navigation's menu (voice, edit trip, skip stop, end).
+- The next turn goes to the car's instrument cluster as soon as the car lets BetterAuto navigate: cars that never
+  asked got nothing before.
+- Cars with a second screen (cluster or navigation display) get BetterAuto on the main one, not on the cluster.
+- **Touchpads**: slide one way and the focus moves to the next control that way, double tap to press (a single tap
+  does nothing, against a finger laid there by chance), hold for a long press; the pad's buttons select and go back.
+- The music keeps closer to the phone: after a hiccup of the connection its delay no longer stays higher, so a
+  video stays with its sound.
+- The arrival buttons no longer close as the car enters the garage (its GPS losing the satellites there).
+- The car screen no longer stays lighter until the knob moves: halfway through a panel's fade, or after a touch
+  (Android's own focus highlight, now off).
 
 ### Italiano
 
-- App del telefono in auto (con Shizuku, Android 14 o successivo): sceglile in Impostazioni › App e si aprono dentro
-  lo schermo di BetterAuto, anche a telefono bloccato, col tocco o con la manopola (gira, frecce, premi). Si fermano
-  durante la guida, se non lo permetti; le app che proteggono quello che mostrano (Netflix, banca) non si possono
-  mostrare. Stanno nella barra dopo le app musicali, con il badge del telefono; quando non c'è spazio le raccoglie
-  un pulsante App, e la nuova schermata App elenca tutte le app. Maps, Waze, YouTube, Chrome, WhatsApp e Telegram
-  sono già scelte finché non cambi l'elenco. Senza Shizuku attivo (o con Android 13 e precedenti) l'impostazione lo
-  dice, in auto e sul telefono. Finché un'app del telefono è aperta, la sua chip resta in alto in ogni schermata:
-  premila per tornare all'app, o la sua X per chiuderla. Per scrivere in un'app del telefono compare la tastiera del
-  telefono dentro l'app, in auto.
-- Tenendo premuta la manopola su un'app del telefono si apre un pannello: torna alla barra, chiudi l'app e, sulle auto
-  senza touchscreen, usa un puntatore per le app che non rispondono alla manopola (spingi la manopola per muoverlo,
-  girala per scorrere, premi per toccare; ricordato per ogni app). Il puntatore scivola invece di saltare, e più
-  spinte veloci nella stessa direzione lo portano più lontano. Il pannello mette anche l'app a schermo intero, senza
-  barra e barra di stato: Back (o di nuovo il pannello, col tocco dalla linguetta in alto) le riporta. In
-  Impostazioni › App scegli come si aprono le app: solo quando lo scegli, come l'hai lasciata per ogni app, o sempre
-  a schermo intero.
-- Preferenze del percorso in Impostazioni › Mappa: più veloce o più breve, ed evita pedaggi, autostrade, traghetti
-  (in Altre opzioni anche strade sterrate, pedaggi solo in contanti e confini). Vengono evitati solo dove c'è un'altra
-  strada; se le cambi durante un viaggio, il percorso viene ricalcolato.
-- Una nuova destinazione mostra prima il percorso intero sulla mappa, con fino a due alternative (solo senza tappe):
-  tempo, lunghezza, pedaggi e arrivo di ciascuna. Gira la manopola o tocca per scegliere, premi o Vai per partire;
-  parte da sola quando l'auto si muove, o dopo 10 secondi se non la tocchi (se tocchi la mappa o giri la manopola
-  aspetta Vai). Lì stesso puoi evitare pedaggi, autostrade o traghetti:
-  i percorsi vengono ricalcolati subito.
-- Corsie: prima di un incrocio o di un'uscita la scheda della manovra mostra le corsie, evidenziando quelle da prendere,
-  dove i dati della mappa lo dicono (soprattutto autostrade e grandi incroci); le riceve anche il quadro strumenti.
-- Durante un viaggio il pulsante di ricerca della mappa mostra l'icona di un percorso: apre il menu della navigazione
-  (voce, modifica viaggio, salta tappa, termina), non solo la ricerca.
-- Le auto che offrono un secondo schermo (quadro strumenti o display solo per la navigazione) hanno BetterAuto sullo
-  schermo principale: in una che elencava prima il quadro, il launcher veniva disegnato lì.
-- Durante un viaggio la prossima svolta, la sua distanza e la strada arrivano al quadro strumenti dell'auto appena
-  l'auto lascia la navigazione a BetterAuto: le auto che non le chiedevano prima non ricevevano nulla.
-- Le auto con un touchpad al posto del touchscreen possono usarlo per BetterAuto: striscia in una direzione e il
-  focus passa al controllo successivo in quella direzione, uno dopo l'altro (anche verso la barra e lungo le liste
-  lunghe), tocca due volte velocemente per premere (un tocco singolo non fa nulla, così un dito appoggiato per
-  sbaglio non preme niente), tieni premuto per la pressione lunga. I pulsanti del touchpad selezionano e tornano
-  indietro.
-- La musica in auto resta più vicina al telefono: dopo un intoppo della connessione il suo ritardo non resta più alto
-  per il resto del viaggio, così un video in un'app del telefono resta allineato al suo audio.
-- I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage: il GPS dell'auto, perdendo lì i
-  satelliti, li faceva ripartire da capo.
-- Quando un pannello si chiude (pulsanti dell'arrivo e simili) lo schermo dell'auto non resta più a metà della
-  dissolvenza, più chiaro, finché non si muove la manopola.
-- Dopo un tocco, se prima si era usata la manopola, lo schermo dell'auto non diventa più un po' più chiaro finché non
-  si muove di nuovo la manopola (l'evidenziazione del focus di Android, ora spenta: il focus lo mostrano i nostri
-  anelli).
+- **App del telefono in auto** (con Shizuku, Android 14 o successivo): sceglile in Impostazioni › App e si aprono
+  dentro lo schermo di BetterAuto, anche a telefono bloccato, col tocco o con la manopola. Durante la guida si
+  fermano, se non lo permetti; quelle che proteggono il contenuto (Netflix, banca) non si possono mostrare. Stanno
+  nella barra col badge del telefono, o sotto il nuovo pulsante e la nuova schermata App. Maps, Waze, YouTube,
+  Chrome, WhatsApp e Telegram sono già scelte. Con un'app aperta la sua chip resta in alto (premi per tornarci, X
+  per chiuderla), e per scrivere compare la tastiera del telefono.
+- Tenendo premuta la manopola su un'app del telefono si apre un pannello: torna alla barra, chiudi l'app, schermo
+  intero (Back lo toglie) e, sulle auto senza touchscreen, un puntatore per le app che non rispondono alla manopola
+  (spingi per muoverlo, gira per scorrere, premi per toccare; ricordato per app). In Impostazioni › App scegli come
+  si aprono.
+- **Scelta del percorso**: una nuova destinazione mostra il percorso intero con fino a due alternative (tempo,
+  lunghezza, pedaggi, arrivo); scegli con la manopola o col tocco e Vai, oppure parte quando ti muovi o dopo 10 s.
+  Preferenze del percorso in Impostazioni › Mappa: più veloce o più breve, evita pedaggi, autostrade, traghetti e
+  altro, anche direttamente sulla scelta del percorso.
+- **Corsie** prima di incroci e uscite, evidenziate quelle da prendere, dove i dati della mappa le hanno; le riceve
+  anche il quadro strumenti.
+- Durante un viaggio il pulsante di ricerca della mappa apre il menu della navigazione (voce, modifica viaggio,
+  salta tappa, termina).
+- La prossima svolta arriva al quadro strumenti appena l'auto lascia navigare BetterAuto: le auto che non la
+  chiedevano prima non ricevevano nulla.
+- Le auto con un secondo schermo (quadro o display della navigazione) hanno BetterAuto su quello principale, non
+  sul quadro.
+- **Touchpad**: striscia in una direzione e il focus passa al controllo successivo da quella parte, doppio tocco per
+  premere (un tocco singolo non fa nulla, contro un dito appoggiato per caso), tieni premuto per la pressione lunga;
+  i pulsanti del touchpad selezionano e tornano indietro.
+- La musica resta più vicina al telefono: dopo un intoppo della connessione il ritardo non resta più alto, così un
+  video resta allineato al suo audio.
+- I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage (il suo GPS lì perde i satelliti).
+- Lo schermo dell'auto non rimane più schiarito finché non si muove la manopola: a metà della dissolvenza di un
+  pannello, o dopo un tocco (l'evidenziazione del focus di Android, ora spenta).
 
 ## 0.3.6 (2026-11-18)
 
