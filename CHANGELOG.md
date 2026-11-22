@@ -6,14 +6,10 @@ version and date.
 
 ## Unreleased
 
+## 0.4.0 (2026-11-22)
+
 ### English
 
-- The arrival buttons no longer close as the car enters the garage: the car's GPS losing the satellites there
-  made them start over.
-- When a panel closes (arrival buttons and the like) the car screen no longer stays halfway through the fade,
-  lighter, until the knob is moved.
-- After a touch, once the knob had been used, the whole car screen no longer turns slightly lighter until the knob
-  moves again (Android's own focus highlight, now off: our rings show the focus).
 - Phone apps in the car (with Shizuku, Android 14 or later): pick them in Settings › Apps and they open inside
   BetterAuto's screen, also with the phone locked, by touch or with the knob (turn, arrows, press). They pause while
   driving unless you allow them; apps that protect what they show (Netflix, banking) can't be shown. They sit in the
@@ -28,8 +24,6 @@ version and date.
   The panel also puts the app on the whole screen, without the bar and the status bar: Back (or the panel again,
   from the small tab at the top by touch) brings them back. Settings › Apps says how apps open: only when chosen,
   as last chosen per app, or always on the whole screen.
-- The music in the car keeps closer to the phone: after a hiccup of the connection its delay no longer stays
-  higher for the rest of the drive, so a video in a phone app stays with its sound.
 - Route preferences in Settings › Map: fastest or shortest, and avoid tolls, motorways, ferries (under More options
   also unpaved roads, cash-only tolls and borders). They are kept off only where there is another way; changed during
   a trip, the route is worked out again.
@@ -47,18 +41,20 @@ version and date.
 - During a trip the next turn, its distance and road go to the car's instrument cluster as soon as the car lets
   BetterAuto be the navigation: cars that never asked for them got nothing before.
 - Cars with a touchpad instead of a touchscreen can drive BetterAuto with it: slide one way and the focus goes to
-  the next control that way, one after the other (also into the bar and down long lists), tap to press, hold to
-  press long. The pad's own buttons select and go back.
+  the next control that way, one after the other (also into the bar and down long lists), tap twice quickly to
+  press (a single tap does nothing, so a finger laid on the pad by chance presses nothing), hold to press long. The
+  pad's own buttons select and go back.
+- The music in the car keeps closer to the phone: after a hiccup of the connection its delay no longer stays
+  higher for the rest of the drive, so a video in a phone app stays with its sound.
+- The arrival buttons no longer close as the car enters the garage: the car's GPS losing the satellites there
+  made them start over.
+- When a panel closes (arrival buttons and the like) the car screen no longer stays halfway through the fade,
+  lighter, until the knob is moved.
+- After a touch, once the knob had been used, the whole car screen no longer turns slightly lighter until the knob
+  moves again (Android's own focus highlight, now off: our rings show the focus).
 
 ### Italiano
 
-- I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage: il GPS dell'auto, perdendo lì i
-  satelliti, li faceva ripartire da capo.
-- Quando un pannello si chiude (pulsanti dell'arrivo e simili) lo schermo dell'auto non resta più a metà della
-  dissolvenza, più chiaro, finché non si muove la manopola.
-- Dopo un tocco, se prima si era usata la manopola, lo schermo dell'auto non diventa più un po' più chiaro finché non
-  si muove di nuovo la manopola (l'evidenziazione del focus di Android, ora spenta: il focus lo mostrano i nostri
-  anelli).
 - App del telefono in auto (con Shizuku, Android 14 o successivo): sceglile in Impostazioni › App e si aprono dentro
   lo schermo di BetterAuto, anche a telefono bloccato, col tocco o con la manopola (gira, frecce, premi). Si fermano
   durante la guida, se non lo permetti; le app che proteggono quello che mostrano (Netflix, banca) non si possono
@@ -75,8 +71,6 @@ version and date.
   barra e barra di stato: Back (o di nuovo il pannello, col tocco dalla linguetta in alto) le riporta. In
   Impostazioni › App scegli come si aprono le app: solo quando lo scegli, come l'hai lasciata per ogni app, o sempre
   a schermo intero.
-- La musica in auto resta più vicina al telefono: dopo un intoppo della connessione il suo ritardo non resta più alto
-  per il resto del viaggio, così un video in un'app del telefono resta allineato al suo audio.
 - Preferenze del percorso in Impostazioni › Mappa: più veloce o più breve, ed evita pedaggi, autostrade, traghetti
   (in Altre opzioni anche strade sterrate, pedaggi solo in contanti e confini). Vengono evitati solo dove c'è un'altra
   strada; se le cambi durante un viaggio, il percorso viene ricalcolato.
@@ -95,8 +89,18 @@ version and date.
   l'auto lascia la navigazione a BetterAuto: le auto che non le chiedevano prima non ricevevano nulla.
 - Le auto con un touchpad al posto del touchscreen possono usarlo per BetterAuto: striscia in una direzione e il
   focus passa al controllo successivo in quella direzione, uno dopo l'altro (anche verso la barra e lungo le liste
-  lunghe), tocca per premere, tieni premuto per la pressione lunga. I pulsanti del touchpad selezionano e tornano
+  lunghe), tocca due volte velocemente per premere (un tocco singolo non fa nulla, così un dito appoggiato per
+  sbaglio non preme niente), tieni premuto per la pressione lunga. I pulsanti del touchpad selezionano e tornano
   indietro.
+- La musica in auto resta più vicina al telefono: dopo un intoppo della connessione il suo ritardo non resta più alto
+  per il resto del viaggio, così un video in un'app del telefono resta allineato al suo audio.
+- I pulsanti dell'arrivo non si chiudono più quando l'auto entra in garage: il GPS dell'auto, perdendo lì i
+  satelliti, li faceva ripartire da capo.
+- Quando un pannello si chiude (pulsanti dell'arrivo e simili) lo schermo dell'auto non resta più a metà della
+  dissolvenza, più chiaro, finché non si muove la manopola.
+- Dopo un tocco, se prima si era usata la manopola, lo schermo dell'auto non diventa più un po' più chiaro finché non
+  si muove di nuovo la manopola (l'evidenziazione del focus di Android, ora spenta: il focus lo mostrano i nostri
+  anelli).
 
 ## 0.3.6 (2026-11-18)
 
